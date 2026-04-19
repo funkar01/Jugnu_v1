@@ -66,6 +66,9 @@ export class JugnuSystem extends createSystem({
     this.queries.jugnuClicked.subscribe("qualify", (entity) => {
       // Toggle listening
       if (!this.isListening && this.recognition) {
+        // Prevent race conditions where button rapid-fires before onstart event
+        this.isListening = true;
+
         // Stop currently speaking if we click it
         if (this.synth && this.synth.speaking) {
            this.synth.cancel();
@@ -74,6 +77,7 @@ export class JugnuSystem extends createSystem({
           this.recognition.start();
         } catch (e) {
           console.error("Could not start recognition", e);
+          this.isListening = false;
         }
       }
     });
