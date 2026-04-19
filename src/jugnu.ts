@@ -1,11 +1,13 @@
 import { createComponent, createSystem, Pressed, Vector3 } from "@iwsdk/core";
-
+import type { JugnuV2Model, Mood } from "./JugnuV2Model.js";
 
 // Replace this URL when deploying, or use VITE_BACKEND_URL in .env
 // Example: const BACKEND_URL = "https://jugnu-backend.vercel.app/api/gemini";
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || "/api/gemini";
 
-export const Jugnu = createComponent("Jugnu", {});
+export const Jugnu = createComponent("Jugnu", {
+  model: { type: "ref", default: null as unknown as JugnuV2Model }
+});
 
 export class JugnuSystem extends createSystem({
   jugnu: { required: [Jugnu] },
@@ -91,7 +93,7 @@ export class JugnuSystem extends createSystem({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{
-            parts: [{ text: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. The user says: "${text}"` }]
+            parts: [{ text: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. At the very end of your response, please append exactly one mood tag from this list based on the sentiment of your reply: [MOOD: happy], [MOOD: sad], [MOOD: angry], [MOOD: surprised], [MOOD: sleepy]. The user says: "${text}"` }]
           }]
         })
       });
@@ -102,12 +104,35 @@ export class JugnuSystem extends createSystem({
         throw new Error(data.error?.message || "Unknown Gemini API Error");
       }
       
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      let reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (reply) {
+         let mood: Mood = 'happy';
+         const moodMatch = reply.match(/\[MOOD:\s*(happy|sad|angry|surprised|sleepy)\]/i);
+         if (moodMatch) {
+             mood = moodMatch[1].toLowerCase() as Mood;
+         }
+         // Clean out the tag so it isn't spoken aloud
+         reply = reply.replace(/\[MOOD:\s*[a-zA-Z]+\]/gi, '').trim();
+
+         // Broadcast the parsed mood to the active Jugnu model
+         this.queries.jugnu.entities.forEach(entity => {
+             const jug = entity.getComponent(Jugnu);
+             if (jug && jug.model) {
+                 jug.model.setMood(mood);
+             }
+         });
+
          this.speak(reply);
       }
     } catch (e) {
       console.error("Gemini Error:", e);
+      // Let Jugnu show sad mood if API fails
+      this.queries.jugnu.entities.forEach(entity => {
+          const jug = entity.getComponent(Jugnu);
+          if (jug && jug.model) {
+              jug.model.setMood('sad');
+          }
+      });
       this.speak("Sorry, I am having trouble connecting to my brain right now.");
     }
   }
@@ -129,9 +154,13 @@ export class JugnuSystem extends createSystem({
     this.floatTime += dt;
     this.queries.jugnu.entities.forEach((entity) => {
       const obj = entity.object3D;
-      if (!obj) return;
+      const jug = entity.getComponent(Jugnu);
+      if (!obj || !jug || !jug.model) return;
       
-      // Floating animation
+      // Tell the procedural model to update its shaders and timing
+      jug.model.update(dt);
+
+      // Floating animation on the entity Y position
       if (!this.basePositions.has(entity)) {
         this.basePositions.set(entity, obj.position.y);
       }
@@ -143,22 +172,21 @@ export class JugnuSystem extends createSystem({
       obj.getWorldPosition(this.vec3);
       this.lookAtTarget.y = this.vec3.y; 
       obj.lookAt(this.lookAtTarget);
-      
-      // Jugu1 model's geometric forward might be offset (e.g. built facing X instead of Z).
-      // We apply an offset so the face looks at the user. 
-      // If it looks backwards, this can be changed to Math.PI / 2.
-      obj.rotateY(-Math.PI / 2);
 
       // Visual Feedback: pulse if listening
       if (this.isListening) {
         this.pulseTime += dt;
         const scale = 1.0 + Math.sin(this.pulseTime * 5) * 0.1;
         obj.scale.set(scale, scale, scale);
+        // Intensity for deeper core glowing
+        jug.model.pulseIntensity = Math.abs(Math.sin(this.pulseTime * 5));
       } else {
         this.pulseTime = 0;
         // Smooth base scale return (assuming base scale is 1.0)
         obj.scale.lerp(new Vector3(1, 1, 1), 0.1);
+        jug.model.pulseIntensity = 0;
       }
     });
   }
 }
+
