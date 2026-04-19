@@ -4,9 +4,9 @@ import { defineConfig } from "vite";
 import mkcert from "vite-plugin-mkcert";
 
 export default defineConfig({
-  // 1. CRITICAL: This base path dynamically switches to the root '/' if deployed on Vercel, 
-  // but falls back to '/Jugnu_v1/' if deployed on GitHub Pages.
-  base: process.env.VERCEL ? '/' : '/Jugnu_v1/', 
+  // 1. CRITICAL: By using a relative base path ('./'), the build will work seamlessly 
+  // on both the root Vercel domain AND the /Jugnu_v1/ GitHub Pages subfolder.
+  base: './', 
 
   plugins: [
     mkcert(),
