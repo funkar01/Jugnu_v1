@@ -1,7 +1,9 @@
 import { createComponent, createSystem, Pressed, Vector3 } from "@iwsdk/core";
-import { GoogleGenAI } from "@google/genai";
 
-const API_KEY = "AIzaSyA6Of1NJ4xZz5S2gNlvByh8Vta_rOaJ97k";
+
+// Replace this URL when deploying, or use VITE_BACKEND_URL in .env
+// Example: const BACKEND_URL = "https://jugnu-backend.vercel.app/api/gemini";
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || "/api/gemini";
 
 export const Jugnu = createComponent("Jugnu", {});
 
@@ -9,7 +11,7 @@ export class JugnuSystem extends createSystem({
   jugnu: { required: [Jugnu] },
   jugnuClicked: { required: [Jugnu, Pressed] },
 }) {
-  private ai!: GoogleGenAI;
+
   private recognition: any;
   private isListening = false;
   private synth!: SpeechSynthesis;
@@ -25,9 +27,7 @@ export class JugnuSystem extends createSystem({
     this.lookAtTarget = new Vector3();
     this.vec3 = new Vector3();
     
-    // Initialize GenAI
-    this.ai = new GoogleGenAI({ apiKey: API_KEY });
-    
+
     // Initialize Speech Synthesis
     this.synth = window.speechSynthesis;
     
@@ -67,7 +67,7 @@ export class JugnuSystem extends createSystem({
       // Toggle listening
       if (!this.isListening && this.recognition) {
         // Stop currently speaking if we click it
-        if (this.synth.speaking) {
+        if (this.synth && this.synth.speaking) {
            this.synth.cancel();
         }
         try {
@@ -82,11 +82,23 @@ export class JugnuSystem extends createSystem({
   async handleQuery(text: string) {
     if (!text.trim()) return;
     try {
-      const response = await this.ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. The user says: "${text}"`,
+      const response = await fetch(BACKEND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. The user says: "${text}"` }]
+          }]
+        })
       });
-      const reply = response.text;
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error?.message || "Unknown Gemini API Error");
+      }
+      
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (reply) {
          this.speak(reply);
       }
@@ -98,11 +110,15 @@ export class JugnuSystem extends createSystem({
 
   speak(text: string) {
      console.log("Jugnu says:", text);
-     if (this.synth.speaking) {
+     if (this.synth && this.synth.speaking) {
          this.synth.cancel();
      }
-     const utterance = new SpeechSynthesisUtterance(text);
-     this.synth.speak(utterance);
+     if (this.synth) {
+         const utterance = new SpeechSynthesisUtterance(text);
+         this.synth.speak(utterance);
+     } else {
+         console.warn("Speech Synthesis is not supported or accessible on this device. Cannot speak:", text);
+     }
   }
 
   update(dt: number) {
