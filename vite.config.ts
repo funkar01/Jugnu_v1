@@ -4,9 +4,9 @@ import { defineConfig } from "vite";
 import mkcert from "vite-plugin-mkcert";
 
 export default defineConfig({
-  // 1. CRITICAL: This base path ensures all assets (JS, models, UI) 
-  // are prefixed with /Jugnu_v1/ so GitHub Pages can find them.
-  base: '/Jugnu_v1/', 
+  // 1. CRITICAL: This base path dynamically switches to the root '/' if deployed on Vercel, 
+  // but falls back to '/Jugnu_v1/' if deployed on GitHub Pages.
+  base: process.env.VERCEL ? '/' : '/Jugnu_v1/', 
 
   plugins: [
     mkcert(),
