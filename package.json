@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "@google/genai": "^1.50.1",
     "@iwsdk/core": "0.3.1",
     "three": "npm:super-three@0.181.0"
   },
@@ -25,12 +27,5 @@
   },
   "engines": {
     "node": ">=20.19.0"
-  },
-  
-"scripts": {
-    "dev": "vite",
-    "build": "vite build", 
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
   }
 }

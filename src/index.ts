@@ -30,6 +30,7 @@ import {
 import { EnvironmentType, LocomotionEnvironment } from "@iwsdk/core";
 import { PanelSystem } from "./panel.js";
 import { Robot, RobotSystem } from "./robot.js";
+import { Jugnu, JugnuSystem } from "./jugnu.js";
 
 // FIX: Changed paths to use "./" (Relative) instead of "/" (Absolute)
 const assets: AssetManifest = {
@@ -179,8 +180,18 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   const boxHelper = new Box3Helper(juguBounds, 0xff0000);
   world.createTransformEntity(boxHelper);
 
-  // Render jugu1 without physics to avoid convex hull merge errors on complex GLB geometry.
-  world.createTransformEntity(juguObj);
+  // Render jugu1 and make it interactable for the voice system.
+  // Using Box instead of ConvexHull to prevent complex GLB geometry merge errors.
+  world.createTransformEntity(juguObj)
+    .addComponent(Interactable)
+    .addComponent(Jugnu)
+    .addComponent(PhysicsBody, {
+      state: PhysicsState.Kinematic,
+      gravityFactor: 0.0,
+    })
+    .addComponent(PhysicsShape, {
+      shape: PhysicsShapeType.Box,
+    });
 
   const panelEntity = world
     .createTransformEntity()
@@ -213,5 +224,5 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   logoBanner.position.set(0, 1, 1.8);
   logoBanner.rotateY(Math.PI);
 
-  world.registerSystem(PanelSystem).registerSystem(RobotSystem);
+  world.registerSystem(PanelSystem).registerSystem(RobotSystem).registerSystem(JugnuSystem);
 });
