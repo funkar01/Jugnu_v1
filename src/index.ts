@@ -8,6 +8,9 @@ import {
   SRGBColorSpace,
   AssetManager,
   World,
+  Box3,
+  Box3Helper,
+  Vector3,
 } from "@iwsdk/core";
 
 import {
@@ -55,14 +58,17 @@ const assets: AssetManifest = {
     type: AssetType.GLTF,
     priority: "critical",
   },
+  jugu1: {
+    url: "./gltf/jugu1/jugu1.glb",
+    type: AssetType.GLTF,
+    priority: "critical",
+  },
 };
 
 World.create(document.getElementById("scene-container") as HTMLDivElement, {
   assets,
   xr: {
     sessionMode: SessionMode.ImmersiveVR,
-    offer: "always",
-    features: { handTracking: true, layers: true },
   },
   features: {
     locomotion: { useWorker: true },
@@ -142,6 +148,39 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       friction: 0.7,
       restitution: 0.05,
     });
+
+  const juguGltf = AssetManager.getGLTF("jugu1");
+  if (!juguGltf) {
+    throw new Error("jugu1 asset failed to load: AssetManager.getGLTF('jugu1') returned null.");
+  }
+  const { scene: juguObj } = juguGltf;
+  juguObj.scale.setScalar(1.0);
+
+  const juguBounds = new Box3().setFromObject(juguObj);
+  const juguSize = new Vector3();
+  const juguCenter = new Vector3();
+  juguBounds.getSize(juguSize);
+  juguBounds.getCenter(juguCenter);
+  console.log("jugu1 bounds:", {
+    min: juguBounds.min.toArray(),
+    max: juguBounds.max.toArray(),
+    size: juguSize.toArray(),
+    center: juguCenter.toArray(),
+  });
+
+  const deskTopY = 1.05;
+  const targetY = deskTopY - juguBounds.min.y;
+  juguObj.position.set(0, targetY, -0.8);
+  
+  // Update the bounding box to match the new position
+  juguObj.updateMatrixWorld(true);
+  juguBounds.setFromObject(juguObj);
+
+  const boxHelper = new Box3Helper(juguBounds, 0xff0000);
+  world.createTransformEntity(boxHelper);
+
+  // Render jugu1 without physics to avoid convex hull merge errors on complex GLB geometry.
+  world.createTransformEntity(juguObj);
 
   const panelEntity = world
     .createTransformEntity()
