@@ -1,5 +1,6 @@
 import { createComponent, createSystem, Pressed, Vector3 } from "@iwsdk/core";
-
+import type { JugnuV2Model, Mood } from "./JugnuV2Model.js";
+import * as THREE from "three";
 
 // Replace this URL when deploying, or use VITE_BACKEND_URL in .env
 // Example: const BACKEND_URL = "https://jugnu-backend.vercel.app/api/gemini";
@@ -17,7 +18,10 @@ export class JugnuSystem extends createSystem({
   private synth!: SpeechSynthesis;
   private pulseTime = 0;
   private floatTime = 0;
-  private basePositions = new Map<any, number>();
+  private basePositions = new Map<any, THREE.Vector3>();
+  private baseQuats = new Map<any, THREE.Quaternion>();
+  private baseScales = new Map<any, THREE.Vector3>();
+  private interactDecay = 0;
   
   // For facing tracking
   private lookAtTarget!: Vector3;
@@ -64,6 +68,13 @@ export class JugnuSystem extends createSystem({
     
     // Handle Click
     this.queries.jugnuClicked.subscribe("qualify", (entity) => {
+      this.interactDecay = 8.0; // Stay focused on the user for 8 seconds upon click
+      
+      const jugModel = entity.object3D as JugnuV2Model;
+      if (jugModel && typeof jugModel.setMood === 'function') {
+         jugModel.setMood('surprised'); // Trigger alert state
+      }
+      
       // Toggle listening
       if (!this.isListening && this.recognition) {
         // Prevent race conditions where button rapid-fires before onstart event
@@ -86,12 +97,17 @@ export class JugnuSystem extends createSystem({
   async handleQuery(text: string) {
     if (!text.trim()) return;
     try {
-      const response = await fetch(BACKEND_URL, {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const url = apiKey 
+        ? `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`
+        : BACKEND_URL;
+
+      const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{
-            parts: [{ text: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. The user says: "${text}"` }]
+            parts: [{ text: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. At the very end of your response, please append exactly one mood tag from this list based on the sentiment of your reply: [MOOD: happy], [MOOD: sad], [MOOD: angry], [MOOD: surprised], [MOOD: sleepy]. The user says: "${text}"` }]
           }]
         })
       });
@@ -102,12 +118,35 @@ export class JugnuSystem extends createSystem({
         throw new Error(data.error?.message || "Unknown Gemini API Error");
       }
       
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      let reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (reply) {
+         let mood: Mood = 'happy';
+         const moodMatch = reply.match(/\[MOOD:\s*(happy|sad|angry|surprised|sleepy)\]/i);
+         if (moodMatch) {
+             mood = moodMatch[1].toLowerCase() as Mood;
+         }
+         // Clean out the tag so it isn't spoken aloud
+         reply = reply.replace(/\[MOOD:\s*[a-zA-Z]+\]/gi, '').trim();
+
+         // Broadcast the parsed mood to the active Jugnu model
+         this.queries.jugnu.entities.forEach(entity => {
+             const jugModel = entity.object3D as JugnuV2Model;
+             if (jugModel && typeof jugModel.setMood === 'function') {
+                 jugModel.setMood(mood);
+             }
+         });
+
          this.speak(reply);
       }
     } catch (e) {
       console.error("Gemini Error:", e);
+      // Let Jugnu show sad mood if API fails
+      this.queries.jugnu.entities.forEach(entity => {
+          const jugModel = entity.object3D as JugnuV2Model;
+          if (jugModel && typeof jugModel.setMood === 'function') {
+              jugModel.setMood('sad');
+          }
+      });
       this.speak("Sorry, I am having trouble connecting to my brain right now.");
     }
   }
@@ -127,38 +166,76 @@ export class JugnuSystem extends createSystem({
 
   update(dt: number) {
     this.floatTime += dt;
+    
+    if (this.interactDecay > 0) {
+      this.interactDecay -= dt;
+    }
+    const shouldFaceUser = this.isListening || (this.synth && this.synth.speaking) || this.interactDecay > 0;
+
     this.queries.jugnu.entities.forEach((entity) => {
       const obj = entity.object3D;
-      if (!obj) return;
+      const jugModel = obj as JugnuV2Model;
+      if (!obj || !jugModel || typeof jugModel.update !== 'function') return;
       
-      // Floating animation
-      if (!this.basePositions.has(entity)) {
-        this.basePositions.set(entity, obj.position.y);
-      }
-      const baseY = this.basePositions.get(entity)!;
-      obj.position.y = baseY + Math.sin(this.floatTime * 2) * 0.05;
+      // Tell the procedural model to update its shaders and timing
+      jugModel.update(dt);
 
-      // Face User
-      this.player.head.getWorldPosition(this.lookAtTarget);
-      obj.getWorldPosition(this.vec3);
-      this.lookAtTarget.y = this.vec3.y; 
-      obj.lookAt(this.lookAtTarget);
+      // Floating animation on the entity position
+      if (!this.basePositions.has(entity)) {
+        this.basePositions.set(entity, obj.position.clone());
+        this.baseQuats.set(entity, obj.quaternion.clone());
+        // Reduce scale to 25%
+        obj.scale.setScalar(0.25);
+        this.baseScales.set(entity, obj.scale.clone());
+      }
+      const basePos = this.basePositions.get(entity)!;
+      const baseQuat = this.baseQuats.get(entity)!;
+      const baseScale = this.baseScales.get(entity)!;
       
-      // Jugu1 model's geometric forward might be offset (e.g. built facing X instead of Z).
-      // We apply an offset so the face looks at the user. 
-      // If it looks backwards, this can be changed to Math.PI / 2.
-      obj.rotateY(-Math.PI / 2);
+      // Lively 3D floating movement
+      obj.position.x = basePos.x + Math.sin(this.floatTime * 1.5) * 0.03;
+      obj.position.y = basePos.y + Math.sin(this.floatTime * 2.0) * 0.05;
+      obj.position.z = basePos.z + Math.cos(this.floatTime * 1.2) * 0.03;
+
+      // Face User or wander smoothly
+      if (shouldFaceUser) {
+        this.player.head.getWorldPosition(this.lookAtTarget);
+        obj.getWorldPosition(this.vec3);
+        
+        // Calculate precise euler angle avoiding Three.js Object3D lookAt accumulation bugs
+        const dx = this.lookAtTarget.x - this.vec3.x;
+        const dz = this.lookAtTarget.z - this.vec3.z;
+        const targetYaw = Math.atan2(dx, dz);
+        
+        const targetQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, targetYaw, 0));
+        obj.quaternion.slerp(targetQ, dt * 5.0);
+      } else {
+        // Soft random rocking rotation to look alive around its original base rotation
+        const wanderRot = new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(
+            Math.sin(this.floatTime * 0.8) * 0.05,
+            Math.cos(this.floatTime * 0.5) * 0.1,
+            Math.sin(this.floatTime * 1.1) * 0.05
+          )
+        );
+        const targetQ = baseQuat.clone().multiply(wanderRot);
+        obj.quaternion.slerp(targetQ, dt * 2.0);
+      }
 
       // Visual Feedback: pulse if listening
       if (this.isListening) {
         this.pulseTime += dt;
-        const scale = 1.0 + Math.sin(this.pulseTime * 5) * 0.1;
-        obj.scale.set(scale, scale, scale);
+        const pulse = 1.0 + Math.sin(this.pulseTime * 5) * 0.1;
+        obj.scale.set(baseScale.x * pulse, baseScale.y * pulse, baseScale.z * pulse);
+        // Intensity for deeper core glowing
+        jugModel.pulseIntensity = Math.abs(Math.sin(this.pulseTime * 5));
       } else {
         this.pulseTime = 0;
-        // Smooth base scale return (assuming base scale is 1.0)
-        obj.scale.lerp(new Vector3(1, 1, 1), 0.1);
+        // Smooth base scale return
+        obj.scale.lerp(baseScale, 0.1);
+        jugModel.pulseIntensity = 0;
       }
     });
   }
 }
+

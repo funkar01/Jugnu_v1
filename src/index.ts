@@ -31,6 +31,7 @@ import { EnvironmentType, LocomotionEnvironment } from "@iwsdk/core";
 import { PanelSystem } from "./panel.js";
 import { Robot, RobotSystem } from "./robot.js";
 import { Jugnu, JugnuSystem } from "./jugnu.js";
+import { JugnuV2Model } from "./JugnuV2Model.js";
 
 // FIX: Changed paths to use "./" (Relative) instead of "/" (Absolute)
 const assets: AssetManifest = {
@@ -56,11 +57,6 @@ const assets: AssetManifest = {
   },
   robot: {
     url: "./gltf/robot/robot.gltf",
-    type: AssetType.GLTF,
-    priority: "critical",
-  },
-  jugu1: {
-    url: "./gltf/jugu1/jugu1.glb",
     type: AssetType.GLTF,
     priority: "critical",
   },
@@ -150,39 +146,16 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       restitution: 0.05,
     });
 
-  const juguGltf = AssetManager.getGLTF("jugu1");
-  if (!juguGltf) {
-    throw new Error("jugu1 asset failed to load: AssetManager.getGLTF('jugu1') returned null.");
-  }
-  const { scene: juguObj } = juguGltf;
-  juguObj.scale.setScalar(1.0);
-
-  const juguBounds = new Box3().setFromObject(juguObj);
-  const juguSize = new Vector3();
-  const juguCenter = new Vector3();
-  juguBounds.getSize(juguSize);
-  juguBounds.getCenter(juguCenter);
-  console.log("jugu1 bounds:", {
-    min: juguBounds.min.toArray(),
-    max: juguBounds.max.toArray(),
-    size: juguSize.toArray(),
-    center: juguCenter.toArray(),
-  });
-
-  const deskTopY = 1.05;
-  const targetY = deskTopY - juguBounds.min.y;
-  juguObj.position.set(0, targetY, -0.8);
+  const juguModel = new JugnuV2Model(world.renderer);
   
-  // Update the bounding box to match the new position
-  juguObj.updateMatrixWorld(true);
-  juguBounds.setFromObject(juguObj);
+  // Ensure Jugnu floats above desk instead of using bounds logic (which breaks due to 12m plane)
+  const deskTopY = 1.05;
+  juguModel.position.set(0, deskTopY + 0.4, -0.8);
+  juguModel.updateMatrixWorld(true);
 
-  const boxHelper = new Box3Helper(juguBounds, 0xff0000);
-  world.createTransformEntity(boxHelper);
-
-  // Render jugu1 and make it interactable for the voice system.
-  // Using Box instead of ConvexHull to prevent complex GLB geometry merge errors.
-  world.createTransformEntity(juguObj)
+  // Render JugnuV2 and make it interactable for the voice system.
+  // Using Box instead of ConvexHull to prevent complex procedural geometry merge errors.
+  world.createTransformEntity(juguModel)
     .addComponent(Interactable)
     .addComponent(Jugnu)
     .addComponent(PhysicsBody, {
@@ -191,6 +164,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     })
     .addComponent(PhysicsShape, {
       shape: PhysicsShapeType.Box,
+      dimensions: [0.6, 0.6, 0.6], // Force logical dimensions for raycast clicking
     });
 
   const panelEntity = world
