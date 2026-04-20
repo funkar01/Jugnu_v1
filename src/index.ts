@@ -60,7 +60,6 @@ const assets: AssetManifest = {
     type: AssetType.GLTF,
     priority: "critical",
   },
-  },
 };
 
 World.create(document.getElementById("scene-container") as HTMLDivElement, {
@@ -149,40 +148,23 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
 
   const juguModel = new JugnuV2Model(world.renderer);
   
-  const juguBounds = new Box3().setFromObject(juguModel);
-  const juguSize = new Vector3();
-  const juguCenter = new Vector3();
-  juguBounds.getSize(juguSize);
-  juguBounds.getCenter(juguCenter);
-  console.log("Jugnu V2 bounds:", {
-    min: juguBounds.min.toArray(),
-    max: juguBounds.max.toArray(),
-    size: juguSize.toArray(),
-    center: juguCenter.toArray(),
-  });
-
+  // Ensure Jugnu floats above desk instead of using bounds logic (which breaks due to 12m plane)
   const deskTopY = 1.05;
-  const targetY = deskTopY - (juguBounds.min.y * juguModel.scale.y) + 0.3; // Added fixed offset for procedurally scaled model
-  juguModel.position.set(0, targetY, -0.8);
-  
-  // Update the bounding box to match the new position
+  juguModel.position.set(0, deskTopY + 0.4, -0.8);
   juguModel.updateMatrixWorld(true);
-  juguBounds.setFromObject(juguModel);
-
-  const boxHelper = new Box3Helper(juguBounds, 0xff0000);
-  world.createTransformEntity(boxHelper);
 
   // Render JugnuV2 and make it interactable for the voice system.
   // Using Box instead of ConvexHull to prevent complex procedural geometry merge errors.
   world.createTransformEntity(juguModel)
     .addComponent(Interactable)
-    .addComponent(Jugnu, { model: juguModel })
+    .addComponent(Jugnu)
     .addComponent(PhysicsBody, {
       state: PhysicsState.Kinematic,
       gravityFactor: 0.0,
     })
     .addComponent(PhysicsShape, {
       shape: PhysicsShapeType.Box,
+      dimensions: [0.6, 0.6, 0.6], // Force logical dimensions for raycast clicking
     });
 
   const panelEntity = world
