@@ -31,7 +31,7 @@ import { EnvironmentType, LocomotionEnvironment } from "@iwsdk/core";
 import { PanelSystem } from "./panel.js";
 import { Robot, RobotSystem } from "./robot.js";
 import { Jugnu, JugnuSystem } from "./jugnu.js";
-import { JugnuV2Model } from "./JugnuV2Model.js";
+import { JugnuV3Model } from "./JugnuV3Model.js";
 
 // FIX: Changed paths to use "./" (Relative) instead of "/" (Absolute)
 const assets: AssetManifest = {
@@ -153,7 +153,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       restitution: 0.05,
     });
 
-  const juguModel = new JugnuV2Model(world.renderer);
+  const juguModel = new JugnuV3Model();
   
   // Ensure Jugnu floats above desk instead of using bounds logic (which breaks due to 12m plane)
   const deskTopY = 1.05;

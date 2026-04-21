@@ -1,5 +1,5 @@
 import { createComponent, createSystem, Pressed, Vector3 } from "@iwsdk/core";
-import type { JugnuV2Model, Mood } from "./JugnuV2Model.js";
+import type { JugnuV3Model, Mood } from "./JugnuV3Model.js";
 import * as THREE from "three";
 
 // Replace this URL when deploying, or use VITE_BACKEND_URL in .env
@@ -70,7 +70,7 @@ export class JugnuSystem extends createSystem({
     this.queries.jugnuClicked.subscribe("qualify", (entity) => {
       this.interactDecay = 8.0; // Stay focused on the user for 8 seconds upon click
       
-      const jugModel = entity.object3D as JugnuV2Model;
+      const jugModel = entity.object3D as JugnuV3Model;
       if (jugModel && typeof jugModel.setMood === 'function') {
          jugModel.setMood('surprised'); // Trigger alert state
       }
@@ -130,7 +130,7 @@ export class JugnuSystem extends createSystem({
 
          // Broadcast the parsed mood to the active Jugnu model
          this.queries.jugnu.entities.forEach(entity => {
-             const jugModel = entity.object3D as JugnuV2Model;
+             const jugModel = entity.object3D as JugnuV3Model;
              if (jugModel && typeof jugModel.setMood === 'function') {
                  jugModel.setMood(mood);
              }
@@ -142,7 +142,7 @@ export class JugnuSystem extends createSystem({
       console.error("Gemini Error:", e);
       // Let Jugnu show sad mood if API fails
       this.queries.jugnu.entities.forEach(entity => {
-          const jugModel = entity.object3D as JugnuV2Model;
+          const jugModel = entity.object3D as JugnuV3Model;
           if (jugModel && typeof jugModel.setMood === 'function') {
               jugModel.setMood('sad');
           }
@@ -174,7 +174,7 @@ export class JugnuSystem extends createSystem({
 
     this.queries.jugnu.entities.forEach((entity) => {
       const obj = entity.object3D;
-      const jugModel = obj as JugnuV2Model;
+      const jugModel = obj as JugnuV3Model;
       if (!obj || !jugModel || typeof jugModel.update !== 'function') return;
       
       // Tell the procedural model to update its shaders and timing
@@ -197,30 +197,16 @@ export class JugnuSystem extends createSystem({
       obj.position.y = basePos.y + Math.sin(this.floatTime * 2.0) * 0.05;
       obj.position.z = basePos.z + Math.cos(this.floatTime * 1.2) * 0.03;
 
-      // Face User or wander smoothly
-      if (shouldFaceUser) {
-        this.player.head.getWorldPosition(this.lookAtTarget);
-        obj.getWorldPosition(this.vec3);
-        
-        // Calculate precise euler angle avoiding Three.js Object3D lookAt accumulation bugs
-        const dx = this.lookAtTarget.x - this.vec3.x;
-        const dz = this.lookAtTarget.z - this.vec3.z;
-        const targetYaw = Math.atan2(dx, dz);
-        
-        const targetQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, targetYaw, 0));
-        obj.quaternion.slerp(targetQ, dt * 5.0);
-      } else {
-        // Soft random rocking rotation to look alive around its original base rotation
-        const wanderRot = new THREE.Quaternion().setFromEuler(
-          new THREE.Euler(
-            Math.sin(this.floatTime * 0.8) * 0.05,
-            Math.cos(this.floatTime * 0.5) * 0.1,
-            Math.sin(this.floatTime * 1.1) * 0.05
-          )
-        );
-        const targetQ = baseQuat.clone().multiply(wanderRot);
-        obj.quaternion.slerp(targetQ, dt * 2.0);
-      }
+      // Strict billboarding (always face user)
+      this.player.head.getWorldPosition(this.lookAtTarget);
+      obj.getWorldPosition(this.vec3);
+      
+      const dx = this.lookAtTarget.x - this.vec3.x;
+      const dz = this.lookAtTarget.z - this.vec3.z;
+      const targetYaw = Math.atan2(dx, dz);
+      
+      const targetQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, targetYaw, 0));
+      obj.quaternion.slerp(targetQ, dt * 10.0);
 
       // Visual Feedback: pulse if listening
       if (this.isListening) {
