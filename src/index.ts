@@ -66,6 +66,9 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   assets,
   xr: {
     sessionMode: SessionMode.ImmersiveAR,
+    features: {
+      handTracking: true
+    }
   },
   features: {
     locomotion: { useWorker: true },
