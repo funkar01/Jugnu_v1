@@ -197,16 +197,9 @@ export class JugnuSystem extends createSystem({
       obj.position.y = basePos.y + Math.sin(this.floatTime * 2.0) * 0.05;
       obj.position.z = basePos.z + Math.cos(this.floatTime * 1.2) * 0.03;
 
-      // Strict billboarding (always face user)
+      // Strict Spherical Billboarding (instantly lock to face user on all axes)
       this.player.head.getWorldPosition(this.lookAtTarget);
-      obj.getWorldPosition(this.vec3);
-      
-      const dx = this.lookAtTarget.x - this.vec3.x;
-      const dz = this.lookAtTarget.z - this.vec3.z;
-      const targetYaw = Math.atan2(dx, dz);
-      
-      const targetQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, targetYaw, 0));
-      obj.quaternion.slerp(targetQ, dt * 10.0);
+      obj.lookAt(this.lookAtTarget);
 
       // Visual Feedback: pulse if listening
       if (this.isListening) {

@@ -83,8 +83,6 @@ export class JugnuV3Model extends THREE.Group {
         });
 
         const mesh = new THREE.Mesh(geometry, this.material);
-        // Elevate center slightly like old sphere so origin is at bottom
-        mesh.position.y = 0.5;
         this.add(mesh);
         
         // Scale to match old Jugnu
