@@ -45,16 +45,16 @@ const assets: AssetManifest = {
     type: AssetType.Texture,
     priority: "critical",
   },
-  environmentDesk: {
-    url: "./gltf/environmentDesk/environmentDesk.gltf",
-    type: AssetType.GLTF,
-    priority: "critical",
-  },
-  plantSansevieria: {
-    url: "./gltf/plantSansevieria/plantSansevieria.gltf",
-    type: AssetType.GLTF,
-    priority: "critical",
-  },
+  // environmentDesk: {
+  //   url: "./gltf/environmentDesk/environmentDesk.gltf",
+  //   type: AssetType.GLTF,
+  //   priority: "critical",
+  // },
+  // plantSansevieria: {
+  //   url: "./gltf/plantSansevieria/plantSansevieria.gltf",
+  //   type: AssetType.GLTF,
+  //   priority: "critical",
+  // },
   robot: {
     url: "./gltf/robot/robot.gltf",
     type: AssetType.GLTF,
@@ -65,7 +65,7 @@ const assets: AssetManifest = {
 World.create(document.getElementById("scene-container") as HTMLDivElement, {
   assets,
   xr: {
-    sessionMode: SessionMode.ImmersiveVR,
+    sessionMode: SessionMode.ImmersiveAR,
   },
   features: {
     locomotion: { useWorker: true },
@@ -80,6 +80,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   camera.position.set(-4, 1.5, -6);
   camera.rotateY(-Math.PI * 0.75);
 
+  /*
   const { scene: envMesh } = AssetManager.getGLTF("environmentDesk")!;
   envMesh.rotateY(Math.PI);
   envMesh.position.set(0, -0.1, 0);
@@ -98,7 +99,9 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       friction: 0.9,
       restitution: 0.0,
     });
+  */
 
+  /*
   const { scene: plantMesh } = AssetManager.getGLTF("plantSansevieria")!;
   plantMesh.position.set(1.2, 1.00, -1.8);
   world
@@ -119,6 +122,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       friction: 0.8,
       restitution: 0.1,
     });
+  */
 
   const { scene: robotMesh } = AssetManager.getGLTF("robot")!;
   robotMesh.position.set(-1.2, 0.95, -1.8);
@@ -185,6 +189,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     panelEntity.object3D.position.set(0, 1.29, -1.9);
   }
 
+  /*
   const webxrLogoTexture = AssetManager.getTexture("webxr")!;
   webxrLogoTexture.colorSpace = SRGBColorSpace;
   const logoBanner = new Mesh(
@@ -197,6 +202,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   world.createTransformEntity(logoBanner);
   logoBanner.position.set(0, 1, 1.8);
   logoBanner.rotateY(Math.PI);
+  */
 
   world.registerSystem(PanelSystem).registerSystem(RobotSystem).registerSystem(JugnuSystem);
 });
