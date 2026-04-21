@@ -141,16 +141,13 @@ export class JugnuV2Model extends THREE.Group {
 
         this.shellMat = new THREE.MeshPhysicalMaterial({
             color: p.shellColor,
-            metalness: 0.05,
+            metalness: 0.15,
             roughness: 0.08,
-            transmission: 1.0,
-            thickness: 1.2,
-            ior: 1.15,
             transparent: true,
-            opacity: 0.9,
+            opacity: 0.35,
             side: THREE.DoubleSide,
             envMap: this.envMap,
-            envMapIntensity: 1.2,
+            envMapIntensity: 1.5,
             clearcoat: 1.0,
             clearcoatRoughness: 0.02
         });
