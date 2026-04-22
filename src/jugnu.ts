@@ -26,10 +26,12 @@ export class JugnuSystem extends createSystem({
   // For facing tracking
   private lookAtTarget!: Vector3;
   private vec3!: Vector3;
+  private headQuat!: THREE.Quaternion;
 
   init() {
     this.lookAtTarget = new Vector3();
     this.vec3 = new Vector3();
+    this.headQuat = new THREE.Quaternion();
     
 
     // Initialize Speech Synthesis
@@ -197,9 +199,9 @@ export class JugnuSystem extends createSystem({
       obj.position.y = basePos.y + Math.sin(this.floatTime * 2.0) * 0.05;
       obj.position.z = basePos.z + Math.cos(this.floatTime * 1.2) * 0.03;
 
-      // Strict Spherical Billboarding (instantly lock to face user on all axes)
-      this.player.head.getWorldPosition(this.lookAtTarget);
-      obj.lookAt(this.lookAtTarget);
+      // Align normal towards the camera normal (Parallel Billboarding)
+      this.player.head.getWorldQuaternion(this.headQuat);
+      obj.quaternion.copy(this.headQuat);
 
       // Visual Feedback: pulse if listening
       if (this.isListening) {
