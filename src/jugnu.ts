@@ -13,9 +13,17 @@ export class JugnuSystem extends createSystem({
   jugnuClicked: { required: [Jugnu, Pressed] },
 }) {
 
-  private recognition: any;
+  // Audio state
   private isListening = false;
+  private isProcessingAudio = false;
   private synth!: SpeechSynthesis;
+  private mediaRecorder: MediaRecorder | null = null;
+  private audioChunks: Blob[] = [];
+  private audioContext: AudioContext | null = null;
+  private analyser: AnalyserNode | null = null;
+  private silenceTimer: number = 0;
+  
+  // Visual state
   private pulseTime = 0;
   private floatTime = 0;
   private basePositions = new Map<any, THREE.Vector3>();
@@ -32,44 +40,12 @@ export class JugnuSystem extends createSystem({
     this.lookAtTarget = new Vector3();
     this.vec3 = new Vector3();
     this.headQuat = new THREE.Quaternion();
-    
 
     // Initialize Speech Synthesis
     this.synth = window.speechSynthesis;
     
-    // Initialize Speech Recognition
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      this.recognition = new SpeechRecognition();
-      this.recognition.continuous = false;
-      this.recognition.interimResults = false;
-      this.recognition.lang = 'en-US';
-      
-      this.recognition.onstart = () => {
-        this.isListening = true;
-        console.log("Jugnu is listening...");
-      };
-      
-      this.recognition.onresult = async (event: any) => {
-        const text = event.results[0][0].transcript;
-        console.log("User said:", text);
-        await this.handleQuery(text);
-      };
-      
-      this.recognition.onerror = (event: any) => {
-        console.error("Speech recognition error", event.error);
-        this.isListening = false;
-      };
-      
-      this.recognition.onend = () => {
-        this.isListening = false;
-      };
-    } else {
-      console.warn("Speech Recognition API not supported in this browser.");
-    }
-    
     // Handle Click
-    this.queries.jugnuClicked.subscribe("qualify", (entity) => {
+    this.queries.jugnuClicked.subscribe("qualify", async (entity) => {
       this.interactDecay = 8.0; // Stay focused on the user for 8 seconds upon click
       
       const jugModel = entity.object3D as JugnuV3Model;
@@ -78,26 +54,84 @@ export class JugnuSystem extends createSystem({
       }
       
       // Toggle listening
-      if (!this.isListening && this.recognition) {
-        // Prevent race conditions where button rapid-fires before onstart event
-        this.isListening = true;
-
+      if (!this.isListening && !this.isProcessingAudio) {
         // Stop currently speaking if we click it
         if (this.synth && this.synth.speaking) {
            this.synth.cancel();
         }
-        try {
-          this.recognition.start();
-        } catch (e) {
-          console.error("Could not start recognition", e);
-          this.isListening = false;
-        }
+        await this.startRecording();
       }
     });
   }
 
-  async handleQuery(text: string) {
-    if (!text.trim()) return;
+  async startRecording() {
+     try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.isListening = true;
+        this.audioChunks = [];
+        this.silenceTimer = 0;
+
+        // Setup MediaRecorder
+        this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        this.mediaRecorder.ondataavailable = (e) => {
+           if (e.data.size > 0) {
+              this.audioChunks.push(e.data);
+           }
+        };
+
+        this.mediaRecorder.onstop = async () => {
+           this.isListening = false;
+           this.isProcessingAudio = true;
+           console.log("Audio recording stopped, processing...");
+
+           // Clean up microphone stream immediately
+           stream.getTracks().forEach(track => track.stop());
+           if (this.audioContext) {
+               await this.audioContext.close();
+               this.audioContext = null;
+               this.analyser = null;
+           }
+
+           const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+           // Convert blob to base64
+           const base64Audio = await this.blobToBase64(audioBlob);
+           this.audioChunks = [];
+           
+           if (base64Audio) {
+               // Extract base64 without the data URL prefix e.g., "data:audio/webm;base64,..."
+               const base64Data = base64Audio.split(',')[1];
+               if (base64Data) {
+                   await this.handleAudioQuery(base64Data);
+               }
+           }
+           this.isProcessingAudio = false;
+        };
+
+        // Setup Analyser for silence detection
+        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const source = this.audioContext.createMediaStreamSource(stream);
+        this.analyser = this.audioContext.createAnalyser();
+        this.analyser.fftSize = 256;
+        source.connect(this.analyser);
+
+        this.mediaRecorder.start();
+        console.log("Jugnu is listening via MediaRecorder...");
+     } catch (err) {
+        console.error("Microphone access denied or error:", err);
+        this.isListening = false;
+        this.speak("I cannot hear you. Please enable microphone permissions.");
+     }
+  }
+
+  blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async handleAudioQuery(base64Data: string) {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       const url = apiKey 
@@ -109,7 +143,10 @@ export class JugnuSystem extends createSystem({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{
-            parts: [{ text: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. At the very end of your response, please append exactly one mood tag from this list based on the sentiment of your reply: [MOOD: happy], [MOOD: sad], [MOOD: angry], [MOOD: surprised], [MOOD: sleepy]. The user says: "${text}"` }]
+            parts: [
+              { text: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. The user provided an audio message. Please transcribe and respond appropriately to their intent. At the very end of your response, please append exactly one mood tag from this list based on the sentiment of your reply: [MOOD: happy], [MOOD: sad], [MOOD: angry], [MOOD: surprised], [MOOD: sleepy].` },
+              { inlineData: { mimeType: "audio/webm", data: base64Data } }
+            ]
           }]
         })
       });
@@ -174,6 +211,30 @@ export class JugnuSystem extends createSystem({
     }
     const shouldFaceUser = this.isListening || (this.synth && this.synth.speaking) || this.interactDecay > 0;
 
+    // Silence detection logic
+    if (this.isListening && this.analyser && this.mediaRecorder?.state === "recording") {
+        const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+        this.analyser.getByteFrequencyData(dataArray);
+        
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+        }
+        const average = sum / dataArray.length;
+
+        // If very quiet
+        if (average < 10) {
+            this.silenceTimer += dt;
+            if (this.silenceTimer > 2.0) { // wait 2 seconds of silence before stopping
+                console.log("Silence detected, stopping recording");
+                this.mediaRecorder.stop();
+                this.silenceTimer = 0;
+            }
+        } else {
+            this.silenceTimer = 0; // reset
+        }
+    }
+
     this.queries.jugnu.entities.forEach((entity) => {
       const obj = entity.object3D;
       const jugModel = obj as JugnuV3Model;
@@ -203,13 +264,17 @@ export class JugnuSystem extends createSystem({
       this.player.head.getWorldQuaternion(this.headQuat);
       obj.quaternion.copy(this.headQuat);
 
-      // Visual Feedback: pulse if listening
-      if (this.isListening) {
+      // Visual Feedback: pulse if listening or processing audio
+      if (this.isListening || this.isProcessingAudio) {
         this.pulseTime += dt;
-        const pulse = 1.0 + Math.sin(this.pulseTime * 5) * 0.1;
+        // Faster pulse if processing, slower if listening
+        const speed = this.isProcessingAudio ? 10 : 5;
+        const pulseAmt = this.isProcessingAudio ? 0.05 : 0.1;
+        const pulse = 1.0 + Math.sin(this.pulseTime * speed) * pulseAmt;
+        
         obj.scale.set(baseScale.x * pulse, baseScale.y * pulse, baseScale.z * pulse);
         // Intensity for deeper core glowing
-        jugModel.pulseIntensity = Math.abs(Math.sin(this.pulseTime * 5));
+        jugModel.pulseIntensity = Math.abs(Math.sin(this.pulseTime * speed));
       } else {
         this.pulseTime = 0;
         // Smooth base scale return
@@ -219,4 +284,3 @@ export class JugnuSystem extends createSystem({
     });
   }
 }
-
