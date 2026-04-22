@@ -22,6 +22,7 @@ export class JugnuSystem extends createSystem({
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private silenceTimer: number = 0;
+  private listenTimer: number = 0;
   
   // Visual state
   private pulseTime = 0;
@@ -54,7 +55,13 @@ export class JugnuSystem extends createSystem({
       }
       
       // Toggle listening
-      if (!this.isListening && !this.isProcessingAudio) {
+      if (this.isListening) {
+         // Manual stop if clicked while listening
+         if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
+             console.log("Manual stop triggered.");
+             this.mediaRecorder.stop();
+         }
+      } else if (!this.isProcessingAudio) {
         // Stop currently speaking if we click it
         if (this.synth && this.synth.speaking) {
            this.synth.cancel();
@@ -70,6 +77,7 @@ export class JugnuSystem extends createSystem({
         this.isListening = true;
         this.audioChunks = [];
         this.silenceTimer = 0;
+        this.listenTimer = 0;
 
         // Setup MediaRecorder
         this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
@@ -133,10 +141,7 @@ export class JugnuSystem extends createSystem({
 
   async handleAudioQuery(base64Data: string) {
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      const url = apiKey 
-        ? `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`
-        : BACKEND_URL;
+      const url = BACKEND_URL;
 
       const response = await fetch(url, {
         method: "POST",
@@ -213,25 +218,35 @@ export class JugnuSystem extends createSystem({
 
     // Silence detection logic
     if (this.isListening && this.analyser && this.mediaRecorder?.state === "recording") {
-        const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-        this.analyser.getByteFrequencyData(dataArray);
+        this.listenTimer += dt;
         
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
-        }
-        const average = sum / dataArray.length;
-
-        // If very quiet
-        if (average < 10) {
-            this.silenceTimer += dt;
-            if (this.silenceTimer > 2.0) { // wait 2 seconds of silence before stopping
-                console.log("Silence detected, stopping recording");
-                this.mediaRecorder.stop();
-                this.silenceTimer = 0;
-            }
+        // Hard timeout: stop after 8 seconds of listening no matter what
+        if (this.listenTimer > 8.0) {
+             console.log("Max listening time reached, stopping recording");
+             this.mediaRecorder.stop();
+             this.listenTimer = 0;
         } else {
-            this.silenceTimer = 0; // reset
+             const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+             this.analyser.getByteFrequencyData(dataArray);
+             
+             let maxVolume = 0;
+             for (let i = 0; i < dataArray.length; i++) {
+                 if (dataArray[i] > maxVolume) {
+                     maxVolume = dataArray[i];
+                 }
+             }
+
+             // If very quiet (ambient background noise Peak usually < 40 on noisy mics)
+             if (maxVolume < 40) {
+                 this.silenceTimer += dt;
+                 if (this.silenceTimer > 2.0) { // wait 2 seconds of silence before stopping
+                     console.log("Silence detected, stopping recording");
+                     this.mediaRecorder.stop();
+                     this.silenceTimer = 0;
+                 }
+             } else {
+                 this.silenceTimer = 0; // reset silence timer if speaking
+             }
         }
     }
 
@@ -269,7 +284,8 @@ export class JugnuSystem extends createSystem({
         this.pulseTime += dt;
         // Faster pulse if processing, slower if listening
         const speed = this.isProcessingAudio ? 10 : 5;
-        const pulseAmt = this.isProcessingAudio ? 0.05 : 0.1;
+        // INCREASED PULSE AMPLITUDE to make it very obvious!
+        const pulseAmt = this.isProcessingAudio ? 0.05 : 0.25; 
         const pulse = 1.0 + Math.sin(this.pulseTime * speed) * pulseAmt;
         
         obj.scale.set(baseScale.x * pulse, baseScale.y * pulse, baseScale.z * pulse);
