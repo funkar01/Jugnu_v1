@@ -1,5 +1,6 @@
 import { createComponent, createSystem, Pressed, Vector3 } from "@iwsdk/core";
 import type { JugnuV3Model, Mood } from "./JugnuV3Model.js";
+import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
 import * as THREE from "three";
 
 // Replace this URL when deploying, or use VITE_BACKEND_URL in .env
@@ -7,10 +8,12 @@ import * as THREE from "three";
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || "/api/gemini";
 
 export const Jugnu = createComponent("Jugnu", {});
+export const TranscriptUI = createComponent("TranscriptUI", {});
 
 export class JugnuSystem extends createSystem({
   jugnu: { required: [Jugnu] },
   jugnuClicked: { required: [Jugnu, Pressed] },
+  transcriptBoard: { required: [TranscriptUI] },
 }) {
 
   // Audio state
@@ -71,10 +74,21 @@ export class JugnuSystem extends createSystem({
     });
   }
 
+  updateTranscriptUI(userText: string, jugnuReply: string) {
+      this.queries.transcriptBoard.entities.forEach(entity => {
+          const board = entity.object3D as JugnuTranscriptBoard;
+          if (board && typeof board.updateText === 'function') {
+              board.updateText(userText, jugnuReply);
+          }
+      });
+  }
+
   async startRecording() {
      try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         this.isListening = true;
+        this.updateTranscriptUI("Listening...", "");
+        
         this.audioChunks = [];
         this.silenceTimer = 0;
         this.listenTimer = 0;
@@ -90,6 +104,7 @@ export class JugnuSystem extends createSystem({
         this.mediaRecorder.onstop = async () => {
            this.isListening = false;
            this.isProcessingAudio = true;
+           this.updateTranscriptUI("Processing Audio...", "Thinking...");
            console.log("Audio recording stopped, processing...");
 
            // Clean up microphone stream immediately
@@ -149,7 +164,7 @@ export class JugnuSystem extends createSystem({
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. The user provided an audio message. Please transcribe and respond appropriately to their intent. At the very end of your response, please append exactly one mood tag from this list based on the sentiment of your reply: [MOOD: happy], [MOOD: sad], [MOOD: angry], [MOOD: surprised], [MOOD: sleepy].` },
+              { text: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. The user provided an audio message. Please transcribe and respond appropriately to their intent.\n\nFormat your exact response like this:\nTRANSCRIPT: [what you heard the user say]\nREPLY: [your conversational answer]\n\nAt the very end of your REPLY, please append exactly one mood tag from this list based on the sentiment: [MOOD: happy], [MOOD: sad], [MOOD: angry], [MOOD: surprised], [MOOD: sleepy].` },
               { inlineData: { mimeType: "audio/webm", data: base64Data } }
             ]
           }]
@@ -162,8 +177,18 @@ export class JugnuSystem extends createSystem({
         throw new Error(data.error?.message || "Unknown Gemini API Error");
       }
       
-      let reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (reply) {
+      let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (rawText) {
+         let transcript = "Unknown audio";
+         let reply = rawText;
+
+         // Attempt to parse explicit TRANSCRIPT and REPLY markers
+         const tMatch = rawText.match(/TRANSCRIPT:\s*([\s\S]*?)\nREPLY:\s*([\s\S]*)/i);
+         if (tMatch) {
+             transcript = tMatch[1].trim();
+             reply = tMatch[2].trim();
+         }
+
          let mood: Mood = 'happy';
          const moodMatch = reply.match(/\[MOOD:\s*(happy|sad|angry|surprised|sleepy)\]/i);
          if (moodMatch) {
@@ -171,6 +196,9 @@ export class JugnuSystem extends createSystem({
          }
          // Clean out the tag so it isn't spoken aloud
          reply = reply.replace(/\[MOOD:\s*[a-zA-Z]+\]/gi, '').trim();
+
+         // Broadcast to the UI
+         this.updateTranscriptUI(transcript, reply);
 
          // Broadcast the parsed mood to the active Jugnu model
          this.queries.jugnu.entities.forEach(entity => {

@@ -30,8 +30,9 @@ import {
 import { EnvironmentType, LocomotionEnvironment } from "@iwsdk/core";
 import { PanelSystem } from "./panel.js";
 import { Robot, RobotSystem } from "./robot.js";
-import { Jugnu, JugnuSystem } from "./jugnu.js";
+import { Jugnu, JugnuSystem, TranscriptUI } from "./jugnu.js";
 import { JugnuV3Model } from "./JugnuV3Model.js";
+import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
 
 // FIX: Changed paths to use "./" (Relative) instead of "/" (Absolute)
 const assets: AssetManifest = {
@@ -173,6 +174,12 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       shape: PhysicsShapeType.Box,
       dimensions: [0.6, 0.6, 0.6], // Force logical dimensions for raycast clicking
     });
+
+  const transcriptBoard = new JugnuTranscriptBoard();
+  transcriptBoard.position.set(1.0, deskTopY + 0.5, -1.0);
+  transcriptBoard.rotation.y = -Math.PI / 8; // Angled slightly towards the user
+  world.createTransformEntity(transcriptBoard)
+    .addComponent(TranscriptUI);
 
   const panelEntity = world
     .createTransformEntity()
