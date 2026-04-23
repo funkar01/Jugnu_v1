@@ -39,11 +39,27 @@ export class JugnuSystem extends createSystem({
   private lookAtTarget!: Vector3;
   private vec3!: Vector3;
   private headQuat!: THREE.Quaternion;
+  private headPos!: THREE.Vector3;
+
+  // For Pinch Interaction
+  private interactionState: 'Idle' | 'LerpingToHand' | 'Attached' = 'Idle';
+  private lerpTime = 0;
+  private lerpDuration = 0.3;
+  private startPos = new THREE.Vector3();
+  private targetPos = new THREE.Vector3();
+  private attachedHand: 'left' | 'right' | null = null;
+  private wasPinchingLeft = false;
+  private wasPinchingRight = false;
+  private leftPinchTip = new THREE.Vector3();
+  private rightPinchTip = new THREE.Vector3();
+  private attractionRadius = 0.3;
+  private alwaysAttractOnPinch = true;
 
   init() {
     this.lookAtTarget = new Vector3();
     this.vec3 = new Vector3();
     this.headQuat = new THREE.Quaternion();
+    this.headPos = new THREE.Vector3();
 
     // Initialize Speech Synthesis
     this.synth = window.speechSynthesis;
@@ -236,6 +252,52 @@ export class JugnuSystem extends createSystem({
      }
   }
 
+  // Simple 1D value noise for smooth wandering
+  private noise(t: number, seed: number): number {
+    const t0 = Math.floor(t);
+    const t1 = t0 + 1;
+    const f = t - t0;
+    const fade = f * f * (3 - 2 * f);
+    const hash = (n: number) => {
+       const x = Math.sin(n + seed * 123.456) * 43758.5453123;
+       return (x - Math.floor(x)) * 2.0 - 1.0;
+    };
+    return hash(t0) * (1 - fade) + hash(t1) * fade;
+  }
+
+  private getPinchData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
+    const source = this.input.getPrimaryInputSource(handedness);
+    if (!source || !source.hand || !this.xrFrame) return false;
+    
+    const indexTip = source.hand.get('index-finger-tip');
+    const thumbTip = source.hand.get('thumb-tip');
+    if (!indexTip || !thumbTip) return false;
+
+    const refSpace = this.renderer.xr.getReferenceSpace();
+    if (!refSpace) return false;
+
+    const indexPose = this.xrFrame.getJointPose(indexTip, refSpace);
+    const thumbPose = this.xrFrame.getJointPose(thumbTip, refSpace);
+    
+    if (indexPose && thumbPose) {
+       const ix = indexPose.transform.position.x;
+       const iy = indexPose.transform.position.y;
+       const iz = indexPose.transform.position.z;
+       const tx = thumbPose.transform.position.x;
+       const ty = thumbPose.transform.position.y;
+       const tz = thumbPose.transform.position.z;
+       
+       const distSq = (ix - tx)**2 + (iy - ty)**2 + (iz - tz)**2;
+       const isPinching = distSq < 0.02 * 0.02;
+
+       tipPosOut.set(ix, iy, iz);
+       tipPosOut.applyMatrix4(this.player.matrixWorld);
+
+       return isPinching;
+    }
+    return false;
+  }
+
   update(dt: number) {
     this.floatTime += dt;
     
@@ -243,6 +305,75 @@ export class JugnuSystem extends createSystem({
       this.interactDecay -= dt;
     }
     const shouldFaceUser = this.isListening || (this.synth && this.synth.speaking) || this.interactDecay > 0;
+
+    // --- Pinch State Machine ---
+    const isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
+    const isPinchingRight = this.getPinchData('right', this.rightPinchTip);
+
+    if (this.interactionState === 'Idle') {
+        let activeHand: 'left' | 'right' | null = null;
+        let activeTip = this.leftPinchTip;
+
+        if (isPinchingLeft && !this.wasPinchingLeft) {
+            activeHand = 'left';
+            activeTip = this.leftPinchTip;
+        } else if (isPinchingRight && !this.wasPinchingRight) {
+            activeHand = 'right';
+            activeTip = this.rightPinchTip;
+        }
+
+        if (activeHand) {
+            let activeJugnuPos = new THREE.Vector3();
+            // Grab the first Jugnu entity's position
+            for (const entity of this.queries.jugnu.entities) {
+                activeJugnuPos.copy(entity.object3D.position);
+                break;
+            }
+            
+            const dist = activeJugnuPos.distanceTo(activeTip);
+            if (this.alwaysAttractOnPinch || dist < this.attractionRadius) {
+                this.interactionState = 'LerpingToHand';
+                this.attachedHand = activeHand;
+                this.startPos.copy(activeJugnuPos);
+                this.targetPos.copy(activeTip);
+                this.lerpTime = 0;
+            }
+        }
+    } else if (this.interactionState === 'LerpingToHand') {
+        const isPinching = this.attachedHand === 'left' ? isPinchingLeft : isPinchingRight;
+        const currentTip = this.attachedHand === 'left' ? this.leftPinchTip : this.rightPinchTip;
+        
+        if (!isPinching) {
+            this.interactionState = 'Idle';
+            this.attachedHand = null;
+            this.queries.jugnu.entities.forEach(entity => {
+                this.basePositions.set(entity, entity.object3D.position.clone());
+            });
+        } else {
+            this.lerpTime += dt;
+            this.targetPos.copy(currentTip);
+            if (this.lerpTime >= this.lerpDuration) {
+                this.interactionState = 'Attached';
+            }
+        }
+    } else if (this.interactionState === 'Attached') {
+        const isPinching = this.attachedHand === 'left' ? isPinchingLeft : isPinchingRight;
+        const currentTip = this.attachedHand === 'left' ? this.leftPinchTip : this.rightPinchTip;
+        
+        if (!isPinching) {
+            this.interactionState = 'Idle';
+            this.attachedHand = null;
+            this.queries.jugnu.entities.forEach(entity => {
+                this.basePositions.set(entity, entity.object3D.position.clone());
+            });
+        } else {
+            this.targetPos.copy(currentTip);
+        }
+    }
+
+    this.wasPinchingLeft = isPinchingLeft;
+    this.wasPinchingRight = isPinchingRight;
+    // --- End Pinch State Machine ---
 
     // Silence detection logic
     if (this.isListening && this.analyser && this.mediaRecorder?.state === "recording") {
@@ -298,14 +429,35 @@ export class JugnuSystem extends createSystem({
       const baseQuat = this.baseQuats.get(entity)!;
       const baseScale = this.baseScales.get(entity)!;
       
-      // Lively 3D floating movement
-      obj.position.x = basePos.x + Math.sin(this.floatTime * 1.5) * 0.03;
-      obj.position.y = basePos.y + Math.sin(this.floatTime * 2.0) * 0.05;
-      obj.position.z = basePos.z + Math.cos(this.floatTime * 1.2) * 0.03;
+      if (this.interactionState === 'Idle') {
+          // Define a float volume
+          const volumeX = 0.2;
+          const volumeY = 0.15;
+          const volumeZ = 0.2;
 
-      // Align normal towards the camera normal (Parallel Billboarding)
-      this.player.head.getWorldQuaternion(this.headQuat);
-      obj.quaternion.copy(this.headQuat);
+          // Instead of random walk, use noise for smooth wandering
+          const timeSlow = this.floatTime * 0.3;
+          const noiseX = this.noise(timeSlow, 1) * volumeX;
+          const noiseZ = this.noise(timeSlow, 2) * volumeZ;
+          
+          // Optional: add a gentle sine-wave up/down motion on top
+          const noiseY = this.noise(timeSlow, 3) * volumeY + Math.sin(this.floatTime * 1.5) * 0.05;
+
+          obj.position.x = basePos.x + noiseX;
+          obj.position.y = basePos.y + noiseY;
+          obj.position.z = basePos.z + noiseZ;
+      } else if (this.interactionState === 'LerpingToHand') {
+          const t = Math.min(this.lerpTime / this.lerpDuration, 1.0);
+          const smoothT = t * t * (3 - 2 * t);
+          obj.position.lerpVectors(this.startPos, this.targetPos, smoothT);
+      } else if (this.interactionState === 'Attached') {
+          obj.position.copy(this.targetPos);
+      }
+
+      // Rotate JugnuModel to look at camera, but restrict to yaw and pitch (no roll)
+      // and it should be always looking at the user.
+      this.player.head.getWorldPosition(this.headPos);
+      obj.lookAt(this.headPos);
 
       // Visual Feedback: pulse if listening or processing audio
       if (this.isListening || this.isProcessingAudio) {
