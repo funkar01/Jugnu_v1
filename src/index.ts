@@ -33,6 +33,9 @@ import { Robot, RobotSystem } from "./robot.js";
 import { Jugnu, JugnuSystem, TranscriptUI } from "./jugnu.js";
 import { JugnuV3Model } from "./JugnuV3Model.js";
 import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
+import { RoomVisualizerSystem } from "./roomVisualizer.js";
+import { DomainExpansionSystem } from "./domainExpansion.js";
+import { ACESFilmicToneMapping } from "three";
 
 // FIX: Changed paths to use "./" (Relative) instead of "/" (Absolute)
 const assets: AssetManifest = {
@@ -61,6 +64,11 @@ const assets: AssetManifest = {
     type: AssetType.GLTF,
     priority: "critical",
   },
+  domainEnv: {
+    url: "./textures/Domain.png",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
 };
 
 World.create(document.getElementById("scene-container") as HTMLDivElement, {
@@ -68,18 +76,24 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   xr: {
     sessionMode: SessionMode.ImmersiveAR,
     features: {
-      handTracking: true
+      handTracking: true,
+      meshDetection: true
     }
   },
   features: {
     locomotion: { useWorker: true },
     grabbing: true,
     physics: true,
-    sceneUnderstanding: false,
+    sceneUnderstanding: true,
     environmentRaycast: true,
   },
 }).then((world) => {
-  const { camera } = world;
+  const { camera, renderer } = world;
+
+  if (renderer) {
+      renderer.toneMapping = ACESFilmicToneMapping;
+      renderer.outputColorSpace = SRGBColorSpace;
+  }
 
   camera.position.set(-4, 1.5, -6);
   camera.rotateY(-Math.PI * 0.75);
@@ -167,12 +181,17 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     .addComponent(Interactable)
     .addComponent(Jugnu)
     .addComponent(PhysicsBody, {
-      state: PhysicsState.Kinematic,
-      gravityFactor: 0.0,
+      state: PhysicsState.Dynamic,
+      gravityFactor: 1.0,
+      linearDamping: 0.1,
+      angularDamping: 0.1,
     })
     .addComponent(PhysicsShape, {
-      shape: PhysicsShapeType.Box,
-      dimensions: [0.6, 0.6, 0.6], // Force logical dimensions for raycast clicking
+      shape: PhysicsShapeType.Sphere,
+      dimensions: [0.15, 0.15, 0.15],
+      restitution: 0.95,
+      friction: 0.05,
+      density: 1.0
     });
 
   const transcriptBoard = new JugnuTranscriptBoard();
@@ -214,5 +233,5 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   logoBanner.rotateY(Math.PI);
   */
 
-  world.registerSystem(PanelSystem).registerSystem(RobotSystem).registerSystem(JugnuSystem);
+  world.registerSystem(PanelSystem).registerSystem(RobotSystem).registerSystem(JugnuSystem).registerSystem(RoomVisualizerSystem).registerSystem(DomainExpansionSystem);
 });

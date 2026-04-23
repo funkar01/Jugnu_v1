@@ -1,4 +1,4 @@
-import { createComponent, createSystem, Pressed, Vector3 } from "@iwsdk/core";
+import { createComponent, createSystem, Pressed, Vector3, PhysicsBody, PhysicsState, PhysicsManipulation } from "@iwsdk/core";
 import type { JugnuV3Model, Mood } from "./JugnuV3Model.js";
 import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
 import * as THREE from "three";
@@ -54,6 +54,14 @@ export class JugnuSystem extends createSystem({
   private rightPinchTip = new THREE.Vector3();
   private attractionRadius = 0.3;
   private alwaysAttractOnPinch = true;
+
+  // Spring & Movement Constants
+  private velocity = new THREE.Vector3();
+  private springStiffness = 150.0;
+  private springDamping = 12.0;
+  private centerPos = new THREE.Vector3(0, 1.45, -0.8);
+  private floatRadius = 0.6;
+  private tempScale = new THREE.Vector3();
 
   init() {
     this.lookAtTarget = new Vector3();
@@ -337,6 +345,18 @@ export class JugnuSystem extends createSystem({
                 this.startPos.copy(activeJugnuPos);
                 this.targetPos.copy(activeTip);
                 this.lerpTime = 0;
+                this.velocity.set(0, 0, 0);
+
+                // Make it Kinematic so we can manipulate it with our spring logic
+                this.queries.jugnu.entities.forEach(e => {
+                    if (e.hasComponent(PhysicsBody)) {
+                        e.removeComponent(PhysicsBody);
+                    }
+                    e.addComponent(PhysicsBody, {
+                        state: PhysicsState.Kinematic,
+                        gravityFactor: 0.0,
+                    });
+                });
             }
         }
     } else if (this.interactionState === 'LerpingToHand') {
@@ -346,9 +366,24 @@ export class JugnuSystem extends createSystem({
         if (!isPinching) {
             this.interactionState = 'Idle';
             this.attachedHand = null;
+            
             this.queries.jugnu.entities.forEach(entity => {
                 this.basePositions.set(entity, entity.object3D.position.clone());
+                // Make it Dynamic again and throw it
+                if (entity.hasComponent(PhysicsBody)) {
+                    entity.removeComponent(PhysicsBody);
+                }
+                entity.addComponent(PhysicsBody, {
+                    state: PhysicsState.Dynamic,
+                    gravityFactor: 1.0,
+                    linearDamping: 0.1,
+                    angularDamping: 0.1,
+                });
+                entity.addComponent(PhysicsManipulation, {
+                    linearVelocity: [this.velocity.x, this.velocity.y, this.velocity.z]
+                });
             });
+            this.velocity.set(0, 0, 0);
         } else {
             this.lerpTime += dt;
             this.targetPos.copy(currentTip);
@@ -363,9 +398,24 @@ export class JugnuSystem extends createSystem({
         if (!isPinching) {
             this.interactionState = 'Idle';
             this.attachedHand = null;
+            
             this.queries.jugnu.entities.forEach(entity => {
                 this.basePositions.set(entity, entity.object3D.position.clone());
+                // Make it Dynamic again and throw it
+                if (entity.hasComponent(PhysicsBody)) {
+                    entity.removeComponent(PhysicsBody);
+                }
+                entity.addComponent(PhysicsBody, {
+                    state: PhysicsState.Dynamic,
+                    gravityFactor: 1.0,
+                    linearDamping: 0.1,
+                    angularDamping: 0.1,
+                });
+                entity.addComponent(PhysicsManipulation, {
+                    linearVelocity: [this.velocity.x, this.velocity.y, this.velocity.z]
+                });
             });
+            this.velocity.set(0, 0, 0);
         } else {
             this.targetPos.copy(currentTip);
         }
@@ -429,35 +479,56 @@ export class JugnuSystem extends createSystem({
       const baseQuat = this.baseQuats.get(entity)!;
       const baseScale = this.baseScales.get(entity)!;
       
+      // Adaptive Screen Size
+      const targetScale = this.interactionState === 'Idle' ? 0.35 : 0.12;
+      this.tempScale.setScalar(targetScale);
+      baseScale.lerp(this.tempScale, 4.0 * dt);
+      
       if (this.interactionState === 'Idle') {
-          // Define a float volume
-          const volumeX = 0.2;
-          const volumeY = 0.15;
-          const volumeZ = 0.2;
-
-          // Instead of random walk, use noise for smooth wandering
-          const timeSlow = this.floatTime * 0.3;
-          const noiseX = this.noise(timeSlow, 1) * volumeX;
-          const noiseZ = this.noise(timeSlow, 2) * volumeZ;
+          // Dynamic physics body logic. 
+          // Do not manually update obj.position so the engine can bounce it around the room.
           
-          // Optional: add a gentle sine-wave up/down motion on top
-          const noiseY = this.noise(timeSlow, 3) * volumeY + Math.sin(this.floatTime * 1.5) * 0.05;
-
-          obj.position.x = basePos.x + noiseX;
-          obj.position.y = basePos.y + noiseY;
-          obj.position.z = basePos.z + noiseZ;
+          // Optional: Bounds logic is disabled or should be replaced by physical boundaries 
+          // (which we now have via the RoomVisualizer!)
       } else if (this.interactionState === 'LerpingToHand') {
           const t = Math.min(this.lerpTime / this.lerpDuration, 1.0);
           const smoothT = t * t * (3 - 2 * t);
+          const oldPos = obj.position.clone();
           obj.position.lerpVectors(this.startPos, this.targetPos, smoothT);
+          
+          // Estimate velocity for tilt
+          if (dt > 0.0001) {
+              this.velocity.subVectors(obj.position, oldPos).divideScalar(dt);
+          }
       } else if (this.interactionState === 'Attached') {
-          obj.position.copy(this.targetPos);
+          const hoverTarget = this.targetPos.clone();
+          hoverTarget.y += 0.08; // land slightly above pinch
+
+          // Spring physics: F = -k*x - c*v
+          const displacement = new THREE.Vector3().subVectors(obj.position, hoverTarget);
+          const force = displacement.multiplyScalar(-this.springStiffness);
+          force.sub(this.velocity.clone().multiplyScalar(this.springDamping));
+
+          this.velocity.add(force.multiplyScalar(dt));
+          obj.position.add(this.velocity.clone().multiplyScalar(dt));
       }
 
       // Rotate JugnuModel to look at camera, but restrict to yaw and pitch (no roll)
       // and it should be always looking at the user.
       this.player.head.getWorldPosition(this.headPos);
       obj.lookAt(this.headPos);
+
+      // Optional floatiness: tilt towards velocity direction
+      if (this.interactionState !== 'Idle') {
+          const tiltFactor = 0.5;
+          const tiltAxis = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), this.velocity);
+          const tiltAngle = Math.min(tiltAxis.length() * tiltFactor, Math.PI / 4);
+          if (tiltAngle > 0.001) {
+              tiltAxis.normalize();
+              const tiltQuat = new THREE.Quaternion().setFromAxisAngle(tiltAxis, tiltAngle);
+              obj.quaternion.premultiply(tiltQuat);
+          }
+      }
 
       // Visual Feedback: pulse if listening or processing audio
       if (this.isListening || this.isProcessingAudio) {
