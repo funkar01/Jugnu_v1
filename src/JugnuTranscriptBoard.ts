@@ -33,42 +33,55 @@ export class JugnuTranscriptBoard extends THREE.Group {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // Background Board
-        ctx.fillStyle = 'rgba(20, 20, 30, 0.85)';
+        // Glassmorphism Background
+        ctx.fillStyle = 'rgba(15, 15, 18, 0.7)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.roundRect(0, 0, this.canvas.width, this.canvas.height, 40);
+        ctx.roundRect(10, 10, this.canvas.width - 20, this.canvas.height - 20, 32);
         ctx.fill();
-        
-        // Border
-        ctx.strokeStyle = '#4da6ff';
-        ctx.lineWidth = 4;
         ctx.stroke();
 
-        let currentY = 80;
+        // Title/Header
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.font = '600 24px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText("LIVE TRANSCRIPT", this.canvas.width / 2, 60);
+
+        // Separator line
+        ctx.beginPath();
+        ctx.moveTo(40, 80);
+        ctx.lineTo(this.canvas.width - 40, 80);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        let currentY = 140;
+        ctx.textAlign = 'left';
 
         // User Query Section
         if (userText) {
-            ctx.fillStyle = '#4da6ff'; // Accent Blue
-            ctx.font = 'bold 36px Arial';
-            ctx.fillText('You Asked:', 40, currentY);
-            currentY += 50;
+            ctx.fillStyle = 'rgba(100, 200, 255, 0.9)'; // Sleek Cyan
+            ctx.font = '600 32px system-ui, -apple-system, sans-serif';
+            ctx.fillText('You:', 60, currentY);
+            currentY += 45;
 
             ctx.fillStyle = '#ffffff';
-            ctx.font = '36px Arial';
-            currentY = this.wrapText(userText, 40, currentY, 940, 48);
-            currentY += 60; // Margin
+            ctx.font = '400 34px system-ui, -apple-system, sans-serif';
+            currentY = this.wrapText(userText, 60, currentY, 900, 48);
+            currentY += 70; // Margin
         }
 
         // Jugnu Reply Section
         if (jugnuReply) {
-            ctx.fillStyle = '#ffb347'; // Accent Orange
-            ctx.font = 'bold 36px Arial';
-            ctx.fillText('Jugnu:', 40, currentY);
-            currentY += 50;
+            ctx.fillStyle = 'rgba(255, 180, 100, 0.9)'; // Sleek Orange
+            ctx.font = '600 32px system-ui, -apple-system, sans-serif';
+            ctx.fillText('Jugnu:', 60, currentY);
+            currentY += 45;
 
-            ctx.fillStyle = '#f0f0f0';
-            ctx.font = '36px Arial';
-            this.wrapText(jugnuReply, 40, currentY, 940, 48);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.font = '400 34px system-ui, -apple-system, sans-serif';
+            this.wrapText(jugnuReply, 60, currentY, 900, 48);
         }
 
         this.texture.needsUpdate = true;
