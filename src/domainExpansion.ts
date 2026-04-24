@@ -25,6 +25,7 @@ export class DomainExpansionSystem extends createSystem({
 }) {
     private isDomainExpansionTriggered = false;
     private state: 'None' | 'UI' | 'Bleed' = 'None';
+    private uiTimer = 0;
     
     private uiMesh!: THREE.Mesh;
     private domainMesh!: THREE.Mesh;
@@ -46,28 +47,45 @@ export class DomainExpansionSystem extends createSystem({
         canvas.height = 256;
         const ctx = canvas.getContext('2d')!;
         
-        // Draw dark rounded rect
-        ctx.fillStyle = 'rgba(20, 20, 20, 0.8)';
+        // Glass panel background
+        ctx.fillStyle = 'rgba(15, 15, 18, 0.7)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.roundRect(0, 0, 512, 256, 32);
+        ctx.roundRect(10, 10, 492, 236, 24);
         ctx.fill();
+        ctx.stroke();
         
+        // Text Shadow/Glow for modern aesthetic
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
+        ctx.shadowBlur = 10;
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 32px Courier New';
+        ctx.font = '300 32px system-ui, -apple-system, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText("DOMAIN EXPANSION", 256, 80);
+        ctx.fillText("DOMAIN EXPANSION", 256, 75);
         
-        // Button bounds visual
-        ctx.fillStyle = '#00ffff';
-        ctx.fillRect(80, 140, 150, 60);
-        ctx.fillStyle = '#ff0055';
-        ctx.fillRect(282, 140, 150, 60);
-        
-        ctx.fillStyle = '#000000';
-        ctx.font = 'bold 24px Courier New';
-        ctx.fillText("[ YES ]", 155, 178);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText("[ CANCEL ]", 357, 178);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.font = '400 16px system-ui, -apple-system, sans-serif';
+        ctx.fillText("Initialize spatial warp?", 256, 105);
+
+        // Sleek Rounded Buttons
+        const drawButton = (x: number, y: number, w: number, h: number, text: string, color: string) => {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, h, 16);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = color;
+            ctx.font = '600 20px system-ui, -apple-system, sans-serif';
+            ctx.fillText(text, x + w / 2, y + h / 2 + 6);
+        };
+
+        drawButton(80, 140, 150, 60, "INITIALIZE", "rgba(100, 255, 255, 0.9)");
+        drawButton(282, 140, 150, 60, "ABORT", "rgba(255, 100, 120, 0.9)");
 
         const tex = new THREE.CanvasTexture(canvas);
         tex.colorSpace = THREE.SRGBColorSpace;
@@ -241,39 +259,54 @@ export class DomainExpansionSystem extends createSystem({
                 if (dist < 0.15) { // 15cm trigger distance to prevent tracking dropout when hands get too close
                     this.isDomainExpansionTriggered = true;
                     this.state = 'UI';
-                    
-                    // Spawn UI above Jugnu
-                    for (const entity of this.queries.jugnu.entities) {
-                        if (!entity.object3D) continue;
-                        this.uiMesh.position.copy(entity.object3D.position);
-                        break;
-                    }
-                    this.uiMesh.position.y += 0.25;
+                    this.uiTimer = 10.0; // 10-second window
                     this.uiMesh.visible = true;
                 }
             }
         } else if (this.state === 'UI') {
+            this.uiTimer -= dt;
+            if (this.uiTimer <= 0) {
+                // Timeout reached
+                this.state = 'None';
+                this.uiMesh.visible = false;
+                setTimeout(() => { this.isDomainExpansionTriggered = false; }, 2000);
+                return;
+            }
+
+            // Continuously follow Jugnu
+            for (const entity of this.queries.jugnu.entities) {
+                if (!entity.object3D) continue;
+                this.uiMesh.position.copy(entity.object3D.position);
+                this.uiMesh.position.y += 0.25; // Float above Jugnu
+                break;
+            }
             this.uiMesh.lookAt(this.player.head.position);
             
-            // Check interaction
-            if (hasRight) {
-                const localTip = this.rightTip.clone();
+            // Check interaction for both hands
+            const tips = [];
+            if (hasLeft) tips.push(this.leftTip);
+            if (hasRight) tips.push(this.rightTip);
+
+            for (const tip of tips) {
+                const localTip = tip.clone();
                 this.uiMesh.worldToLocal(localTip);
                 
                 // If finger is close to the plane's depth
                 if (Math.abs(localTip.z) < 0.05) { 
-                    // YES Button region
+                    // INITIALIZE Button region
                     if (localTip.x > -0.3 && localTip.x < 0.0 && localTip.y > -0.15 && localTip.y < 0.05) {
                         this.state = 'Bleed';
                         this.uiMesh.visible = false;
                         this.domainMesh.visible = true;
                         this.domainMesh.position.set(0, 0, 0); // Fixed massive sphere
+                        break;
                     }
-                    // CANCEL Button region
+                    // ABORT Button region
                     if (localTip.x > 0.0 && localTip.x < 0.3 && localTip.y > -0.15 && localTip.y < 0.05) {
                         this.state = 'None';
                         this.uiMesh.visible = false;
                         setTimeout(() => { this.isDomainExpansionTriggered = false; }, 2000); // 2s debounce
+                        break;
                     }
                 }
             }
