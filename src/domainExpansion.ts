@@ -76,7 +76,7 @@ export class DomainExpansionSystem extends createSystem({
 
         // --- Phase 3: HDRI Loading & The Warp Bleed Transition ---
         const sphereGeom = new THREE.SphereGeometry(500, 60, 40);
-        sphereGeom.scale(-1, 1, 1); // invert normals
+        // Do not scale(-1, 1, 1) because THREE.BackSide handles rendering the inside correctly.
 
         const envTexture = AssetManager.getTexture("domainEnv");
         if (envTexture) {
@@ -148,44 +148,76 @@ export class DomainExpansionSystem extends createSystem({
         this.world.createTransformEntity(this.domainMesh);
     }
     
-    private getPinchData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
+    private getIndexData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
         const source = this.input.getPrimaryInputSource(handedness);
-        if (!source || !source.hand || !this.xrFrame) return false;
+        const frame = this.xrFrame;
+        if (!source || !source.hand || !frame) return false;
         
         const indexTip = source.hand.get('index-finger-tip');
         if (!indexTip) return false;
 
         const refSpace = this.renderer.xr.getReferenceSpace();
-        if (!refSpace) return false;
+        if (!refSpace || typeof frame.getJointPose !== 'function') return false;
 
-        const indexPose = this.xrFrame.getJointPose(indexTip, refSpace);
+        const indexPose = frame.getJointPose(indexTip, refSpace);
         
         if (indexPose) {
-           tipPosOut.set(
-               indexPose.transform.position.x,
-               indexPose.transform.position.y,
-               indexPose.transform.position.z
-           );
+           const ix = indexPose.transform.position.x;
+           const iy = indexPose.transform.position.y;
+           const iz = indexPose.transform.position.z;
+           
+           tipPosOut.set(ix, iy, iz);
            tipPosOut.applyMatrix4(this.player.matrixWorld);
+
            return true;
         }
         return false;
     }
 
+    private checkXButton(): boolean {
+        const session = this.renderer.xr.getSession();
+        if (!session) return false;
+
+        for (const source of session.inputSources) {
+            if (source.gamepad && source.gamepad.buttons) {
+                // X (Left) or A (Right) is typically index 4. Y (Left) or B (Right) is index 5.
+                // We check both 4 and 5 just to be safe for any controller.
+                const button4 = source.gamepad.buttons[4];
+                const button5 = source.gamepad.buttons[5];
+                
+                if (button4 && button4.pressed) return true;
+                if (button5 && button5.pressed) return true;
+            }
+        }
+        return false;
+    }
+
     update(dt: number) {
-        const hasLeft = this.getPinchData('left', this.leftTip);
-        const hasRight = this.getPinchData('right', this.rightTip);
+        // --- Debug: Controller X Button Trigger ---
+        if (this.state !== 'Bleed' && this.checkXButton()) {
+            this.state = 'Bleed';
+            if (this.uiMesh) this.uiMesh.visible = false;
+            if (this.domainMesh) {
+                this.domainMesh.visible = true;
+                this.domainMesh.position.set(0, 0, 0);
+            }
+            this.isDomainExpansionTriggered = true;
+        }
+
+        const hasLeft = this.getIndexData('left', this.leftTip);
+        const hasRight = this.getIndexData('right', this.rightTip);
         
         if (this.state === 'None') {
             // --- Phase 1: Bimanual Index Trigger ---
             if (hasLeft && hasRight && !this.isDomainExpansionTriggered) {
                 const dist = this.leftTip.distanceTo(this.rightTip);
-                if (dist < 0.03) {
+                if (dist < 0.1) { // 10cm trigger distance to make it easier
                     this.isDomainExpansionTriggered = true;
                     this.state = 'UI';
                     
                     // Spawn UI above Jugnu
                     for (const entity of this.queries.jugnu.entities) {
+                        if (!entity.object3D) continue;
                         this.uiMesh.position.copy(entity.object3D.position);
                         break;
                     }

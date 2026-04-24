@@ -203,7 +203,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   const panelEntity = world
     .createTransformEntity()
     .addComponent(PanelUI, {
-      config: "./ui/welcome.json", // This is correct (relative)
+      config: "./ui/welcome.uikitml", // Changed from .json to .uikitml
       maxHeight: 0.8,
       maxWidth: 1.6,
     })
