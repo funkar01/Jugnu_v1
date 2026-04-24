@@ -5,12 +5,10 @@ export type Mood = 'happy' | 'sad' | 'angry' | 'surprised' | 'sleepy';
 export class JugnuV3Model extends THREE.Group {
     private currentMood: Mood = 'happy';
     
-    // 4 videos provided, we'll map them sequentially
+    // 2 videos provided for V4 testing
     private videoPaths = [
-        "/JugnuV3/hf_20260421_191024_dc26a25f-5c0d-464e-864e-762a08112899.mp4",
-        "/JugnuV3/hf_20260421_191049_db40030e-4109-44a8-abf0-caa5cbbc9488.mp4",
-        "/JugnuV3/hf_20260421_191445_d30e02c0-c7b9-4223-ac7b-c6aaed98c09b.mp4",
-        "/JugnuV3/hf_20260421_191616_f634d340-0f5f-48a1-80a3-a34885c7cf31.mp4"
+        "/JugnuV3/BlueCasual.mp4",
+        "/JugnuV3/OrangeHappy.mp4"
     ];
     
     private videoElements: HTMLVideoElement[] = [];
@@ -19,6 +17,7 @@ export class JugnuV3Model extends THREE.Group {
     
     // Scale and pulse properties used by jugnu.ts
     public pulseIntensity: number = 0;
+    public pinchProgress: number = 0;
 
     constructor() {
         super();
@@ -53,10 +52,15 @@ export class JugnuV3Model extends THREE.Group {
         `;
 
         const fragmentShader = `
-            uniform sampler2D U_VideoTexture;
+            uniform sampler2D U_Video1;
+            uniform sampler2D U_Video2;
+            uniform float U_Transition;
             varying vec2 vUv;
             void main() {
-                vec4 color = texture2D(U_VideoTexture, vUv);
+                vec4 color1 = texture2D(U_Video1, vUv);
+                vec4 color2 = texture2D(U_Video2, vUv);
+                
+                vec4 color = mix(color1, color2, U_Transition);
                 
                 // Calculate brightness (Luminance)
                 float brightness = dot(color.rgb, vec3(0.299, 0.587, 0.114));
@@ -73,7 +77,9 @@ export class JugnuV3Model extends THREE.Group {
 
         this.material = new THREE.ShaderMaterial({
             uniforms: {
-                U_VideoTexture: { value: this.videoTextures[0] }
+                U_Video1: { value: this.videoTextures[0] },
+                U_Video2: { value: this.videoTextures[1] },
+                U_Transition: { value: 0.0 }
             },
             vertexShader,
             fragmentShader,
@@ -111,12 +117,13 @@ export class JugnuV3Model extends THREE.Group {
         }
         
         if (idx < this.videoTextures.length) {
-            this.material.uniforms.U_VideoTexture.value = this.videoTextures[idx];
+            // this.material.uniforms.U_VideoTexture.value = this.videoTextures[idx];
         }
     }
 
     public update(dt: number) {
-        // V3 relies on video loop for breathing, but we keep pulseIntensity property
-        // for jugnu.ts to use for global object scaling.
+        if (this.material && this.material.uniforms.U_Transition) {
+            this.material.uniforms.U_Transition.value = this.pinchProgress;
+        }
     }
 }

@@ -504,6 +504,10 @@ export class JugnuSystem extends createSystem({
       const safeDt = Math.min(dt, 0.03);
       baseScale.lerp(this.tempScale, 4.0 * safeDt);
       
+      const isPinched = this.interactionState === 'Attached' || this.interactionState === 'LerpingToHand';
+      const targetPinchProgress = isPinched ? 1.0 : 0.0;
+      jugModel.pinchProgress = THREE.MathUtils.lerp(jugModel.pinchProgress || 0, targetPinchProgress, 5.0 * safeDt);
+      
       if (this.interactionState === 'Idle') {
           // Dynamic bouncing ball logic.
           if (this.throwTimer > 0) {
