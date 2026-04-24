@@ -8,6 +8,9 @@ import {
   SRGBColorSpace,
   AssetManager,
   World,
+  Box3,
+  Box3Helper,
+  Vector3,
 } from "@iwsdk/core";
 
 import {
@@ -27,6 +30,12 @@ import {
 import { EnvironmentType, LocomotionEnvironment } from "@iwsdk/core";
 import { PanelSystem } from "./panel.js";
 import { Robot, RobotSystem } from "./robot.js";
+import { Jugnu, JugnuSystem, TranscriptUI } from "./jugnu.js";
+import { JugnuV3Model } from "./JugnuV3Model.js";
+import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
+import { RoomVisualizerSystem } from "./roomVisualizer.js";
+import { DomainExpansionSystem } from "./domainExpansion.js";
+import { ACESFilmicToneMapping } from "three";
 
 // FIX: Changed paths to use "./" (Relative) instead of "/" (Absolute)
 const assets: AssetManifest = {
@@ -40,19 +49,24 @@ const assets: AssetManifest = {
     type: AssetType.Texture,
     priority: "critical",
   },
-  environmentDesk: {
-    url: "./gltf/environmentDesk/environmentDesk.gltf",
-    type: AssetType.GLTF,
-    priority: "critical",
-  },
-  plantSansevieria: {
-    url: "./gltf/plantSansevieria/plantSansevieria.gltf",
-    type: AssetType.GLTF,
-    priority: "critical",
-  },
+  // environmentDesk: {
+  //   url: "./gltf/environmentDesk/environmentDesk.gltf",
+  //   type: AssetType.GLTF,
+  //   priority: "critical",
+  // },
+  // plantSansevieria: {
+  //   url: "./gltf/plantSansevieria/plantSansevieria.gltf",
+  //   type: AssetType.GLTF,
+  //   priority: "critical",
+  // },
   robot: {
     url: "./gltf/robot/robot.gltf",
     type: AssetType.GLTF,
+    priority: "critical",
+  },
+  domainEnv: {
+    url: "./textures/Domain.png",
+    type: AssetType.Texture,
     priority: "critical",
   },
 };
@@ -60,23 +74,31 @@ const assets: AssetManifest = {
 World.create(document.getElementById("scene-container") as HTMLDivElement, {
   assets,
   xr: {
-    sessionMode: SessionMode.ImmersiveVR,
-    offer: "always",
-    features: { handTracking: true, layers: true },
+    sessionMode: SessionMode.ImmersiveAR,
+    features: {
+      handTracking: true,
+      meshDetection: true
+    }
   },
   features: {
     locomotion: { useWorker: true },
     grabbing: true,
     physics: true,
-    sceneUnderstanding: false,
+    sceneUnderstanding: true,
     environmentRaycast: true,
   },
 }).then((world) => {
-  const { camera } = world;
+  const { camera, renderer } = world;
+
+  if (renderer) {
+      renderer.toneMapping = ACESFilmicToneMapping;
+      renderer.outputColorSpace = SRGBColorSpace;
+  }
 
   camera.position.set(-4, 1.5, -6);
   camera.rotateY(-Math.PI * 0.75);
 
+  /*
   const { scene: envMesh } = AssetManager.getGLTF("environmentDesk")!;
   envMesh.rotateY(Math.PI);
   envMesh.position.set(0, -0.1, 0);
@@ -95,7 +117,9 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       friction: 0.9,
       restitution: 0.0,
     });
+  */
 
+  /*
   const { scene: plantMesh } = AssetManager.getGLTF("plantSansevieria")!;
   plantMesh.position.set(1.2, 1.00, -1.8);
   world
@@ -116,6 +140,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       friction: 0.8,
       restitution: 0.1,
     });
+  */
 
   const { scene: robotMesh } = AssetManager.getGLTF("robot")!;
   robotMesh.position.set(-1.2, 0.95, -1.8);
@@ -143,10 +168,42 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       restitution: 0.05,
     });
 
+  const juguModel = new JugnuV3Model();
+  
+  // Ensure Jugnu floats above desk instead of using bounds logic (which breaks due to 12m plane)
+  const deskTopY = 1.05;
+  juguModel.position.set(0, deskTopY + 0.4, -0.8);
+  juguModel.updateMatrixWorld(true);
+
+  // Render JugnuV2 and make it interactable for the voice system.
+  // Using Box instead of ConvexHull to prevent complex procedural geometry merge errors.
+  world.createTransformEntity(juguModel)
+    .addComponent(Interactable)
+    .addComponent(Jugnu)
+    .addComponent(PhysicsBody, {
+      state: PhysicsState.Dynamic,
+      gravityFactor: 1.0,
+      linearDamping: 0.1,
+      angularDamping: 0.1,
+    })
+    .addComponent(PhysicsShape, {
+      shape: PhysicsShapeType.Sphere,
+      dimensions: [0.15, 0.15, 0.15],
+      restitution: 0.95,
+      friction: 0.05,
+      density: 1.0
+    });
+
+  const transcriptBoard = new JugnuTranscriptBoard();
+  transcriptBoard.position.set(1.0, deskTopY + 0.5, -1.0);
+  transcriptBoard.rotation.y = -Math.PI / 8; // Angled slightly towards the user
+  world.createTransformEntity(transcriptBoard)
+    .addComponent(TranscriptUI);
+
   const panelEntity = world
     .createTransformEntity()
     .addComponent(PanelUI, {
-      config: "./ui/welcome.json", // This is correct (relative)
+      config: "./ui/welcome.uikitml", // Changed from .json to .uikitml
       maxHeight: 0.8,
       maxWidth: 1.6,
     })
@@ -161,6 +218,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     panelEntity.object3D.position.set(0, 1.29, -1.9);
   }
 
+  /*
   const webxrLogoTexture = AssetManager.getTexture("webxr")!;
   webxrLogoTexture.colorSpace = SRGBColorSpace;
   const logoBanner = new Mesh(
@@ -173,6 +231,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   world.createTransformEntity(logoBanner);
   logoBanner.position.set(0, 1, 1.8);
   logoBanner.rotateY(Math.PI);
+  */
 
-  world.registerSystem(PanelSystem).registerSystem(RobotSystem);
+  world.registerSystem(PanelSystem).registerSystem(RobotSystem).registerSystem(JugnuSystem).registerSystem(RoomVisualizerSystem).registerSystem(DomainExpansionSystem);
 });
