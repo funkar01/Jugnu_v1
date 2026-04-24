@@ -35,6 +35,10 @@ export class DomainExpansionSystem extends createSystem({
     private leftTip = new THREE.Vector3();
     private rightTip = new THREE.Vector3();
     
+    // Debug visuals
+    private leftDebugSphere!: THREE.Mesh;
+    private rightDebugSphere!: THREE.Mesh;
+    
     init() {
         // --- Phase 2: High-Performance Spatial UI ---
         const canvas = document.createElement('canvas');
@@ -68,11 +72,19 @@ export class DomainExpansionSystem extends createSystem({
         const tex = new THREE.CanvasTexture(canvas);
         tex.colorSpace = THREE.SRGBColorSpace;
         
-        const uiMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+        const uiMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
         this.uiMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.4), uiMat);
         this.uiMesh.visible = false;
         
         this.world.createTransformEntity(this.uiMesh);
+
+        // --- Debug Spheres for Index Fingers ---
+        this.leftDebugSphere = new THREE.Mesh(new THREE.SphereGeometry(0.015), new THREE.MeshBasicMaterial({color: 0xff0000}));
+        this.rightDebugSphere = new THREE.Mesh(new THREE.SphereGeometry(0.015), new THREE.MeshBasicMaterial({color: 0x0000ff}));
+        this.leftDebugSphere.visible = false;
+        this.rightDebugSphere.visible = false;
+        this.world.createTransformEntity(this.leftDebugSphere);
+        this.world.createTransformEntity(this.rightDebugSphere);
 
         // --- Phase 3: HDRI Loading & The Warp Bleed Transition ---
         const sphereGeom = new THREE.SphereGeometry(500, 60, 40);
@@ -207,11 +219,26 @@ export class DomainExpansionSystem extends createSystem({
         const hasLeft = this.getIndexData('left', this.leftTip);
         const hasRight = this.getIndexData('right', this.rightTip);
         
+        // Debug Spheres update
+        if (hasLeft) {
+            this.leftDebugSphere.position.copy(this.leftTip);
+            this.leftDebugSphere.visible = true;
+        } else {
+            this.leftDebugSphere.visible = false;
+        }
+        
+        if (hasRight) {
+            this.rightDebugSphere.position.copy(this.rightTip);
+            this.rightDebugSphere.visible = true;
+        } else {
+            this.rightDebugSphere.visible = false;
+        }
+        
         if (this.state === 'None') {
             // --- Phase 1: Bimanual Index Trigger ---
             if (hasLeft && hasRight && !this.isDomainExpansionTriggered) {
                 const dist = this.leftTip.distanceTo(this.rightTip);
-                if (dist < 0.1) { // 10cm trigger distance to make it easier
+                if (dist < 0.15) { // 15cm trigger distance to prevent tracking dropout when hands get too close
                     this.isDomainExpansionTriggered = true;
                     this.state = 'UI';
                     
