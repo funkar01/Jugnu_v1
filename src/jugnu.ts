@@ -45,7 +45,8 @@ export class JugnuSystem extends createSystem({
   private interactionState: 'WaitingForRoom' | 'Idle' | 'Following' | 'LerpingToHand' | 'Attached' = 'WaitingForRoom';
   private roomPromptTimer = 0;
   private sceneCaptureRequested = false;
-  private roomWaitTimer = 3.0;
+  private roomWaitTimer = 1.0;
+  private fallbackSpawnTimer = 10.0;
   private throwTimer = 0;
   private lerpTime = 0;
   private lerpDuration = 0.3;
@@ -338,40 +339,57 @@ export class JugnuSystem extends createSystem({
     
     // Room Loading Block
     if (this.interactionState === 'WaitingForRoom') {
-        let roomFound = false;
-        for (const entity of this.queries.physicsShapes.entities) {
-            if (entity.getValue(PhysicsShape, 'shape') === PhysicsShapeType.TriMesh) {
-                roomFound = true;
-                break;
-            }
-        }
+        const isXR = (this.renderer.xr as any).isPresenting;
         
-        if (roomFound) {
+        if (!isXR) {
             this.activateJugnu();
         } else {
-            this.roomWaitTimer -= dt;
-            if (this.roomWaitTimer <= 0 && !this.sceneCaptureRequested) {
-                this.sceneCaptureRequested = true;
-                const session = (this.renderer.xr as any).getSession ? (this.renderer.xr as any).getSession() : (this.renderer.xr as any).session;
-                if (session && typeof session.requestSceneCapture === 'function') {
-                    session.requestSceneCapture().then(() => {
-                        setTimeout(() => {
+            let roomFound = false;
+            for (const entity of this.queries.physicsShapes.entities) {
+                if (entity.getValue(PhysicsShape, 'shape') === PhysicsShapeType.TriMesh) {
+                    roomFound = true;
+                    break;
+                }
+            }
+            
+            if (roomFound) {
+                this.activateJugnu();
+            } else {
+                this.roomWaitTimer -= dt;
+                
+                if (this.roomWaitTimer <= 0) {
+                    if (!this.sceneCaptureRequested) {
+                        this.sceneCaptureRequested = true;
+                        const session = (this.renderer.xr as any).getSession ? (this.renderer.xr as any).getSession() : (this.renderer.xr as any).session;
+                        if (session && typeof session.requestSceneCapture === 'function') {
+                            session.requestSceneCapture().then(() => {
+                                setTimeout(() => {
+                                    if (this.interactionState === 'WaitingForRoom') {
+                                        this.activateJugnu();
+                                    }
+                                }, 2000);
+                            }).catch((err: any) => {
+                                console.warn("Scene capture failed or denied:", err);
+                                if (this.interactionState === 'WaitingForRoom') {
+                                    this.activateJugnu();
+                                }
+                            });
+                        } else {
+                            this.activateJugnu();
+                        }
+                    } else {
+                        // Wait for fallback timer to force spawn Jugnu
+                        this.fallbackSpawnTimer -= dt;
+                        if (this.fallbackSpawnTimer <= 0) {
                             if (this.interactionState === 'WaitingForRoom') {
                                 this.activateJugnu();
                             }
-                        }, 2000);
-                    }).catch((err: any) => {
-                        console.warn("Scene capture failed or denied:", err);
-                        if (this.interactionState === 'WaitingForRoom') {
-                            this.activateJugnu();
                         }
-                    });
-                } else {
-                    this.activateJugnu();
+                    }
                 }
+                this.queries.jugnu.entities.forEach(e => { if (e.object3D) e.object3D.visible = false; });
+                return; 
             }
-            this.queries.jugnu.entities.forEach(e => { if (e.object3D) e.object3D.visible = false; });
-            return; 
         }
     }
 
