@@ -6,6 +6,7 @@ export class RoomVisualizerSystem extends createSystem({
     planes: { required: [XRPlane] }
 }) {
     private wireframeMat!: THREE.MeshStandardMaterial;
+    private planeMat!: THREE.MeshStandardMaterial;
 
     init() {
         // A stark, neon glowing wireframe for detected room meshes
@@ -16,6 +17,15 @@ export class RoomVisualizerSystem extends createSystem({
             wireframe: true,
             transparent: true,
             opacity: 0.8,
+        });
+
+        // Green material for scanned planes
+        this.planeMat = new THREE.MeshStandardMaterial({
+            color: 0x00ff00,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.DoubleSide,
+            depthWrite: false,
         });
     }
 
@@ -42,20 +52,6 @@ export class RoomVisualizerSystem extends createSystem({
         // Iterate over all plane entities mapped by the SceneUnderstandingSystem
         this.queries.planes.entities.forEach(entity => {
             if (!entity.hasComponent(PhysicsBody)) {
-<<<<<<< Updated upstream
-                // Phase 2: Anchor 1:1 static trimesh colliders inside the physics engine
-                entity.addComponent(PhysicsBody, { state: PhysicsState.Static })
-                      .addComponent(PhysicsShape, { 
-                          shape: PhysicsShapeType.TriMesh, 
-                          friction: 0.5, 
-                          restitution: 0.8 
-                      });
-                
-                // Phase 1: Create invisible collision meshes
-                const obj = entity.object3D;
-                if (obj) {
-                    obj.visible = false;
-=======
                 // Phase 1: Show detected planes with a green material
                 const obj = entity.object3D;
                 if (obj) {
@@ -85,7 +81,6 @@ export class RoomVisualizerSystem extends createSystem({
                               friction: 0.2, 
                               restitution: 1.2 // High restitution to ensure it bounces back clearly
                           });
->>>>>>> Stashed changes
                 }
             }
         });
