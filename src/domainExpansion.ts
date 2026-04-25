@@ -24,8 +24,9 @@ export class DomainExpansionSystem extends createSystem({
     jugnu: { required: [Jugnu] }
 }) {
     private isDomainExpansionTriggered = false;
-    private state: 'None' | 'UI' | 'Bleed' = 'None';
+    private state: 'None' | 'UI' | 'Bleed' | 'Exit' = 'None';
     private uiTimer = 0;
+    private exitTimer = 0;
 
     private uiMesh!: THREE.Mesh;
     private domainMesh!: THREE.Mesh;
@@ -183,12 +184,42 @@ export class DomainExpansionSystem extends createSystem({
         const textureLoader = new THREE.TextureLoader();
         const initSphereTex = textureLoader.load('/textures/Domain.png');
         initSphereTex.colorSpace = THREE.SRGBColorSpace;
-        const initSphereMat = new THREE.MeshBasicMaterial({
-            map: initSphereTex,
+        const initSphereMat = new THREE.ShaderMaterial({
+            uniforms: {
+                u_texture: { value: initSphereTex },
+                u_progress: { value: 0.0 }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D u_texture;
+                uniform float u_progress;
+                varying vec2 vUv;
+                
+                void main() {
+                    vec4 texColor = texture2D(u_texture, vUv);
+                    
+                    // Equator is at vUv.y == 0.5. Distance from equator: 0.0 to 0.5
+                    float distFromEquator = abs(vUv.y - 0.5);
+                    
+                    // Fade-in spread threshold based on u_progress (0.0 to 1.0)
+                    // We go slightly above 0.5 to ensure the poles are fully covered at the end
+                    float threshold = u_progress * 0.55; 
+                    
+                    // Smoothstep creates a soft edge transition
+                    float alpha = smoothstep(threshold + 0.1, threshold - 0.1, distFromEquator);
+                    
+                    gl_FragColor = vec4(texColor.rgb, texColor.a * alpha * 0.9);
+                }
+            `,
             transparent: true,
-            opacity: 0.9,
-            side: THREE.BackSide, // Invert normals so it's visible from the inside
-            depthWrite: false     // Don't block depth for objects inside
+            side: THREE.BackSide,
+            depthWrite: false
         });
         this.initSphere = new THREE.Mesh(initSphereGeom, initSphereMat);
         this.initSphere.renderOrder = -99; // Render before other transparent objects to fix overlapping
@@ -339,12 +370,57 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
         } else if (this.state === 'Bleed') {
-            this.bleedProgress += dt * 0.5; // Takes 2 seconds to complete
+            // Check for exit gesture (holding index fingers close)
+            if (hasLeft && hasRight) {
+                const dist = this.leftTip.distanceTo(this.rightTip);
+                if (dist < 0.15) {
+                    this.exitTimer += dt;
+                    if (this.exitTimer >= 1.5) {
+                        this.state = 'Exit';
+                        this.exitTimer = 0;
+                        return;
+                    }
+                } else {
+                    this.exitTimer = 0;
+                }
+            } else {
+                this.exitTimer = 0;
+            }
+
+            // Normal bleed progress
+            if (this.bleedProgress < 1.0) {
+                this.bleedProgress += dt * 0.5; // Takes 2 seconds to complete
+                if (this.bleedProgress >= 1.0) {
+                    this.bleedProgress = 1.0;
+                }
+            }
+
             this.customMaterial.uniforms.u_bleedProgress.value = this.bleedProgress;
             this.customMaterial.uniforms.u_time.value += dt;
 
-            if (this.bleedProgress >= 1.0) {
-                this.bleedProgress = 1.0;
+            // Sync the equator fade-in with the bleed progress
+            if (this.initSphere && this.initSphere.material instanceof THREE.ShaderMaterial) {
+                this.initSphere.material.uniforms.u_progress.value = this.bleedProgress;
+            }
+        } else if (this.state === 'Exit') {
+            // Reverse the bleed progress
+            this.bleedProgress -= dt * 0.5;
+            
+            if (this.bleedProgress <= 0.0) {
+                this.bleedProgress = 0.0;
+                this.state = 'None';
+                // Wait 2 seconds before allowing re-trigger to prevent instant loop
+                setTimeout(() => { this.isDomainExpansionTriggered = false; }, 2000);
+                if (this.domainMesh) this.domainMesh.visible = false;
+                if (this.initSphere) this.initSphere.visible = false;
+            }
+
+            this.customMaterial.uniforms.u_bleedProgress.value = this.bleedProgress;
+            this.customMaterial.uniforms.u_time.value += dt;
+
+            // Sync the equator fade-out
+            if (this.initSphere && this.initSphere.material instanceof THREE.ShaderMaterial) {
+                this.initSphere.material.uniforms.u_progress.value = this.bleedProgress;
             }
         }
     }
