@@ -7,6 +7,7 @@ export class RoomVisualizerSystem extends createSystem({
 }) {
     private wireframeMat!: THREE.MeshStandardMaterial;
     private planeMat!: THREE.MeshStandardMaterial;
+    private edgeMat!: THREE.LineBasicMaterial;
 
     init() {
         // A stark, neon glowing wireframe for detected room meshes
@@ -26,6 +27,12 @@ export class RoomVisualizerSystem extends createSystem({
             opacity: 0.3,
             side: THREE.DoubleSide,
             depthWrite: false,
+        });
+
+        // White material for plane edges
+        this.edgeMat = new THREE.LineBasicMaterial({
+            color: 0xffffff,
+            linewidth: 2
         });
     }
 
@@ -70,6 +77,11 @@ export class RoomVisualizerSystem extends createSystem({
                     obj.traverse((child) => {
                         if (child instanceof THREE.Mesh) {
                             child.material = this.planeMat;
+
+                            // Add white edges to make the planes clearly visible
+                            const edges = new THREE.EdgesGeometry(child.geometry);
+                            const line = new THREE.LineSegments(edges, this.edgeMat);
+                            child.add(line);
                         }
                     });
 
