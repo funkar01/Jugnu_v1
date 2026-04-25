@@ -67,6 +67,8 @@ export class JugnuSystem extends createSystem({
   private centerPos = new THREE.Vector3(0, 1.45, -0.8);
   private floatRadius = 0.6;
   private tempScale = new THREE.Vector3();
+  private handVelocity = new THREE.Vector3();
+  private previousHandPos = new THREE.Vector3();
 
   // Particle Trail System
   private particleMesh!: THREE.InstancedMesh;
@@ -504,6 +506,8 @@ export class JugnuSystem extends createSystem({
                 this.attachedHand = activeHand;
                 this.startPos.copy(activeJugnuPos);
                 this.targetPos.copy(activeTip);
+                this.previousHandPos.copy(activeTip);
+                this.handVelocity.set(0, 0, 0);
                 this.lerpTime = 0;
                 this.velocity.set(0, 0, 0);
 
@@ -530,12 +534,21 @@ export class JugnuSystem extends createSystem({
                 this.basePositions.set(entity, entity.object3D.position.clone());
                 if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
                 entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 });
-                entity.addComponent(PhysicsManipulation, { linearVelocity: [this.velocity.x, this.velocity.y, this.velocity.z] });
+                if (!entity.hasComponent(PhysicsShape)) {
+                     entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, radius: 0.15 });
+                }
+                entity.addComponent(PhysicsManipulation, { linearVelocity: [this.handVelocity.x * 1.5, this.handVelocity.y * 1.5, this.handVelocity.z * 1.5] });
             });
             this.velocity.set(0, 0, 0);
         } else {
             this.lerpTime += safeDt;
             this.targetPos.copy(currentTip);
+            if (safeDt > 0.001) {
+               const instVel = new THREE.Vector3().subVectors(currentTip, this.previousHandPos).divideScalar(safeDt);
+               this.handVelocity.lerp(instVel, 0.5);
+            }
+            this.previousHandPos.copy(currentTip);
+            
             if (this.lerpTime >= this.lerpDuration) {
                 this.interactionState = 'Attached';
             }
@@ -557,11 +570,19 @@ export class JugnuSystem extends createSystem({
                     if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
                     entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 });
                 }
-                entity.addComponent(PhysicsManipulation, { linearVelocity: [this.velocity.x, this.velocity.y, this.velocity.z] });
+                if (!entity.hasComponent(PhysicsShape)) {
+                     entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, radius: 0.15 });
+                }
+                entity.addComponent(PhysicsManipulation, { linearVelocity: [this.handVelocity.x * 1.5, this.handVelocity.y * 1.5, this.handVelocity.z * 1.5] });
             });
             this.velocity.set(0, 0, 0);
         } else {
             this.targetPos.copy(currentTip);
+            if (safeDt > 0.001) {
+               const instVel = new THREE.Vector3().subVectors(currentTip, this.previousHandPos).divideScalar(safeDt);
+               this.handVelocity.lerp(instVel, 0.5);
+            }
+            this.previousHandPos.copy(currentTip);
         }
     }
 
