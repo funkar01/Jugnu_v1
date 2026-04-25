@@ -74,6 +74,10 @@ export class JugnuSystem extends createSystem({
   private particleData: { active: boolean, pos: THREE.Vector3, life: number, maxLife: number }[] = [];
   private nextParticleIdx = 0;
 
+  // Expression UI
+  private expressionList: Mood[] = ['bored', 'calm', 'happy', 'sad', 'bright', 'blushing', 'winking'];
+  private currentExpressionIndex = 2; // Default to happy
+
   init() {
     this.lookAtTarget = new Vector3();
     this.vec3 = new Vector3();
@@ -98,13 +102,20 @@ export class JugnuSystem extends createSystem({
     }
     this.world.createTransformEntity(this.particleMesh);
 
+    // Initialize UI and Keys
+    this.createExpressionUI();
+    window.addEventListener('keydown', (e) => this.handleKeyDown(e));
+
     // Handle Click
     this.queries.jugnuClicked.subscribe("qualify", async (entity) => {
       this.interactDecay = 8.0; 
       
       const jugModel = entity.object3D as JugnuV3Model;
       if (jugModel && typeof jugModel.setMood === 'function') {
-         jugModel.setMood('surprised'); 
+         jugModel.setMood('bright'); 
+      }
+      if (jugModel && typeof jugModel.triggerPinchAnimation === 'function') {
+         jugModel.triggerPinchAnimation();
       }
       
       if (this.isListening) {
@@ -125,6 +136,70 @@ export class JugnuSystem extends createSystem({
           const board = entity.object3D as JugnuTranscriptBoard;
           if (board && typeof board.updateText === 'function') {
               board.updateText(userText, jugnuReply);
+          }
+      });
+  }
+
+  createExpressionUI() {
+    const container = document.createElement("div");
+    container.style.position = "absolute";
+    container.style.bottom = "20px";
+    container.style.left = "50%";
+    container.style.transform = "translateX(-50%)";
+    container.style.display = "flex";
+    container.style.gap = "10px";
+    container.style.zIndex = "999";
+    container.style.background = "rgba(0,0,0,0.5)";
+    container.style.padding = "10px";
+    container.style.borderRadius = "10px";
+    container.style.alignItems = "center";
+    
+    const label = document.createElement("span");
+    label.innerText = "Expressions (Q/E): ";
+    label.style.color = "white";
+    label.style.fontFamily = "sans-serif";
+    container.appendChild(label);
+
+    this.expressionList.forEach((mood, i) => {
+        const btn = document.createElement("button");
+        btn.innerText = mood;
+        btn.style.padding = "5px 10px";
+        btn.style.cursor = "pointer";
+        btn.style.textTransform = "capitalize";
+        btn.style.borderRadius = "5px";
+        btn.style.border = "none";
+        // Give hover and active effects for premium feel
+        btn.style.transition = "background-color 0.2s, transform 0.1s";
+        btn.onmouseenter = () => btn.style.backgroundColor = "#e0e0e0";
+        btn.onmouseleave = () => btn.style.backgroundColor = "white";
+        btn.onmousedown = () => btn.style.transform = "scale(0.95)";
+        btn.onmouseup = () => btn.style.transform = "scale(1)";
+        btn.onclick = () => this.setExpression(i);
+        container.appendChild(btn);
+    });
+
+    document.body.appendChild(container);
+  }
+
+  handleKeyDown(e: KeyboardEvent) {
+      if (e.key.toLowerCase() === 'q') {
+          let newIdx = this.currentExpressionIndex - 1;
+          if (newIdx < 0) newIdx = this.expressionList.length - 1;
+          this.setExpression(newIdx);
+      } else if (e.key.toLowerCase() === 'e') {
+          let newIdx = this.currentExpressionIndex + 1;
+          if (newIdx >= this.expressionList.length) newIdx = 0;
+          this.setExpression(newIdx);
+      }
+  }
+
+  setExpression(index: number) {
+      this.currentExpressionIndex = index;
+      const mood = this.expressionList[index];
+      this.queries.jugnu.entities.forEach(entity => {
+          const jugModel = entity.object3D as JugnuV3Model;
+          if (jugModel && typeof jugModel.setMood === 'function') {
+              jugModel.setMood(mood);
           }
       });
   }
@@ -203,7 +278,7 @@ export class JugnuSystem extends createSystem({
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. The user provided an audio message. Please transcribe and respond appropriately to their intent.\n\nFormat your exact response like this:\nTRANSCRIPT: [what you heard the user say]\nREPLY: [your conversational answer]\n\nAt the very end of your REPLY, please append exactly one mood tag from this list based on the sentiment: [MOOD: happy], [MOOD: sad], [MOOD: angry], [MOOD: surprised], [MOOD: sleepy].` },
+              { text: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. The user provided an audio message. Please transcribe and respond appropriately to their intent.\n\nFormat your exact response like this:\nTRANSCRIPT: [what you heard the user say]\nREPLY: [your conversational answer]\n\nAt the very end of your REPLY, please append exactly one mood tag from this list based on the sentiment: [MOOD: bored], [MOOD: calm], [MOOD: happy], [MOOD: sad], [MOOD: bright], [MOOD: blushing], [MOOD: winking].` },
               { inlineData: { mimeType: "audio/webm", data: base64Data } }
             ]
           }]
@@ -228,7 +303,7 @@ export class JugnuSystem extends createSystem({
          }
 
          let mood: Mood = 'happy';
-         const moodMatch = reply.match(/\[MOOD:\s*(happy|sad|angry|surprised|sleepy)\]/i);
+         const moodMatch = reply.match(/\[MOOD:\s*(bored|calm|happy|sad|bright|blushing|winking)\]/i);
          if (moodMatch) {
              mood = moodMatch[1].toLowerCase() as Mood;
          }
