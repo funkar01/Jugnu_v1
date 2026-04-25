@@ -5,20 +5,20 @@ export type Mood = 'happy' | 'sad' | 'angry' | 'surprised' | 'sleepy';
 export class JugnuV3Model extends THREE.Group {
     private currentMood: Mood = 'happy';
     
-    // 4 videos provided, we'll map them sequentially
+    // 2 videos provided for V4 testing
     private videoPaths = [
-        "/JugnuV3/hf_20260421_191024_dc26a25f-5c0d-464e-864e-762a08112899.mp4",
-        "/JugnuV3/hf_20260421_191049_db40030e-4109-44a8-abf0-caa5cbbc9488.mp4",
-        "/JugnuV3/hf_20260421_191445_d30e02c0-c7b9-4223-ac7b-c6aaed98c09b.mp4",
-        "/JugnuV3/hf_20260421_191616_f634d340-0f5f-48a1-80a3-a34885c7cf31.mp4"
+        "/JugnuV3/BlueCasual.mp4",
+        "/JugnuV3/OrangeHappy.mp4"
     ];
     
     private videoElements: HTMLVideoElement[] = [];
     private videoTextures: THREE.VideoTexture[] = [];
+    private spriteTextures: Record<Mood, THREE.CanvasTexture> = {} as any;
     private material: THREE.ShaderMaterial;
     
     // Scale and pulse properties used by jugnu.ts
     public pulseIntensity: number = 0;
+    public pinchProgress: number = 0;
 
     constructor() {
         super();
@@ -44,6 +44,12 @@ export class JugnuV3Model extends THREE.Group {
             this.videoTextures.push(texture);
         }
 
+        // Generate Placeholder Sprites for the 5 moods
+        const moods: Mood[] = ['happy', 'sad', 'angry', 'surprised', 'sleepy'];
+        for (const m of moods) {
+            this.spriteTextures[m] = this.generateSprite(m);
+        }
+
         const vertexShader = `
             varying vec2 vUv;
             void main() {
@@ -53,27 +59,59 @@ export class JugnuV3Model extends THREE.Group {
         `;
 
         const fragmentShader = `
-            uniform sampler2D U_VideoTexture;
+            uniform sampler2D U_Video1;
+            uniform sampler2D U_Video2;
+            uniform sampler2D U_Sprite;
+            uniform float U_Transition;
+            uniform float u_time;
             varying vec2 vUv;
+            
+            // Function to convert HSL to RGB
+            vec3 hsl2rgb(vec3 c) {
+                vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+                return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
+            }
+
             void main() {
-                vec4 color = texture2D(U_VideoTexture, vUv);
+                vec4 color1 = texture2D(U_Video1, vUv);
+                vec4 color2 = texture2D(U_Video2, vUv);
                 
-                // Calculate brightness (Luminance)
-                float brightness = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+                vec4 texColor = mix(color1, color2, U_Transition);
                 
-                // Thresholding: adjust values to handle compression noise in the black areas
-                float alpha = smoothstep(0.04, 0.12, brightness); 
+                // Extract value (Luminance) from the input to use as Fac
+                float val = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
                 
-                // Optional: discard if nearly invisible to save depth complexity
-                if (alpha < 0.01) discard;
+                // ColorRamp 2: Alpha mapping (0 to 0.036 -> 0 to 1)
+                float bodyAlpha = smoothstep(0.0, 0.036, val);
                 
-                gl_FragColor = vec4(color.rgb, alpha);
+                // ColorRamp 1: HSL Rainbow cycling over time
+                // Hue varies based on the input value AND time for smooth cycling
+                float hue = fract(val * 0.5 - u_time * 0.1); // Slowed down from 0.5 to 0.1
+                vec3 baseColor = hsl2rgb(vec3(hue, 1.0, 0.5));
+                
+                // Sample Sprite for emotion layer
+                vec4 sprite = texture2D(U_Sprite, vUv);
+                
+                // Alpha blend sprite over the procedural base
+                // If it's a white-ish sprite, it will just draw white. If colored, draws color.
+                vec3 finalColor = mix(baseColor, sprite.rgb, sprite.a);
+                
+                // The final alpha should encompass both the body and the floating sprite elements
+                float finalAlpha = max(bodyAlpha, sprite.a);
+                
+                if (finalAlpha < 0.01) discard;
+                
+                gl_FragColor = vec4(finalColor, finalAlpha);
             }
         `;
 
         this.material = new THREE.ShaderMaterial({
             uniforms: {
-                U_VideoTexture: { value: this.videoTextures[0] }
+                U_Video1: { value: this.videoTextures[0] },
+                U_Video2: { value: this.videoTextures[1] },
+                U_Sprite: { value: this.spriteTextures['happy'] }, // Default state
+                U_Transition: { value: 0.0 },
+                u_time: { value: 0.0 }
             },
             vertexShader,
             fragmentShader,
@@ -83,8 +121,6 @@ export class JugnuV3Model extends THREE.Group {
         });
 
         const mesh = new THREE.Mesh(geometry, this.material);
-        // Elevate center slightly like old sphere so origin is at bottom
-        mesh.position.y = 0.5;
         this.add(mesh);
         
         // Scale to match old Jugnu
@@ -98,27 +134,58 @@ export class JugnuV3Model extends THREE.Group {
         }, { once: true });
     }
 
+    private generateSprite(mood: Mood): THREE.CanvasTexture {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d')!;
+        
+        ctx.clearRect(0, 0, 512, 512);
+        
+        // Placeholder Emojis for moods
+        let emoji = '😊';
+        switch(mood) {
+            case 'happy': emoji = '😊'; break;
+            case 'sad': emoji = '😢'; break;
+            case 'angry': emoji = '😠'; break;
+            case 'surprised': emoji = '😲'; break;
+            case 'sleepy': emoji = '😴'; break;
+        }
+
+        ctx.font = '150px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Adding a white soft glow behind the emoji so it pops against the Jugnu body
+        ctx.shadowColor = 'rgba(255, 255, 255, 1.0)';
+        ctx.shadowBlur = 30;
+        ctx.fillStyle = 'white';
+        // Draw slightly lower so it sits in the middle of the "body" shape
+        ctx.fillText(emoji, 256, 300);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        return tex;
+    }
+
     public setMood(mood: Mood) {
         if (this.currentMood === mood) return;
         this.currentMood = mood;
         
-        // Map moods sequentially to the 4 videos
-        let idx = 0;
-        switch(mood) {
-            case 'happy': idx = 0; break;
-            case 'sad': idx = 1; break;
-            case 'angry': idx = 2; break;
-            case 'surprised': idx = 3; break;
-            case 'sleepy': idx = 0; break; // Wrap around to first
-        }
-        
-        if (idx < this.videoTextures.length) {
-            this.material.uniforms.U_VideoTexture.value = this.videoTextures[idx];
+        // Swap the sprite texture seamlessly
+        if (this.material && this.material.uniforms.U_Sprite) {
+            this.material.uniforms.U_Sprite.value = this.spriteTextures[mood];
         }
     }
 
-    public update(dt: number) {
-        // V3 relies on video loop for breathing, but we keep pulseIntensity property
-        // for jugnu.ts to use for global object scaling.
+    // speedMultiplier comes from JugnuSystem based on interaction/velocity
+    public update(dt: number, speedMultiplier: number = 1.0) {
+        if (this.material && this.material.uniforms.U_Transition) {
+            this.material.uniforms.U_Transition.value = this.pinchProgress;
+        }
+        if (this.material && this.material.uniforms.u_time) {
+            // Speed up when moving, stop when stationary (speedMultiplier = 0)
+            this.material.uniforms.u_time.value += dt * speedMultiplier;
+        }
     }
 }
