@@ -187,9 +187,11 @@ export class DomainExpansionSystem extends createSystem({
             map: initSphereTex,
             transparent: true,
             opacity: 0.9,
-            side: THREE.BackSide // Invert normals so it's visible from the inside
+            side: THREE.BackSide, // Invert normals so it's visible from the inside
+            depthWrite: false     // Don't block depth for objects inside
         });
         this.initSphere = new THREE.Mesh(initSphereGeom, initSphereMat);
+        this.initSphere.renderOrder = -99; // Render before other transparent objects to fix overlapping
         this.initSphere.visible = false;
         this.world.createTransformEntity(this.initSphere);
     }

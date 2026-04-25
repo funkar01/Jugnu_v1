@@ -20,11 +20,11 @@ export class RoomVisualizerSystem extends createSystem({
             opacity: 0.8,
         });
 
-        // Green material for scanned planes
+        // Transparent material for scanned planes (only edges will be visible)
         this.planeMat = new THREE.MeshStandardMaterial({
-            color: 0x00ff00,
+            color: 0x000000,
             transparent: true,
-            opacity: 0.3,
+            opacity: 0.0,
             side: THREE.DoubleSide,
             depthWrite: false,
         });
