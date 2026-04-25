@@ -78,7 +78,8 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     sessionMode: SessionMode.ImmersiveAR,
     features: {
       handTracking: true,
-      meshDetection: true
+      meshDetection: true,
+      planeDetection: true
     }
   },
   features: {

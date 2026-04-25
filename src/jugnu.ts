@@ -44,6 +44,8 @@ export class JugnuSystem extends createSystem({
   // Interaction & Room State
   private interactionState: 'WaitingForRoom' | 'Idle' | 'Following' | 'LerpingToHand' | 'Attached' = 'WaitingForRoom';
   private roomPromptTimer = 0;
+  private sceneCaptureRequested = false;
+  private roomWaitTimer = 3.0;
   private throwTimer = 0;
   private lerpTime = 0;
   private lerpDuration = 0.3;
@@ -264,6 +266,27 @@ export class JugnuSystem extends createSystem({
      }
   }
 
+  activateJugnu() {
+      this.interactionState = 'Following';
+      
+      this.player.head.getWorldPosition(this.headPos);
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+      forward.y = 0; 
+      forward.normalize();
+      
+      const spawnPos = this.headPos.clone().add(forward.multiplyScalar(0.8));
+      spawnPos.y = this.headPos.y - 0.2; 
+
+      this.centerPos.copy(spawnPos); 
+
+      this.queries.jugnu.entities.forEach(e => { 
+          if (e.object3D) {
+              e.object3D.position.copy(spawnPos);
+              e.object3D.visible = true; 
+          }
+      });
+  }
+
   private noise(t: number, seed: number): number {
     const t0 = Math.floor(t);
     const t1 = t0 + 1;
@@ -324,16 +347,31 @@ export class JugnuSystem extends createSystem({
         }
         
         if (roomFound) {
-            this.interactionState = 'Following';
-            this.queries.jugnu.entities.forEach(e => { if (e.object3D) e.object3D.visible = true; });
+            this.activateJugnu();
         } else {
-            this.roomPromptTimer -= dt;
-            if (this.roomPromptTimer <= 0) {
-                this.speak("Please look around to scan the room.");
-                this.roomPromptTimer = 10.0;
+            this.roomWaitTimer -= dt;
+            if (this.roomWaitTimer <= 0 && !this.sceneCaptureRequested) {
+                this.sceneCaptureRequested = true;
+                const session = (this.renderer.xr as any).getSession ? (this.renderer.xr as any).getSession() : (this.renderer.xr as any).session;
+                if (session && typeof session.requestSceneCapture === 'function') {
+                    session.requestSceneCapture().then(() => {
+                        setTimeout(() => {
+                            if (this.interactionState === 'WaitingForRoom') {
+                                this.activateJugnu();
+                            }
+                        }, 2000);
+                    }).catch((err: any) => {
+                        console.warn("Scene capture failed or denied:", err);
+                        if (this.interactionState === 'WaitingForRoom') {
+                            this.activateJugnu();
+                        }
+                    });
+                } else {
+                    this.activateJugnu();
+                }
             }
             this.queries.jugnu.entities.forEach(e => { if (e.object3D) e.object3D.visible = false; });
-            return; // Exit early, no interaction until room is loaded
+            return; 
         }
     }
 
