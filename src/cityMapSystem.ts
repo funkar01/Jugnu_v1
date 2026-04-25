@@ -15,8 +15,9 @@ export class CityMapSystem extends createSystem() {
 
     // Spring Arm Physics
     private velocity = new THREE.Vector3();
-    private springStiffness = 150.0;
-    private springDamping = 12.0;
+    // Tighter spring so it feels attached like a hologram, minimizing lag
+    private springStiffness = 400.0;
+    private springDamping = 25.0;
     
     // Panning / Pinch to Drag
     private isPinching = false;
@@ -212,7 +213,9 @@ export class CityMapSystem extends createSystem() {
             if (gestureData && gestureData.isShaka) {
                 shakaDetected = true;
                 
-                const offset = new THREE.Vector3(0, 0.05, 0.05); 
+                // Position exactly at the wrist/forearm like a smartwatch hologram
+                // Y: 3cm above back of wrist, Z: 8cm towards the elbow (forearm)
+                const offset = new THREE.Vector3(0, 0.03, 0.08); 
                 offset.applyQuaternion(gestureData.wristQuat);
                 
                 mapTargetPos.copy(gestureData.wristPos).add(offset);
