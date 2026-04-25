@@ -26,27 +26,28 @@ export class DomainExpansionSystem extends createSystem({
     private isDomainExpansionTriggered = false;
     private state: 'None' | 'UI' | 'Bleed' = 'None';
     private uiTimer = 0;
-    
+
     private uiMesh!: THREE.Mesh;
     private domainMesh!: THREE.Mesh;
     private bleedProgress = 0.0;
     private customMaterial!: THREE.ShaderMaterial;
-    
+    private initSphere!: THREE.Mesh;
+
     // Joint positions
     private leftTip = new THREE.Vector3();
     private rightTip = new THREE.Vector3();
-    
+
     // Debug visuals
     private leftDebugSphere!: THREE.Mesh;
     private rightDebugSphere!: THREE.Mesh;
-    
+
     init() {
         // --- Phase 2: High-Performance Spatial UI ---
         const canvas = document.createElement('canvas');
         canvas.width = 512;
         canvas.height = 256;
         const ctx = canvas.getContext('2d')!;
-        
+
         // Glass panel background
         ctx.fillStyle = 'rgba(15, 15, 18, 0.7)';
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
@@ -55,7 +56,7 @@ export class DomainExpansionSystem extends createSystem({
         ctx.roundRect(10, 10, 492, 236, 24);
         ctx.fill();
         ctx.stroke();
-        
+
         // Text Shadow/Glow for modern aesthetic
         ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
         ctx.shadowBlur = 10;
@@ -63,7 +64,7 @@ export class DomainExpansionSystem extends createSystem({
         ctx.font = '300 32px system-ui, -apple-system, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText("DOMAIN EXPANSION", 256, 75);
-        
+
         ctx.shadowBlur = 0;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
         ctx.font = '400 16px system-ui, -apple-system, sans-serif';
@@ -89,16 +90,16 @@ export class DomainExpansionSystem extends createSystem({
 
         const tex = new THREE.CanvasTexture(canvas);
         tex.colorSpace = THREE.SRGBColorSpace;
-        
+
         const uiMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
         this.uiMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.4), uiMat);
         this.uiMesh.visible = false;
-        
+
         this.world.createTransformEntity(this.uiMesh);
 
         // --- Debug Spheres for Index Fingers ---
-        this.leftDebugSphere = new THREE.Mesh(new THREE.SphereGeometry(0.015), new THREE.MeshBasicMaterial({color: 0xff0000}));
-        this.rightDebugSphere = new THREE.Mesh(new THREE.SphereGeometry(0.015), new THREE.MeshBasicMaterial({color: 0x0000ff}));
+        this.leftDebugSphere = new THREE.Mesh(new THREE.SphereGeometry(0.015), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+        this.rightDebugSphere = new THREE.Mesh(new THREE.SphereGeometry(0.015), new THREE.MeshBasicMaterial({ color: 0x0000ff }));
         this.leftDebugSphere.visible = false;
         this.rightDebugSphere.visible = false;
         this.world.createTransformEntity(this.leftDebugSphere);
@@ -110,8 +111,8 @@ export class DomainExpansionSystem extends createSystem({
 
         const envTexture = AssetManager.getTexture("domainEnv");
         if (envTexture) {
-             envTexture.colorSpace = THREE.SRGBColorSpace;
-             envTexture.mapping = THREE.EquirectangularReflectionMapping;
+            envTexture.colorSpace = THREE.SRGBColorSpace;
+            envTexture.mapping = THREE.EquirectangularReflectionMapping;
         }
 
         this.customMaterial = new THREE.ShaderMaterial({
@@ -172,17 +173,32 @@ export class DomainExpansionSystem extends createSystem({
             transparent: true,
             depthWrite: false
         });
-        
+
         this.domainMesh = new THREE.Mesh(sphereGeom, this.customMaterial);
         this.domainMesh.visible = false;
         this.world.createTransformEntity(this.domainMesh);
+
+        // --- Init Sphere ---
+        const initSphereGeom = new THREE.SphereGeometry(20.0, 32, 16); // Scaled 10x
+        const textureLoader = new THREE.TextureLoader();
+        const initSphereTex = textureLoader.load('/textures/Domain.png');
+        initSphereTex.colorSpace = THREE.SRGBColorSpace;
+        const initSphereMat = new THREE.MeshBasicMaterial({
+            map: initSphereTex,
+            transparent: true,
+            opacity: 0.9,
+            side: THREE.BackSide // Invert normals so it's visible from the inside
+        });
+        this.initSphere = new THREE.Mesh(initSphereGeom, initSphereMat);
+        this.initSphere.visible = false;
+        this.world.createTransformEntity(this.initSphere);
     }
-    
+
     private getIndexData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
         const source = this.input.getPrimaryInputSource(handedness);
         const frame = this.xrFrame;
         if (!source || !source.hand || !frame) return false;
-        
+
         const indexTip = source.hand.get('index-finger-tip');
         if (!indexTip) return false;
 
@@ -190,16 +206,16 @@ export class DomainExpansionSystem extends createSystem({
         if (!refSpace || typeof frame.getJointPose !== 'function') return false;
 
         const indexPose = frame.getJointPose(indexTip, refSpace);
-        
-        if (indexPose) {
-           const ix = indexPose.transform.position.x;
-           const iy = indexPose.transform.position.y;
-           const iz = indexPose.transform.position.z;
-           
-           tipPosOut.set(ix, iy, iz);
-           tipPosOut.applyMatrix4(this.player.matrixWorld);
 
-           return true;
+        if (indexPose) {
+            const ix = indexPose.transform.position.x;
+            const iy = indexPose.transform.position.y;
+            const iz = indexPose.transform.position.z;
+
+            tipPosOut.set(ix, iy, iz);
+            tipPosOut.applyMatrix4(this.player.matrixWorld);
+
+            return true;
         }
         return false;
     }
@@ -214,7 +230,7 @@ export class DomainExpansionSystem extends createSystem({
                 // We check both 4 and 5 just to be safe for any controller.
                 const button4 = source.gamepad.buttons[4];
                 const button5 = source.gamepad.buttons[5];
-                
+
                 if (button4 && button4.pressed) return true;
                 if (button5 && button5.pressed) return true;
             }
@@ -232,11 +248,16 @@ export class DomainExpansionSystem extends createSystem({
                 this.domainMesh.position.set(0, 0, 0);
             }
             this.isDomainExpansionTriggered = true;
+
+            if (this.initSphere) {
+                this.initSphere.position.copy(this.rightTip); // Default to right tip for debug trigger
+                this.initSphere.visible = true;
+            }
         }
 
         const hasLeft = this.getIndexData('left', this.leftTip);
         const hasRight = this.getIndexData('right', this.rightTip);
-        
+
         // Debug Spheres update
         if (hasLeft) {
             this.leftDebugSphere.position.copy(this.leftTip);
@@ -244,14 +265,14 @@ export class DomainExpansionSystem extends createSystem({
         } else {
             this.leftDebugSphere.visible = false;
         }
-        
+
         if (hasRight) {
             this.rightDebugSphere.position.copy(this.rightTip);
             this.rightDebugSphere.visible = true;
         } else {
             this.rightDebugSphere.visible = false;
         }
-        
+
         if (this.state === 'None') {
             // --- Phase 1: Bimanual Index Trigger ---
             if (hasLeft && hasRight && !this.isDomainExpansionTriggered) {
@@ -281,7 +302,7 @@ export class DomainExpansionSystem extends createSystem({
                 break;
             }
             this.uiMesh.lookAt(this.player.head.position);
-            
+
             // Check interaction for both hands
             const tips = [];
             if (hasLeft) tips.push(this.leftTip);
@@ -290,15 +311,20 @@ export class DomainExpansionSystem extends createSystem({
             for (const tip of tips) {
                 const localTip = tip.clone();
                 this.uiMesh.worldToLocal(localTip);
-                
+
                 // If finger is close to the plane's depth
-                if (Math.abs(localTip.z) < 0.05) { 
+                if (Math.abs(localTip.z) < 0.05) {
                     // INITIALIZE Button region
                     if (localTip.x > -0.3 && localTip.x < 0.0 && localTip.y > -0.15 && localTip.y < 0.05) {
                         this.state = 'Bleed';
                         this.uiMesh.visible = false;
                         this.domainMesh.visible = true;
                         this.domainMesh.position.set(0, 0, 0); // Fixed massive sphere
+
+                        if (this.initSphere) {
+                            this.initSphere.position.copy(tip);
+                            this.initSphere.visible = true;
+                        }
                         break;
                     }
                     // ABORT Button region
@@ -314,7 +340,7 @@ export class DomainExpansionSystem extends createSystem({
             this.bleedProgress += dt * 0.5; // Takes 2 seconds to complete
             this.customMaterial.uniforms.u_bleedProgress.value = this.bleedProgress;
             this.customMaterial.uniforms.u_time.value += dt;
-            
+
             if (this.bleedProgress >= 1.0) {
                 this.bleedProgress = 1.0;
             }
