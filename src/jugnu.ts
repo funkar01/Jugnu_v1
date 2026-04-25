@@ -1,4 +1,5 @@
 import { createComponent, createSystem, Pressed, Vector3, PhysicsBody, PhysicsState, PhysicsManipulation, PhysicsShape, PhysicsShapeType } from "@iwsdk/core";
+import { MoodColors } from "./JugnuV3Model.js";
 import type { JugnuV3Model, Mood } from "./JugnuV3Model.js";
 import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
 import * as THREE from "three";
@@ -72,9 +73,10 @@ export class JugnuSystem extends createSystem({
 
   // Particle Trail System
   private particleMesh!: THREE.InstancedMesh;
-  private maxParticles = 60;
+  private maxParticles = 2000;
   private particleData: { active: boolean, pos: THREE.Vector3, life: number, maxLife: number }[] = [];
   private nextParticleIdx = 0;
+  private lastJugnuPos = new THREE.Vector3();
 
   // Expression UI
   private expressionList: Mood[] = ['bored', 'calm', 'happy', 'sad', 'bright', 'blushing', 'winking'];
@@ -90,18 +92,21 @@ export class JugnuSystem extends createSystem({
     
     // Initialize Particle System
     const pGeo = new THREE.SphereGeometry(0.015, 8, 8);
-    const pMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8 });
+    const pMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
     this.particleMesh = new THREE.InstancedMesh(pGeo, pMat, this.maxParticles);
     this.particleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     
     // Hide all particles initially
     const dummy = new THREE.Object3D();
     dummy.scale.setScalar(0);
+    const initialColor = new THREE.Color(0xffffff);
     for (let i = 0; i < this.maxParticles; i++) {
         dummy.updateMatrix();
         this.particleMesh.setMatrixAt(i, dummy.matrix);
+        this.particleMesh.setColorAt(i, initialColor);
         this.particleData.push({ active: false, pos: new THREE.Vector3(), life: 0, maxLife: 1.0 });
     }
+    if (this.particleMesh.instanceColor) this.particleMesh.instanceColor.needsUpdate = true;
     this.world.createTransformEntity(this.particleMesh);
 
     // Initialize UI and Keys
@@ -746,13 +751,38 @@ export class JugnuSystem extends createSystem({
     });
 
     // Particle Trail Update
-    if (activeJugnuModel && this.interactionState === 'Idle' && this.velocity.length() > 0.5) {
-        // Spawn a particle
-        const p = this.particleData[this.nextParticleIdx];
-        p.active = true;
-        p.pos.copy(activeJugnuPos);
-        p.life = p.maxLife;
-        this.nextParticleIdx = (this.nextParticleIdx + 1) % this.maxParticles;
+    if (activeJugnuModel && this.interactionState === 'Idle' && this.throwTimer > 0) {
+        const currentMood = this.expressionList[this.currentExpressionIndex];
+        const color = MoodColors[currentMood] || new THREE.Color(0xffffff);
+
+        if (this.lastJugnuPos.lengthSq() === 0) {
+            this.lastJugnuPos.copy(activeJugnuPos);
+        }
+
+        const numToSpawn = 15;
+        for (let j = 0; j < numToSpawn; j++) {
+            const p = this.particleData[this.nextParticleIdx];
+            p.active = true;
+            
+            const t = j / numToSpawn;
+            p.pos.lerpVectors(this.lastJugnuPos, activeJugnuPos, t);
+            
+            const spread = 0.08;
+            p.pos.x += (Math.random() - 0.5) * spread;
+            p.pos.y += (Math.random() - 0.5) * spread;
+            p.pos.z += (Math.random() - 0.5) * spread;
+            
+            p.life = p.maxLife * (0.6 + Math.random() * 0.4);
+            
+            this.particleMesh.setColorAt(this.nextParticleIdx, color);
+            
+            this.nextParticleIdx = (this.nextParticleIdx + 1) % this.maxParticles;
+        }
+        if (this.particleMesh.instanceColor) this.particleMesh.instanceColor.needsUpdate = true;
+    }
+    
+    if (activeJugnuPos.lengthSq() > 0) {
+        this.lastJugnuPos.copy(activeJugnuPos);
     }
 
     const dummy = new THREE.Object3D();
@@ -764,7 +794,8 @@ export class JugnuSystem extends createSystem({
                 p.active = false;
                 dummy.scale.setScalar(0);
             } else {
-                const scale = p.life / p.maxLife;
+                const t = p.life / p.maxLife;
+                const scale = t * t * t;
                 dummy.position.copy(p.pos);
                 dummy.scale.setScalar(scale);
             }
