@@ -35,6 +35,7 @@ import { JugnuV3Model } from "./JugnuV3Model.js";
 import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
 import { RoomVisualizerSystem } from "./roomVisualizer.js";
 import { DomainExpansionSystem } from "./domainExpansion.js";
+import { CityMapSystem } from "./cityMapSystem.js";
 import { ACESFilmicToneMapping } from "three";
 
 // FIX: Changed paths to use "./" (Relative) instead of "/" (Absolute)
@@ -203,7 +204,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   const panelEntity = world
     .createTransformEntity()
     .addComponent(PanelUI, {
-      config: "./ui/welcome.uikitml", // Changed from .json to .uikitml
+      config: "./ui/welcome.json",
       maxHeight: 0.8,
       maxWidth: 1.6,
     })
@@ -233,5 +234,5 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   logoBanner.rotateY(Math.PI);
   */
 
-  world.registerSystem(PanelSystem).registerSystem(RobotSystem).registerSystem(JugnuSystem).registerSystem(RoomVisualizerSystem).registerSystem(DomainExpansionSystem);
+  world.registerSystem(PanelSystem).registerSystem(RobotSystem).registerSystem(JugnuSystem).registerSystem(RoomVisualizerSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem);
 });

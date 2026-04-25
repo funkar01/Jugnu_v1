@@ -11,7 +11,7 @@ import {
 export class PanelSystem extends createSystem({
   welcomePanel: {
     required: [PanelUI, PanelDocument],
-    where: [eq(PanelUI, "config", "./ui/welcome.uikitml")],
+    where: [eq(PanelUI, "config", "./ui/welcome.json")],
   },
 }) {
   init() {
