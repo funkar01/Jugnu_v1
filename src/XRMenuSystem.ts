@@ -138,13 +138,23 @@ export class XRMenuSystem extends createSystem({
                             // Spawn in front of the camera
                             const headPos = new THREE.Vector3();
                             this.player.head.getWorldPosition(headPos);
+                            
+                            // Ensure a minimum height in case the headPos is incorrectly at y=0 (e.g. due to XR space issues)
+                            const spawnHeight = Math.max(1.4, headPos.y);
+                            
                             const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
                             forward.y = 0; 
                             forward.normalize();
                             
                             const spawnPos = headPos.clone().add(forward.multiplyScalar(1.0));
+                            spawnPos.y = spawnHeight; // Lock to reasonable height
+                            
+                            // Create a look target at the same height so the menu stays upright
+                            const lookTarget = headPos.clone();
+                            lookTarget.y = spawnHeight;
+                            
                             menuBoard.position.copy(spawnPos);
-                            menuBoard.lookAt(headPos);
+                            menuBoard.lookAt(lookTarget);
                         }
                     }
                 });
