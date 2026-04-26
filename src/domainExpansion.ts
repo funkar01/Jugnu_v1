@@ -42,7 +42,36 @@ export class DomainExpansionSystem extends createSystem({
     private leftDebugSphere!: THREE.Mesh;
     private rightDebugSphere!: THREE.Mesh;
 
+    private debugXPressed = false;
+    private debugYPressed = false;
+    private debugMPressed = false;
+    
+    private domainKeys = ["domainEnv", "domainEnv1", "domainEnv2", "domainEnv3"];
+    private currentDomainIndex = 0;
+    private switchCooldown = 0;
+    private switchState: 'None' | 'Out' | 'In' = 'None';
+    private switchProgress = 1.0;
+
+    private isMenuOpen = false;
+    private menuMesh!: THREE.Mesh;
+    private wristButtonMesh!: THREE.Mesh;
+    private wristPos = new THREE.Vector3();
+    private leftWristQuat = new THREE.Quaternion();
+    private menuToggleCooldown = 0;
+
     init() {
+        // --- Debug Keyboard Listener for Desktop ---
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'x') this.debugXPressed = true;
+            if (e.key.toLowerCase() === 'y') this.debugYPressed = true;
+            if (e.key.toLowerCase() === 'm') this.debugMPressed = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            if (e.key.toLowerCase() === 'x') this.debugXPressed = false;
+            if (e.key.toLowerCase() === 'y') this.debugYPressed = false;
+            if (e.key.toLowerCase() === 'm') this.debugMPressed = false;
+        });
+
         // --- Phase 2: High-Performance Spatial UI ---
         const canvas = document.createElement('canvas');
         canvas.width = 512;
@@ -181,8 +210,7 @@ export class DomainExpansionSystem extends createSystem({
 
         // --- Init Sphere ---
         const initSphereGeom = new THREE.SphereGeometry(20.0, 32, 16); // Scaled 10x
-        const textureLoader = new THREE.TextureLoader();
-        const initSphereTex = textureLoader.load('/textures/Domain.png');
+        const initSphereTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]) || new THREE.Texture();
         initSphereTex.colorSpace = THREE.SRGBColorSpace;
         const initSphereMat = new THREE.ShaderMaterial({
             uniforms: {
@@ -225,6 +253,73 @@ export class DomainExpansionSystem extends createSystem({
         this.initSphere.renderOrder = -99; // Render before other transparent objects to fix overlapping
         this.initSphere.visible = false;
         this.world.createTransformEntity(this.initSphere);
+
+        // --- Wrist Button Mesh ---
+        const wristBtnGeom = new THREE.CylinderGeometry(0.0127, 0.0127, 0.005, 32); // 1 inch diameter
+        wristBtnGeom.rotateX(Math.PI / 2);
+        const wristBtnMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.8 });
+        this.wristButtonMesh = new THREE.Mesh(wristBtnGeom, wristBtnMat);
+        this.wristButtonMesh.visible = false;
+        this.world.createTransformEntity(this.wristButtonMesh);
+
+        // --- Domain Menu UI Mesh ---
+        const menuCanvas = document.createElement('canvas');
+        menuCanvas.width = 1024;
+        menuCanvas.height = 256;
+        const menuCtx = menuCanvas.getContext('2d')!;
+        
+        // Glass Background
+        menuCtx.fillStyle = 'rgba(15, 15, 18, 0.8)';
+        menuCtx.strokeStyle = 'rgba(0, 255, 255, 0.5)';
+        menuCtx.lineWidth = 4;
+        menuCtx.beginPath();
+        menuCtx.roundRect(10, 10, 1004, 236, 24);
+        menuCtx.fill();
+        menuCtx.stroke();
+        
+        const loadThumbnails = async () => {
+            const thumbKeys = ["thumb_domainEnv", "thumb_domainEnv1", "thumb_domainEnv2", "thumb_domainEnv3"];
+            const padding = 15;
+            const thumbW = 237;
+            const thumbH = 226;
+            
+            for (let i = 0; i < 4; i++) {
+                const tex = AssetManager.getTexture(thumbKeys[i]);
+                if (tex && tex.image) {
+                    const x = padding + i * (thumbW + padding);
+                    const y = padding;
+                    
+                    menuCtx.save();
+                    menuCtx.beginPath();
+                    menuCtx.roundRect(x, y, thumbW, thumbH, 16);
+                    menuCtx.clip();
+                    menuCtx.drawImage(tex.image as CanvasImageSource, x, y, thumbW, thumbH);
+                    menuCtx.restore();
+                    
+                    menuCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                    menuCtx.lineWidth = 2;
+                    menuCtx.stroke();
+                    
+                    menuCtx.fillStyle = 'white';
+                    menuCtx.font = '24px sans-serif';
+                    menuCtx.textAlign = 'center';
+                    menuCtx.fillText(`Domain ${i}`, x + thumbW/2, y + thumbH - 15);
+                }
+            }
+            if (this.menuMesh && this.menuMesh.material instanceof THREE.MeshBasicMaterial) {
+                if (this.menuMesh.material.map) this.menuMesh.material.map.needsUpdate = true;
+            }
+        };
+        setTimeout(loadThumbnails, 1000);
+
+        const menuTex = new THREE.CanvasTexture(menuCanvas);
+        menuTex.colorSpace = THREE.SRGBColorSpace;
+        const menuGeom = new THREE.PlaneGeometry(1.0, 0.25);
+        const menuMat = new THREE.MeshBasicMaterial({ map: menuTex, transparent: true, side: THREE.DoubleSide, depthTest: false });
+        this.menuMesh = new THREE.Mesh(menuGeom, menuMat);
+        this.menuMesh.renderOrder = 99;
+        this.menuMesh.visible = false;
+        this.world.createTransformEntity(this.menuMesh);
     }
 
     private getIndexData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
@@ -253,18 +348,55 @@ export class DomainExpansionSystem extends createSystem({
         return false;
     }
 
+    private getWristData(handedness: 'left' | 'right', posOut: THREE.Vector3, quatOut: THREE.Quaternion): boolean {
+        const source = this.input.getPrimaryInputSource(handedness);
+        const frame = this.xrFrame;
+        if (!source || !source.hand || !frame) return false;
+
+        const wrist = source.hand.get('wrist');
+        if (!wrist) return false;
+
+        const refSpace = this.renderer.xr.getReferenceSpace();
+        if (!refSpace || typeof frame.getJointPose !== 'function') return false;
+
+        const pose = frame.getJointPose(wrist, refSpace);
+        if (pose) {
+            const m = new THREE.Matrix4().compose(
+                new THREE.Vector3(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z),
+                new THREE.Quaternion(pose.transform.orientation.x, pose.transform.orientation.y, pose.transform.orientation.z, pose.transform.orientation.w),
+                new THREE.Vector3(1, 1, 1)
+            );
+            m.premultiply(this.player.matrixWorld);
+            m.decompose(posOut, quatOut, new THREE.Vector3());
+            return true;
+        }
+        return false;
+    }
+
+    private checkMButton(): boolean {
+        return this.debugMPressed;
+    }
+
     private checkXButton(): boolean {
+        if (this.debugXPressed) return true;
         const session = this.renderer.xr.getSession();
         if (!session) return false;
-
         for (const source of session.inputSources) {
             if (source.gamepad && source.gamepad.buttons) {
-                // X (Left) or A (Right) is typically index 4. Y (Left) or B (Right) is index 5.
-                // We check both 4 and 5 just to be safe for any controller.
                 const button4 = source.gamepad.buttons[4];
-                const button5 = source.gamepad.buttons[5];
-
                 if (button4 && button4.pressed) return true;
+            }
+        }
+        return false;
+    }
+
+    private checkYButton(): boolean {
+        if (this.debugYPressed) return true;
+        const session = this.renderer.xr.getSession();
+        if (!session) return false;
+        for (const source of session.inputSources) {
+            if (source.gamepad && source.gamepad.buttons) {
+                const button5 = source.gamepad.buttons[5];
                 if (button5 && button5.pressed) return true;
             }
         }
@@ -272,8 +404,122 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     update(dt: number) {
+        if (this.switchCooldown > 0) this.switchCooldown -= dt;
+
+        const hasLeftWrist = this.getWristData('left', this.wristPos, this.leftWristQuat);
+        if (hasLeftWrist) {
+            this.wristButtonMesh.position.copy(this.wristPos);
+            this.wristButtonMesh.quaternion.copy(this.leftWristQuat);
+            // Move it slightly up along the local Y axis (normal to the back of the wrist)
+            this.wristButtonMesh.translateY(0.03); 
+            this.wristButtonMesh.visible = true;
+        } else {
+            this.wristButtonMesh.visible = false;
+        }
+
+        if (this.menuToggleCooldown > 0) this.menuToggleCooldown -= dt;
+
+        // Toggle via wrist tap
+        let wristTapped = false;
+        if (this.rightTip.lengthSq() > 0 && hasLeftWrist && this.wristButtonMesh.visible) {
+            const dist = this.rightTip.distanceTo(this.wristButtonMesh.position);
+            if (dist < 0.03) { // 3cm distance to tap the button
+                wristTapped = true;
+            }
+        }
+
+        if ((wristTapped || this.checkMButton()) && this.menuToggleCooldown <= 0) {
+            this.isMenuOpen = !this.isMenuOpen;
+            this.menuToggleCooldown = 1.0; // 1s debounce
+
+            if (this.isMenuOpen) {
+                // Spawn menu in front of the user
+                const dir = new THREE.Vector3(0, 0, -1);
+                dir.applyQuaternion(this.player.head.quaternion);
+                // Position 0.6m in front, slightly down
+                this.menuMesh.position.copy(this.player.head.position).addScaledVector(dir, 0.6);
+                this.menuMesh.position.y -= 0.1;
+                this.menuMesh.lookAt(this.player.head.position);
+                this.menuMesh.visible = true;
+            } else {
+                this.menuMesh.visible = false;
+            }
+        }
+
+        if (this.isMenuOpen && this.menuMesh.visible && this.rightTip.lengthSq() > 0) {
+            const localTip = this.rightTip.clone();
+            this.menuMesh.worldToLocal(localTip);
+
+            // Plane is 1.0 width x 0.25 height
+            // Z depth threshold: 0.05
+            if (Math.abs(localTip.z) < 0.05) {
+                let selectedIndex = -1;
+                if (localTip.x > -0.5 && localTip.x <= -0.25) selectedIndex = 0;
+                else if (localTip.x > -0.25 && localTip.x <= 0.0) selectedIndex = 1;
+                else if (localTip.x > 0.0 && localTip.x <= 0.25) selectedIndex = 2;
+                else if (localTip.x > 0.25 && localTip.x <= 0.5) selectedIndex = 3;
+
+                if (selectedIndex !== -1 && localTip.y > -0.125 && localTip.y < 0.125 && this.menuToggleCooldown <= 0.5) {
+                    // Poked a thumbnail!
+                    this.currentDomainIndex = selectedIndex;
+                    this.isMenuOpen = false;
+                    this.menuMesh.visible = false;
+                    this.menuToggleCooldown = 1.0;
+
+                    // Trigger the switch transition (if in bleed state)
+                    if (this.state === 'Bleed' && this.switchState === 'None') {
+                        this.switchState = 'Out';
+                        this.switchProgress = 1.0;
+                        this.switchCooldown = 2.0;
+                    }
+                }
+            }
+        }
+
+        // --- Domain Switching (Y Button / Y Key) ---
+        if (this.checkYButton() && this.switchCooldown <= 0 && this.state === 'Bleed' && this.bleedProgress >= 1.0 && this.switchState === 'None') {
+            this.switchState = 'Out';
+            this.switchProgress = 1.0;
+            this.switchCooldown = 2.0; // Debounce for the full out/in cycle
+        }
+
+        if (this.switchState === 'Out') {
+            this.switchProgress -= dt * 1.5; // Faster fade out (~0.6s)
+            if (this.switchProgress <= 0.0) {
+                this.switchProgress = 0.0;
+                this.switchState = 'In';
+                
+                // Swap texture when sphere is invisible
+                this.currentDomainIndex = (this.currentDomainIndex + 1) % this.domainKeys.length;
+                const newTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]);
+                if (newTex) {
+                    newTex.colorSpace = THREE.SRGBColorSpace;
+                    newTex.mapping = THREE.EquirectangularReflectionMapping;
+                    
+                    if (this.customMaterial) {
+                        this.customMaterial.uniforms.u_texture.value = newTex;
+                    }
+                    if (this.initSphere && this.initSphere.material instanceof THREE.ShaderMaterial) {
+                        this.initSphere.material.uniforms.u_texture.value = newTex;
+                    }
+                }
+            }
+            if (this.initSphere && this.initSphere.material instanceof THREE.ShaderMaterial) {
+                this.initSphere.material.uniforms.u_progress.value = this.switchProgress;
+            }
+        } else if (this.switchState === 'In') {
+            this.switchProgress += dt * 1.5;
+            if (this.switchProgress >= 1.0) {
+                this.switchProgress = 1.0;
+                this.switchState = 'None';
+            }
+            if (this.initSphere && this.initSphere.material instanceof THREE.ShaderMaterial) {
+                this.initSphere.material.uniforms.u_progress.value = this.switchProgress;
+            }
+        }
+
         // --- Debug: Controller X Button Trigger ---
-        if (this.state !== 'Bleed' && this.checkXButton()) {
+        if (this.state !== 'Bleed' && this.state !== 'Exit' && this.checkXButton()) {
             this.state = 'Bleed';
             if (this.uiMesh) this.uiMesh.visible = false;
             if (this.domainMesh) {
@@ -283,7 +529,8 @@ export class DomainExpansionSystem extends createSystem({
             this.isDomainExpansionTriggered = true;
 
             if (this.initSphere) {
-                this.initSphere.position.copy(this.rightTip); // Default to right tip for debug trigger
+                // If hand tracking isn't active (rightTip is 0,0,0), fallback to head position
+                this.initSphere.position.copy(this.rightTip.lengthSq() > 0 ? this.rightTip : this.player.head.position);
                 this.initSphere.visible = true;
             }
         }
@@ -398,9 +645,11 @@ export class DomainExpansionSystem extends createSystem({
             this.customMaterial.uniforms.u_bleedProgress.value = this.bleedProgress;
             this.customMaterial.uniforms.u_time.value += dt;
 
-            // Sync the equator fade-in with the bleed progress
-            if (this.initSphere && this.initSphere.material instanceof THREE.ShaderMaterial) {
-                this.initSphere.material.uniforms.u_progress.value = this.bleedProgress;
+            // Sync the equator fade-in with the bleed progress, ONLY if not actively switching
+            if (this.switchState === 'None') {
+                if (this.initSphere && this.initSphere.material instanceof THREE.ShaderMaterial) {
+                    this.initSphere.material.uniforms.u_progress.value = this.bleedProgress;
+                }
             }
         } else if (this.state === 'Exit') {
             // Reverse the bleed progress
