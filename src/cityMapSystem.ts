@@ -177,14 +177,15 @@ export class CityMapSystem extends createSystem() {
 
     private getPinchData(handedness: 'left' | 'right', refSpace: XRReferenceSpace, tipPosOut: THREE.Vector3): boolean {
         const source = this.input.getPrimaryInputSource(handedness);
-        if (!source || !source.hand || !this.xrFrame) return false;
+        const frame = this.xrFrame;
+        if (!source || !source.hand || !frame || typeof frame.getJointPose !== 'function') return false;
         
         const indexTip = source.hand.get('index-finger-tip');
         const thumbTip = source.hand.get('thumb-tip');
         if (!indexTip || !thumbTip) return false;
 
-        const indexPose = this.xrFrame.getJointPose(indexTip, refSpace);
-        const thumbPose = this.xrFrame.getJointPose(thumbTip, refSpace);
+        const indexPose = frame.getJointPose(indexTip, refSpace);
+        const thumbPose = frame.getJointPose(thumbTip, refSpace);
         
         if (indexPose && thumbPose) {
            const ip = new THREE.Vector3().copy(indexPose.transform.position as any);

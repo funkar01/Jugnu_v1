@@ -46,14 +46,14 @@
     "panel-container": {
       "content": {
         "alignItems": "flex-start",
-        "padding": "2",
+        "padding": "3",
         "width": "50",
         "display": "flex",
         "flexDirection": "column",
-        "backgroundColor": "#09090b",
-        "borderColor": "#27272a",
-        "borderWidth": "0.15",
-        "borderRadius": 3
+        "backgroundColor": "rgba(5, 5, 26, 0.9)",
+        "borderColor": "#ffd700",
+        "borderWidth": "0.6",
+        "borderRadius": "4 2 5 3"
       }
     },
     "heading": {
