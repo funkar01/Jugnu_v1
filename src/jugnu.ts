@@ -292,10 +292,16 @@ export class JugnuSystem extends createSystem({
         })
       });
       
-      const data = await response.json();
+      const textResponse = await response.text();
+      let data;
+      try {
+          data = JSON.parse(textResponse);
+      } catch (err) {
+          throw new Error(`Invalid JSON from server (Status: ${response.status}). Response: ${textResponse.substring(0, 50)}...`);
+      }
       
       if (!response.ok) {
-        throw new Error(data.error?.message || "Unknown Gemini API Error");
+        throw new Error(data.error?.message || data.error || "Unknown Gemini API Error");
       }
       
       let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -326,9 +332,13 @@ export class JugnuSystem extends createSystem({
          });
 
          this.speak(reply);
+      } else {
+         this.updateTranscriptUI("Audio received", "I didn't quite catch that. Could you repeat?");
+         this.speak("I didn't quite catch that. Could you repeat?");
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Gemini Error:", e);
+      this.updateTranscriptUI("Error", `Connection failed: ${e.message || "Unknown error"}`);
       this.queries.jugnu.entities.forEach(entity => {
           const jugModel = entity.object3D as JugnuV3Model;
           if (jugModel && typeof jugModel.setMood === 'function') {
