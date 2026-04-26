@@ -43,7 +43,7 @@ export class JugnuSystem extends createSystem({
   private headPos!: THREE.Vector3;
 
   // Interaction & Room State
-  private interactionState: 'WaitingForRoom' | 'Idle' | 'Following' | 'LerpingToHand' | 'Attached' = 'WaitingForRoom';
+  private interactionState: 'WaitingForRoom' | 'Idle' | 'Following' | 'LerpingToHand' | 'Attached' | 'Anchored' = 'WaitingForRoom';
   private roomPromptTimer = 0;
   private sceneCaptureRequested = false;
   private roomWaitTimer = 1.0;
@@ -495,7 +495,7 @@ export class JugnuSystem extends createSystem({
     const isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
     const isPinchingRight = this.getPinchData('right', this.rightPinchTip);
 
-    if (this.interactionState === 'Idle' || this.interactionState === 'Following') {
+    if (this.interactionState === 'Idle' || this.interactionState === 'Following' || this.interactionState === 'Anchored') {
         let activeHand: 'left' | 'right' | null = null;
         let activeTip = this.leftPinchTip;
 
@@ -540,20 +540,29 @@ export class JugnuSystem extends createSystem({
         const currentTip = this.attachedHand === 'left' ? this.leftPinchTip : this.rightPinchTip;
         
         if (!isPinching) {
-            this.interactionState = 'Idle';
-            this.throwTimer = 3.0; 
             this.attachedHand = null;
-            
-            this.queries.jugnu.entities.forEach(entity => {
-                if (!entity.object3D) return;
-                this.basePositions.set(entity, entity.object3D.position.clone());
-                if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
-                entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 });
-                if (!entity.hasComponent(PhysicsShape)) {
-                     entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, radius: 0.15 });
-                }
-                entity.addComponent(PhysicsManipulation, { linearVelocity: [this.handVelocity.x * 1.5, this.handVelocity.y * 1.5, this.handVelocity.z * 1.5] });
-            });
+            if (this.handVelocity.lengthSq() > 1.0) {
+                this.interactionState = 'Idle';
+                this.throwTimer = 3.0; 
+                this.queries.jugnu.entities.forEach(entity => {
+                    if (!entity.object3D) return;
+                    this.basePositions.set(entity, entity.object3D.position.clone());
+                    if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
+                    entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 });
+                    if (!entity.hasComponent(PhysicsShape)) entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, radius: 0.15 });
+                    entity.addComponent(PhysicsManipulation, { linearVelocity: [this.handVelocity.x * 1.5, this.handVelocity.y * 1.5, this.handVelocity.z * 1.5] });
+                });
+            } else {
+                this.interactionState = 'Anchored';
+                this.centerPos.copy(currentTip);
+                this.queries.jugnu.entities.forEach(entity => {
+                    const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
+                    if (currentState !== PhysicsState.Kinematic) {
+                        if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
+                        entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+                    }
+                });
+            }
             this.velocity.set(0, 0, 0);
         } else {
             this.lerpTime += safeDt;
@@ -573,23 +582,29 @@ export class JugnuSystem extends createSystem({
         const currentTip = this.attachedHand === 'left' ? this.leftPinchTip : this.rightPinchTip;
         
         if (!isPinching) {
-            this.interactionState = 'Idle';
-            this.throwTimer = 3.0; 
             this.attachedHand = null;
-            
-            this.queries.jugnu.entities.forEach(entity => {
-                if (!entity.object3D) return;
-                this.basePositions.set(entity, entity.object3D.position.clone());
-                const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
-                if (currentState !== PhysicsState.Dynamic) {
+            if (this.handVelocity.lengthSq() > 1.0) {
+                this.interactionState = 'Idle';
+                this.throwTimer = 3.0; 
+                this.queries.jugnu.entities.forEach(entity => {
+                    if (!entity.object3D) return;
+                    this.basePositions.set(entity, entity.object3D.position.clone());
                     if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
                     entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 });
-                }
-                if (!entity.hasComponent(PhysicsShape)) {
-                     entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, radius: 0.15 });
-                }
-                entity.addComponent(PhysicsManipulation, { linearVelocity: [this.handVelocity.x * 1.5, this.handVelocity.y * 1.5, this.handVelocity.z * 1.5] });
-            });
+                    if (!entity.hasComponent(PhysicsShape)) entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, radius: 0.15 });
+                    entity.addComponent(PhysicsManipulation, { linearVelocity: [this.handVelocity.x * 1.5, this.handVelocity.y * 1.5, this.handVelocity.z * 1.5] });
+                });
+            } else {
+                this.interactionState = 'Anchored';
+                this.centerPos.copy(currentTip);
+                this.queries.jugnu.entities.forEach(entity => {
+                    const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
+                    if (currentState !== PhysicsState.Kinematic) {
+                        if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
+                        entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+                    }
+                });
+            }
             this.velocity.set(0, 0, 0);
         } else {
             this.targetPos.copy(currentTip);
@@ -678,22 +693,25 @@ export class JugnuSystem extends createSystem({
           if (this.throwTimer > 0) {
               this.throwTimer -= safeDt;
           } else {
-              this.interactionState = 'Following';
+              this.interactionState = 'Anchored';
+              this.centerPos.copy(obj.position);
               const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
               if (currentState !== PhysicsState.Kinematic) {
                   if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
                   entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
               }
           }
-      } else if (this.interactionState === 'Following') {
-          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
-          forward.y = 0; 
-          forward.normalize();
-          
-          const targetCenter = this.headPos.clone().add(forward.multiplyScalar(0.6)); 
-          targetCenter.y -= 0.15; 
-          
-          this.centerPos.lerp(targetCenter, 2.0 * safeDt);
+      } else if (this.interactionState === 'Following' || this.interactionState === 'Anchored') {
+          if (this.interactionState === 'Following') {
+              const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+              forward.y = 0; 
+              forward.normalize();
+              
+              const targetCenter = this.headPos.clone().add(forward.multiplyScalar(0.6)); 
+              targetCenter.y -= 0.15; 
+              
+              this.centerPos.lerp(targetCenter, 2.0 * safeDt);
+          }
 
           const floatX = this.noise(this.floatTime * 0.5, 0) * this.floatRadius;
           const floatY = this.noise(this.floatTime * 0.5, 1) * this.floatRadius * 0.5;
@@ -721,7 +739,7 @@ export class JugnuSystem extends createSystem({
           }
       } else if (this.interactionState === 'Attached') {
           const hoverTarget = this.targetPos.clone();
-          hoverTarget.y += 0.08; 
+          // hoverTarget.y += 0.08; 
 
           const displacement = new THREE.Vector3().subVectors(obj.position, hoverTarget);
           const force = displacement.multiplyScalar(-this.springStiffness);

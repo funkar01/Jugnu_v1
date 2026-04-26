@@ -69,7 +69,42 @@ const assets: AssetManifest = {
     priority: "critical",
   },
   domainEnv: {
-    url: "./textures/Domain.png",
+    url: "./Domains/Domain.png",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
+  domainEnv1: {
+    url: "./Domains/Domain1.png",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
+  domainEnv2: {
+    url: "./Domains/Domain2.png",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
+  domainEnv3: {
+    url: "./Domains/Domain3.png",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
+  thumb_domainEnv: {
+    url: "./Domains/thumbs/thumb_Domain.jpg",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
+  thumb_domainEnv1: {
+    url: "./Domains/thumbs/thumb_Domain1.jpg",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
+  thumb_domainEnv2: {
+    url: "./Domains/thumbs/thumb_Domain2.jpg",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
+  thumb_domainEnv3: {
+    url: "./Domains/thumbs/thumb_Domain3.jpg",
     type: AssetType.Texture,
     priority: "critical",
   },
