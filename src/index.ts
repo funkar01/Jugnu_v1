@@ -36,6 +36,9 @@ import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
 import { RoomVisualizerSystem } from "./roomVisualizer.js";
 import { DomainExpansionSystem } from "./domainExpansion.js";
 import { CityMapSystem } from "./cityMapSystem.js";
+import { XRMenuSystem, ConsoleUI, MenuUI, ToggleAction } from "./XRMenuSystem.js";
+import { XRConsoleBoard } from "./XRConsoleBoard.js";
+import { XRMenuBoard } from "./XRMenuBoard.js";
 import { ACESFilmicToneMapping } from "three";
 
 // FIX: Changed paths to use "./" (Relative) instead of "/" (Absolute)
@@ -202,6 +205,29 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   world.createTransformEntity(transcriptBoard)
     .addComponent(TranscriptUI);
 
+  const consoleBoard = new XRConsoleBoard();
+  consoleBoard.position.set(-1.0, deskTopY + 0.5, -1.0);
+  consoleBoard.rotation.y = Math.PI / 8; // Angled slightly towards the user
+  world.createTransformEntity(consoleBoard)
+    .addComponent(ConsoleUI);
+
+  const menuBoard = new XRMenuBoard();
+  // We'll let the XRMenuSystem manage the menuBoard's position and visibility when the gesture is triggered
+  world.createTransformEntity(menuBoard)
+    .addComponent(MenuUI);
+  
+  world.createTransformEntity(menuBoard.buttonConsole)
+    .addComponent(Interactable)
+    .addComponent(ToggleAction, { action: "console" });
+  
+  world.createTransformEntity(menuBoard.buttonTranscript)
+    .addComponent(Interactable)
+    .addComponent(ToggleAction, { action: "transcript" });
+  
+  world.createTransformEntity(menuBoard.buttonEdges)
+    .addComponent(Interactable)
+    .addComponent(ToggleAction, { action: "scan_edges" });
+
   const panelEntity = world
     .createTransformEntity()
     .addComponent(PanelUI, {
@@ -220,20 +246,5 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     panelEntity.object3D.position.set(0, 1.29, -1.9);
   }
 
-  /*
-  const webxrLogoTexture = AssetManager.getTexture("webxr")!;
-  webxrLogoTexture.colorSpace = SRGBColorSpace;
-  const logoBanner = new Mesh(
-    new PlaneGeometry(3.39, 0.96),
-    new MeshBasicMaterial({
-      map: webxrLogoTexture,
-      transparent: true,
-    }),
-  );
-  world.createTransformEntity(logoBanner);
-  logoBanner.position.set(0, 1, 1.8);
-  logoBanner.rotateY(Math.PI);
-  */
-
-  world.registerSystem(PanelSystem).registerSystem(RobotSystem).registerSystem(JugnuSystem).registerSystem(RoomVisualizerSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem);
+  world.registerSystem(PanelSystem).registerSystem(RobotSystem).registerSystem(JugnuSystem).registerSystem(RoomVisualizerSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem).registerSystem(XRMenuSystem);
 });
