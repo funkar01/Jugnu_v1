@@ -1,10 +1,6 @@
 import { createSystem, XRMesh, XRPlane, PhysicsBody, PhysicsState, PhysicsShape, PhysicsShapeType } from "@iwsdk/core";
 import * as THREE from "three";
 
-export const GlobalRoomConfig = {
-    showEdges: true
-};
-
 export class RoomVisualizerSystem extends createSystem({
     meshes: { required: [XRMesh] },
     planes: { required: [XRPlane] }
@@ -97,16 +93,6 @@ export class RoomVisualizerSystem extends createSystem({
                               friction: 0.2, 
                               restitution: 1.2 // High restitution to ensure it bounces back clearly
                           });
-                }
-            } else {
-                // If it already has PhysicsBody, just update the edge visibility
-                const obj = entity.object3D;
-                if (obj) {
-                    obj.traverse((child) => {
-                        if (child instanceof THREE.LineSegments) {
-                            child.visible = GlobalRoomConfig.showEdges;
-                        }
-                    });
                 }
             }
         });
