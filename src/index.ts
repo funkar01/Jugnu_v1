@@ -36,6 +36,9 @@ import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
 import { RoomVisualizerSystem } from "./roomVisualizer.js";
 import { DomainExpansionSystem } from "./domainExpansion.js";
 import { CityMapSystem } from "./cityMapSystem.js";
+import { XRMenuSystem, ConsoleUI, MenuUI, ToggleAction } from "./XRMenuSystem.js";
+import { XRConsoleBoard } from "./XRConsoleBoard.js";
+import { XRMenuBoard } from "./XRMenuBoard.js";
 import { ACESFilmicToneMapping } from "three";
 
 // FIX: Changed paths to use "./" (Relative) instead of "/" (Absolute)
@@ -194,8 +197,8 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     .addComponent(Interactable)
     .addComponent(Jugnu)
     .addComponent(PhysicsBody, {
-      state: PhysicsState.Dynamic,
-      gravityFactor: 1.0,
+      state: PhysicsState.Kinematic,
+      gravityFactor: 0.0,
       linearDamping: 0.1,
       angularDamping: 0.1,
     })
@@ -211,24 +214,45 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   transcriptBoard.position.set(1.0, deskTopY + 0.5, -1.0);
   transcriptBoard.rotation.y = -Math.PI / 8; // Angled slightly towards the user
   world.createTransformEntity(transcriptBoard)
-    .addComponent(TranscriptUI);
+    .addComponent(TranscriptUI)
+    .addComponent(Interactable)
+    .addComponent(DistanceGrabbable, { movementMode: MovementMode.MoveFromTarget })
+    .addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 })
+    .addComponent(PhysicsShape, { shape: PhysicsShapeType.Box, dimensions: [1.6, 1.6, 0.05] });
+
+  const consoleBoard = new XRConsoleBoard();
+  consoleBoard.position.set(-1.0, deskTopY + 0.5, -1.0);
+  consoleBoard.rotation.y = Math.PI / 8; // Angled slightly towards the user
+  world.createTransformEntity(consoleBoard)
+    .addComponent(ConsoleUI)
+    .addComponent(Interactable)
+    .addComponent(DistanceGrabbable, { movementMode: MovementMode.MoveFromTarget })
+    .addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 })
+    .addComponent(PhysicsShape, { shape: PhysicsShapeType.Box, dimensions: [1.6, 1.6, 0.05] });
+
+  const menuBoard = new XRMenuBoard();
+  menuBoard.visible = false;
+  // We'll let the XRMenuSystem manage the menuBoard's position and visibility when the gesture is triggered
+  world.createTransformEntity(menuBoard)
+    .addComponent(MenuUI)
+    .addComponent(Interactable)
+    .addComponent(DistanceGrabbable, { movementMode: MovementMode.MoveFromTarget })
+    .addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 })
+    .addComponent(PhysicsShape, { shape: PhysicsShapeType.Box, dimensions: [0.8, 0.8, 0.05] });
+  
+  world.createTransformEntity(menuBoard.buttonConsole)
+    .addComponent(Interactable)
+    .addComponent(ToggleAction, { action: "console" });
+  
+  world.createTransformEntity(menuBoard.buttonTranscript)
+    .addComponent(Interactable)
+    .addComponent(ToggleAction, { action: "transcript" });
+  
+  world.createTransformEntity(menuBoard.buttonEdges)
+    .addComponent(Interactable)
+    .addComponent(ToggleAction, { action: "scan_edges" });
 
 
 
-  /*
-  const webxrLogoTexture = AssetManager.getTexture("webxr")!;
-  webxrLogoTexture.colorSpace = SRGBColorSpace;
-  const logoBanner = new Mesh(
-    new PlaneGeometry(3.39, 0.96),
-    new MeshBasicMaterial({
-      map: webxrLogoTexture,
-      transparent: true,
-    }),
-  );
-  world.createTransformEntity(logoBanner);
-  logoBanner.position.set(0, 1, 1.8);
-  logoBanner.rotateY(Math.PI);
-  */
-
-  world.registerSystem(PanelSystem).registerSystem(JugnuSystem).registerSystem(RoomVisualizerSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem);
+  world.registerSystem(PanelSystem).registerSystem(RobotSystem).registerSystem(JugnuSystem).registerSystem(RoomVisualizerSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem).registerSystem(XRMenuSystem);
 });
