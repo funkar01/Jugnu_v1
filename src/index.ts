@@ -105,6 +105,21 @@ const assets: AssetManifest = {
     type: AssetType.Texture,
     priority: "critical",
   },
+  tutorial_pinch: {
+    url: "./UI icons/Pinch 1.png",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
+  tutorial_uwu: {
+    url: "./UI icons/uwu 1.png",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
+  tutorial_tap: {
+    url: "./UI icons/Tap 1.png",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
 };
 
 World.create(document.getElementById("scene-container") as HTMLDivElement, {
