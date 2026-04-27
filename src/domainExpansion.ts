@@ -443,7 +443,9 @@ export class DomainExpansionSystem extends createSystem({
                 
                 // Spawn menu in front of the user
                 const dir = new THREE.Vector3(0, 0, -1);
-                dir.applyQuaternion(this.player.head.quaternion);
+                const headWorldQuat = new THREE.Quaternion();
+                this.player.head.getWorldQuaternion(headWorldQuat);
+                dir.applyQuaternion(headWorldQuat);
                 // Position 0.6m in front, slightly down
                 this.menuMesh.position.copy(this.player.head.position).addScaledVector(dir, 0.6);
                 this.menuMesh.position.y -= 0.1;
