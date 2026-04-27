@@ -360,7 +360,8 @@ export class JugnuSystem extends createSystem({
       this.interactionState = 'Following';
       
       this.player.head.getWorldPosition(this.headPos);
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+      this.player.head.getWorldQuaternion(this.headQuat);
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.headQuat);
       forward.y = 0; 
       forward.normalize();
       
@@ -373,6 +374,11 @@ export class JugnuSystem extends createSystem({
           if (e.object3D) {
               e.object3D.position.copy(spawnPos);
               e.object3D.visible = true; 
+          }
+          const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
+          if (currentState !== PhysicsState.Kinematic) {
+              if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
+              e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
           }
       });
   }
@@ -705,7 +711,8 @@ export class JugnuSystem extends createSystem({
           }
       } else if (this.interactionState === 'Following' || this.interactionState === 'Anchored') {
           if (this.interactionState === 'Following') {
-              const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+              this.player.head.getWorldQuaternion(this.headQuat);
+              const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.headQuat);
               forward.y = 0; 
               forward.normalize();
               
