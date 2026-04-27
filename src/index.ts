@@ -38,6 +38,7 @@ import { DomainExpansionSystem } from "./domainExpansion.js";
 import { CityMapSystem } from "./cityMapSystem.js";
 import { ACESFilmicToneMapping } from "three";
 
+//Test
 // FIX: Changed paths to use "./" (Relative) instead of "/" (Absolute)
 const assets: AssetManifest = {
   chimeSound: {
@@ -143,8 +144,8 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   const { camera, renderer } = world;
 
   if (renderer) {
-      renderer.toneMapping = ACESFilmicToneMapping;
-      renderer.outputColorSpace = SRGBColorSpace;
+    renderer.toneMapping = ACESFilmicToneMapping;
+    renderer.outputColorSpace = SRGBColorSpace;
   }
 
   camera.position.set(-4, 1.5, -6);
@@ -197,7 +198,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
 
 
   const juguModel = new JugnuV3Model();
-  
+
   // Ensure Jugnu floats above desk instead of using bounds logic (which breaks due to 12m plane)
   const deskTopY = 1.05;
   juguModel.position.set(0, deskTopY + 0.4, -0.8);
