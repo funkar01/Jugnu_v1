@@ -433,6 +433,13 @@ export class DomainExpansionSystem extends createSystem({
             this.menuToggleCooldown = 1.0; // 1s debounce
 
             if (this.isMenuOpen) {
+                // Advance Instruction Step 2 -> 3
+                this.queries.jugnu.entities.forEach(e => {
+                    if (e.getValue(Jugnu, "instructionStep") === 2) {
+                        e.setValue(Jugnu, "instructionStep", 3);
+                    }
+                });
+                
                 // Spawn menu in front of the user
                 const dir = new THREE.Vector3(0, 0, -1);
                 dir.applyQuaternion(this.player.head.quaternion);
@@ -527,6 +534,13 @@ export class DomainExpansionSystem extends createSystem({
                 this.domainMesh.position.set(0, 0, 0);
             }
             this.isDomainExpansionTriggered = true;
+            
+            // Advance Instruction Step 1 -> 2
+            this.queries.jugnu.entities.forEach(e => {
+                if (e.getValue(Jugnu, "instructionStep") === 1) {
+                    e.setValue(Jugnu, "instructionStep", 2);
+                }
+            });
 
             if (this.initSphere) {
                 // If hand tracking isn't active (rightTip is 0,0,0), fallback to head position
@@ -562,6 +576,13 @@ export class DomainExpansionSystem extends createSystem({
                     this.state = 'UI';
                     this.uiTimer = 10.0; // 10-second window
                     this.uiMesh.visible = true;
+                    
+                    // Advance Instruction Step 1 -> 2
+                    this.queries.jugnu.entities.forEach(e => {
+                        if (e.getValue(Jugnu, "instructionStep") === 1) {
+                            e.setValue(Jugnu, "instructionStep", 2);
+                        }
+                    });
                 }
             }
         } else if (this.state === 'UI') {

@@ -3,7 +3,7 @@
     "iwsdk-dev-mcp": {
       "command": "node",
       "args": [
-        "I:\\AntiGravities\\Jugnu_v1\\node_modules\\@iwsdk\\vite-plugin-dev\\dist\\mcp-server.js",
+        "C:\\Users\\SSD\\Documents\\GitHub\\Jugnu_v1\\node_modules\\@iwsdk\\vite-plugin-dev\\dist\\mcp-server.js",
         "--port",
         "8081",
         "--client-version",
@@ -13,7 +13,7 @@
     "iwsdk-rag-local": {
       "command": "node",
       "args": [
-        "I:\\AntiGravities\\Jugnu_v1\\node_modules\\@felixtz\\iwsdk-rag-mcp\\dist\\index.js"
+        "C:\\Users\\SSD\\Documents\\GitHub\\Jugnu_v1\\node_modules\\@felixtz\\iwsdk-rag-mcp\\dist\\index.js"
       ]
     },
     "hzdb": {

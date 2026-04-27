@@ -33,13 +33,42 @@ export class JugnuTranscriptBoard extends THREE.Group {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // Glassmorphism Background
-        ctx.fillStyle = 'rgba(15, 15, 18, 0.7)';
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-        ctx.lineWidth = 3;
+        // Hand-drawn aesthetic Background
+        ctx.fillStyle = 'rgba(5, 5, 26, 0.85)'; // Dark blue background
+        ctx.strokeStyle = '#ffd700'; // Yellow hand-drawn border
+        
+        const x = 15;
+        const y = 15;
+        const w = this.canvas.width - 30;
+        const h = this.canvas.height - 30;
+
+        // Base jagged background
+        ctx.lineWidth = 10;
         ctx.beginPath();
-        ctx.roundRect(10, 10, this.canvas.width - 20, this.canvas.height - 20, 32);
+        ctx.moveTo(x + 10, y + 5);
+        ctx.lineTo(x + w / 2, y + 2);
+        ctx.lineTo(x + w - 5, y + 10);
+        ctx.lineTo(x + w + 2, y + h / 2);
+        ctx.lineTo(x + w - 10, y + h - 5);
+        ctx.lineTo(x + w / 2, y + h + 2);
+        ctx.lineTo(x + 5, y + h - 10);
+        ctx.lineTo(x - 2, y + h / 2);
+        ctx.closePath();
         ctx.fill();
+        ctx.stroke();
+
+        // Secondary sketchy stroke
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(x + 5, y + 8);
+        ctx.lineTo(x + w / 2, y + 6);
+        ctx.lineTo(x + w - 8, y + 15);
+        ctx.lineTo(x + w - 4, y + h / 2);
+        ctx.lineTo(x + w - 12, y + h - 8);
+        ctx.lineTo(x + w / 2, y + h - 4);
+        ctx.lineTo(x + 8, y + h - 12);
+        ctx.lineTo(x + 2, y + h / 2);
+        ctx.closePath();
         ctx.stroke();
 
         // Title/Header

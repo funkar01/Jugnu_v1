@@ -182,31 +182,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     });
   */
 
-  const { scene: robotMesh } = AssetManager.getGLTF("robot")!;
-  robotMesh.position.set(-1.2, 0.95, -1.8);
-  robotMesh.scale.setScalar(0.5);
 
-  world
-    .createTransformEntity(robotMesh)
-    .addComponent(Interactable)
-    .addComponent(Robot)
-    .addComponent(AudioSource, {
-      src: "./audio/chime.mp3",
-      maxInstances: 3,
-      playbackMode: PlaybackMode.FadeRestart,
-    })
-    .addComponent(PhysicsBody, {
-      state: PhysicsState.Kinematic,
-      linearDamping: 0.3,
-      angularDamping: 0.3,
-      gravityFactor: 0.0,
-    })
-    .addComponent(PhysicsShape, {
-      shape: PhysicsShapeType.ConvexHull,
-      density: 1.0,
-      friction: 0.7,
-      restitution: 0.05,
-    });
 
   const juguModel = new JugnuV3Model();
   
@@ -276,23 +252,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     .addComponent(Interactable)
     .addComponent(ToggleAction, { action: "scan_edges" });
 
-  const panelEntity = world
-    .createTransformEntity()
-    .addComponent(PanelUI, {
-      config: "./ui/welcome.json",
-      maxHeight: 0.8,
-      maxWidth: 1.6,
-    })
-    .addComponent(Interactable)
-    .addComponent(ScreenSpace, {
-      top: "20px",
-      left: "20px",
-      height: "40%",
-    });
-  
-  if (panelEntity.object3D) {
-    panelEntity.object3D.position.set(0, 1.29, -1.9);
-  }
+
 
   world.registerSystem(PanelSystem).registerSystem(RobotSystem).registerSystem(JugnuSystem).registerSystem(RoomVisualizerSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem).registerSystem(XRMenuSystem);
 });

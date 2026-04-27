@@ -7,7 +7,9 @@ import * as THREE from "three";
 // Replace this URL when deploying, or use VITE_BACKEND_URL in .env
 const BACKEND_URL = ((import.meta as any).env.VITE_BACKEND_URL as string) || "/api/gemini";
 
-export const Jugnu = createComponent("Jugnu", {});
+import { JugnuInstructionBoard } from "./JugnuInstructionBoard.js";
+
+export const Jugnu = createComponent("Jugnu", { instructionStep: { type: "Int8", default: 0 } });
 export const TranscriptUI = createComponent("TranscriptUI", {});
 
 export class JugnuSystem extends createSystem({
@@ -82,7 +84,12 @@ export class JugnuSystem extends createSystem({
   private expressionList: Mood[] = ['bored', 'calm', 'happy', 'sad', 'bright', 'blushing', 'winking'];
   private currentExpressionIndex = 2; // Default to happy
 
+  private instructionBoard!: JugnuInstructionBoard;
+
   init() {
+    this.instructionBoard = new JugnuInstructionBoard();
+    this.world.createTransformEntity(this.instructionBoard);
+
     this.lookAtTarget = new Vector3();
     this.vec3 = new Vector3();
     this.headQuat = new THREE.Quaternion();
@@ -527,6 +534,9 @@ export class JugnuSystem extends createSystem({
                 this.velocity.set(0, 0, 0);
 
                 this.queries.jugnu.entities.forEach(e => {
+                    if (e.getValue(Jugnu, "instructionStep") === 0) {
+                        e.setValue(Jugnu, "instructionStep", 1);
+                    }
                     const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
                     if (currentState !== PhysicsState.Kinematic) {
                         if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
@@ -549,7 +559,7 @@ export class JugnuSystem extends createSystem({
                     this.basePositions.set(entity, entity.object3D.position.clone());
                     if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
                     entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 });
-                    if (!entity.hasComponent(PhysicsShape)) entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, radius: 0.15 });
+                    if (!entity.hasComponent(PhysicsShape)) entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
                     entity.addComponent(PhysicsManipulation, { linearVelocity: [this.handVelocity.x * 1.5, this.handVelocity.y * 1.5, this.handVelocity.z * 1.5] });
                 });
             } else {
@@ -591,7 +601,7 @@ export class JugnuSystem extends createSystem({
                     this.basePositions.set(entity, entity.object3D.position.clone());
                     if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
                     entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 });
-                    if (!entity.hasComponent(PhysicsShape)) entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, radius: 0.15 });
+                    if (!entity.hasComponent(PhysicsShape)) entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
                     entity.addComponent(PhysicsManipulation, { linearVelocity: [this.handVelocity.x * 1.5, this.handVelocity.y * 1.5, this.handVelocity.z * 1.5] });
                 });
             } else {
@@ -647,8 +657,10 @@ export class JugnuSystem extends createSystem({
 
     let activeJugnuModel: JugnuV3Model | null = null;
     let activeJugnuPos = new THREE.Vector3();
+    let instructionStep = 0;
 
     this.queries.jugnu.entities.forEach((entity) => {
+      instructionStep = entity.getValue(Jugnu, "instructionStep") as number;
       const obj = entity.object3D;
       const jugModel = obj as JugnuV3Model;
       if (!obj || !jugModel || typeof jugModel.update !== 'function') return;
@@ -807,6 +819,23 @@ export class JugnuSystem extends createSystem({
             this.nextParticleIdx = (this.nextParticleIdx + 1) % this.maxParticles;
         }
         if (this.particleMesh.instanceColor) this.particleMesh.instanceColor.needsUpdate = true;
+    }
+
+    // Update Instruction Board Position & Text
+    if (activeJugnuModel && this.instructionBoard) {
+        if (instructionStep >= 3) {
+            this.instructionBoard.visible = false;
+        } else {
+            this.instructionBoard.visible = true;
+            this.instructionBoard.setStep(instructionStep);
+            
+            // Position to the top-right
+            const offset = new THREE.Vector3(0.2, 0.25, 0);
+            offset.applyQuaternion(this.player.head.quaternion);
+            
+            this.instructionBoard.position.copy(activeJugnuPos).add(offset);
+            this.instructionBoard.lookAt(this.headPos);
+        }
     }
     
     if (activeJugnuPos.lengthSq() > 0) {
