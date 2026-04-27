@@ -48,6 +48,7 @@ export class DomainExpansionSystem extends createSystem({
     
     private domainKeys = ["domainEnv", "domainEnv1", "domainEnv2", "domainEnv3"];
     private currentDomainIndex = 0;
+    private targetDomainIndex = 0;
     private switchCooldown = 0;
     private switchState: 'None' | 'Out' | 'In' = 'None';
     private switchProgress = 1.0;
@@ -468,7 +469,7 @@ export class DomainExpansionSystem extends createSystem({
 
                 if (selectedIndex !== -1 && localTip.y > -0.125 && localTip.y < 0.125 && this.menuToggleCooldown <= 0.5) {
                     // Poked a thumbnail!
-                    this.currentDomainIndex = selectedIndex;
+                    this.targetDomainIndex = selectedIndex;
                     this.isMenuOpen = false;
                     this.menuMesh.visible = false;
                     this.menuToggleCooldown = 1.0;
@@ -485,6 +486,7 @@ export class DomainExpansionSystem extends createSystem({
 
         // --- Domain Switching (Y Button / Y Key) ---
         if (this.checkYButton() && this.switchCooldown <= 0 && this.state === 'Bleed' && this.bleedProgress >= 1.0 && this.switchState === 'None') {
+            this.targetDomainIndex = (this.currentDomainIndex + 1) % this.domainKeys.length;
             this.switchState = 'Out';
             this.switchProgress = 1.0;
             this.switchCooldown = 2.0; // Debounce for the full out/in cycle
@@ -497,7 +499,7 @@ export class DomainExpansionSystem extends createSystem({
                 this.switchState = 'In';
                 
                 // Swap texture when sphere is invisible
-                this.currentDomainIndex = (this.currentDomainIndex + 1) % this.domainKeys.length;
+                this.currentDomainIndex = this.targetDomainIndex;
                 const newTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]);
                 if (newTex) {
                     newTex.colorSpace = THREE.SRGBColorSpace;
@@ -573,9 +575,20 @@ export class DomainExpansionSystem extends createSystem({
                 const dist = this.leftTip.distanceTo(this.rightTip);
                 if (dist < 0.15) { // 15cm trigger distance to prevent tracking dropout when hands get too close
                     this.isDomainExpansionTriggered = true;
-                    this.state = 'UI';
-                    this.uiTimer = 10.0; // 10-second window
-                    this.uiMesh.visible = true;
+                    
+                    // Directly initialize Bleed state
+                    this.state = 'Bleed';
+                    if (this.uiMesh) this.uiMesh.visible = false;
+                    if (this.domainMesh) {
+                        this.domainMesh.visible = true;
+                        this.domainMesh.position.set(0, 0, 0);
+                    }
+                    
+                    if (this.initSphere) {
+                        // Spawn exactly between the two index fingers
+                        this.initSphere.position.lerpVectors(this.leftTip, this.rightTip, 0.5);
+                        this.initSphere.visible = true;
+                    }
                     
                     // Advance Instruction Step 1 -> 2
                     this.queries.jugnu.entities.forEach(e => {
@@ -583,58 +596,6 @@ export class DomainExpansionSystem extends createSystem({
                             e.setValue(Jugnu, "instructionStep", 2);
                         }
                     });
-                }
-            }
-        } else if (this.state === 'UI') {
-            this.uiTimer -= dt;
-            if (this.uiTimer <= 0) {
-                // Timeout reached
-                this.state = 'None';
-                this.uiMesh.visible = false;
-                setTimeout(() => { this.isDomainExpansionTriggered = false; }, 2000);
-                return;
-            }
-
-            // Continuously follow Jugnu
-            for (const entity of this.queries.jugnu.entities) {
-                if (!entity.object3D) continue;
-                this.uiMesh.position.copy(entity.object3D.position);
-                this.uiMesh.position.y += 0.25; // Float above Jugnu
-                break;
-            }
-            this.uiMesh.lookAt(this.player.head.position);
-
-            // Check interaction for both hands
-            const tips = [];
-            if (hasLeft) tips.push(this.leftTip);
-            if (hasRight) tips.push(this.rightTip);
-
-            for (const tip of tips) {
-                const localTip = tip.clone();
-                this.uiMesh.worldToLocal(localTip);
-
-                // If finger is close to the plane's depth
-                if (Math.abs(localTip.z) < 0.05) {
-                    // INITIALIZE Button region
-                    if (localTip.x > -0.3 && localTip.x < 0.0 && localTip.y > -0.15 && localTip.y < 0.05) {
-                        this.state = 'Bleed';
-                        this.uiMesh.visible = false;
-                        this.domainMesh.visible = true;
-                        this.domainMesh.position.set(0, 0, 0); // Fixed massive sphere
-
-                        if (this.initSphere) {
-                            this.initSphere.position.copy(tip);
-                            this.initSphere.visible = true;
-                        }
-                        break;
-                    }
-                    // ABORT Button region
-                    if (localTip.x > 0.0 && localTip.x < 0.3 && localTip.y > -0.15 && localTip.y < 0.05) {
-                        this.state = 'None';
-                        this.uiMesh.visible = false;
-                        setTimeout(() => { this.isDomainExpansionTriggered = false; }, 2000); // 2s debounce
-                        break;
-                    }
                 }
             }
         } else if (this.state === 'Bleed') {
