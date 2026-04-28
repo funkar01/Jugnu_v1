@@ -216,7 +216,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       angularDamping: 0.1,
     })
     .addComponent(PhysicsShape, {
-      shape: PhysicsShapeType.Sphere,
+      shape: PhysicsShapeType.Box,
       dimensions: [0.15, 0.15, 0.15],
       restitution: 0.95,
       friction: 0.05,

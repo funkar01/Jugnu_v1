@@ -377,8 +377,7 @@ export class JugnuSystem extends createSystem({
           }
           const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
           if (currentState !== PhysicsState.Kinematic) {
-              if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
-              e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+              if (e.hasComponent(PhysicsBody)) { e.setValue(PhysicsBody, "state", PhysicsState.Kinematic); e.setValue(PhysicsBody, "gravityFactor", 0.0); } else { e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 }); }
           }
       });
   }
@@ -535,8 +534,7 @@ export class JugnuSystem extends createSystem({
                     }
                     const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
                     if (currentState !== PhysicsState.Kinematic) {
-                        if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
-                        e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+                        if (e.hasComponent(PhysicsBody)) { e.setValue(PhysicsBody, "state", PhysicsState.Kinematic); e.setValue(PhysicsBody, "gravityFactor", 0.0); } else { e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 }); }
                     }
                 });
             }
@@ -553,9 +551,8 @@ export class JugnuSystem extends createSystem({
                 this.queries.jugnu.entities.forEach(entity => {
                     if (!entity.object3D) return;
                     this.basePositions.set(entity, entity.object3D.position.clone());
-                    if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
-                    entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 });
-                    if (!entity.hasComponent(PhysicsShape)) entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
+                    if (entity.hasComponent(PhysicsBody)) { entity.setValue(PhysicsBody, "state", PhysicsState.Dynamic); entity.setValue(PhysicsBody, "gravityFactor", 1.0); entity.setValue(PhysicsBody, "linearDamping", 0.1); entity.setValue(PhysicsBody, "angularDamping", 0.1); } else { entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 }); }
+                    if (!entity.hasComponent(PhysicsShape)) entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Box, dimensions: [0.15, 0.15, 0.15] });
                     entity.addComponent(PhysicsManipulation, { linearVelocity: [this.handVelocity.x * 1.5, this.handVelocity.y * 1.5, this.handVelocity.z * 1.5] });
                 });
             } else {
@@ -564,8 +561,7 @@ export class JugnuSystem extends createSystem({
                 this.queries.jugnu.entities.forEach(entity => {
                     const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
                     if (currentState !== PhysicsState.Kinematic) {
-                        if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
-                        entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+                        if (entity.hasComponent(PhysicsBody)) { entity.setValue(PhysicsBody, "state", PhysicsState.Kinematic); entity.setValue(PhysicsBody, "gravityFactor", 0.0); } else { entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 }); }
                     }
                 });
             }
@@ -595,9 +591,8 @@ export class JugnuSystem extends createSystem({
                 this.queries.jugnu.entities.forEach(entity => {
                     if (!entity.object3D) return;
                     this.basePositions.set(entity, entity.object3D.position.clone());
-                    if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
-                    entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 });
-                    if (!entity.hasComponent(PhysicsShape)) entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
+                    if (entity.hasComponent(PhysicsBody)) { entity.setValue(PhysicsBody, "state", PhysicsState.Dynamic); entity.setValue(PhysicsBody, "gravityFactor", 1.0); entity.setValue(PhysicsBody, "linearDamping", 0.1); entity.setValue(PhysicsBody, "angularDamping", 0.1); } else { entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 }); }
+                    if (!entity.hasComponent(PhysicsShape)) entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Box, dimensions: [0.15, 0.15, 0.15] });
                     entity.addComponent(PhysicsManipulation, { linearVelocity: [this.handVelocity.x * 1.5, this.handVelocity.y * 1.5, this.handVelocity.z * 1.5] });
                 });
             } else {
@@ -606,8 +601,7 @@ export class JugnuSystem extends createSystem({
                 this.queries.jugnu.entities.forEach(entity => {
                     const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
                     if (currentState !== PhysicsState.Kinematic) {
-                        if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
-                        entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+                        if (entity.hasComponent(PhysicsBody)) { entity.setValue(PhysicsBody, "state", PhysicsState.Kinematic); entity.setValue(PhysicsBody, "gravityFactor", 0.0); } else { entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 }); }
                     }
                 });
             }
@@ -705,8 +699,7 @@ export class JugnuSystem extends createSystem({
               this.centerPos.copy(obj.position);
               const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
               if (currentState !== PhysicsState.Kinematic) {
-                  if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
-                  entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+                  if (entity.hasComponent(PhysicsBody)) { entity.setValue(PhysicsBody, "state", PhysicsState.Kinematic); entity.setValue(PhysicsBody, "gravityFactor", 0.0); } else { entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 }); }
               }
           }
       } else if (this.interactionState === 'Following' || this.interactionState === 'Anchored') {
@@ -860,4 +853,5 @@ export class JugnuSystem extends createSystem({
     this.particleMesh.instanceMatrix.needsUpdate = true;
   }
 }
+
 
