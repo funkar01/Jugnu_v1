@@ -85,6 +85,10 @@ export class JugnuSystem extends createSystem({
   private currentExpressionIndex = 2; // Default to happy
 
   private instructionBoard!: JugnuInstructionBoard;
+  
+  // Expression timers
+  private idleTimer = 0;
+  private shakeAccumulator = 0;
 
   init() {
     this.instructionBoard = new JugnuInstructionBoard();
@@ -123,6 +127,7 @@ export class JugnuSystem extends createSystem({
     // Handle Click
     this.queries.jugnuClicked.subscribe("qualify", async (entity) => {
       this.interactDecay = 8.0; 
+      this.idleTimer = 0; // Reset idle timer on click
       
       const jugModel = entity.object3D as JugnuV3Model;
       if (jugModel && typeof jugModel.setMood === 'function') {
@@ -222,6 +227,7 @@ export class JugnuSystem extends createSystem({
      try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         this.isListening = true;
+        this.idleTimer = 0; // Reset idle timer when recording starts
         this.updateTranscriptUI("Listening...", "");
         
         this.audioChunks = [];
@@ -521,6 +527,16 @@ export class JugnuSystem extends createSystem({
             if (this.alwaysAttractOnPinch || dist < this.attractionRadius) {
                 this.interactionState = 'LerpingToHand';
                 this.attachedHand = activeHand;
+                this.idleTimer = 0; // Reset idle timer on pinch
+                
+                // Set mood to bright on pinch
+                this.queries.jugnu.entities.forEach(e => {
+                    const jugModel = e.object3D as JugnuV3Model;
+                    if (jugModel && typeof jugModel.setMood === 'function') {
+                        jugModel.setMood('bright');
+                    }
+                });
+                
                 this.startPos.copy(activeJugnuPos);
                 this.targetPos.copy(activeTip);
                 this.previousHandPos.copy(activeTip);
@@ -660,12 +676,43 @@ export class JugnuSystem extends createSystem({
 
       // Determine Interaction Speed for Colors
       let speedMult = 0.0;
+      let currentSpeed = 0;
       if (this.interactionState === 'Idle') {
-          speedMult = this.velocity.length() * 2.0; // Fast cycle when thrown
+          currentSpeed = this.velocity.length();
+          speedMult = currentSpeed * 2.0; // Fast cycle when thrown
       } else if (this.interactionState === 'Following') {
-          speedMult = this.velocity.length() * 0.5; // Slow cycle while following
+          currentSpeed = this.velocity.length();
+          speedMult = currentSpeed * 0.5; // Slow cycle while following
       } else {
+          currentSpeed = this.handVelocity.length();
           speedMult = 0.0; // Stable when attached or pinched
+      }
+
+      // Shake & Throw Detection
+      if (currentSpeed > 3.0) { // Threshold for shaking/fast throwing
+          this.shakeAccumulator += currentSpeed * safeDt;
+      } else {
+          this.shakeAccumulator = Math.max(0, this.shakeAccumulator - safeDt * 2.0); // Decay
+      }
+
+      if (this.shakeAccumulator > 1.5) { // Shake trigger threshold
+          jugModel.setMood('sad');
+          this.shakeAccumulator = 0; // Reset to avoid constant triggering
+          this.idleTimer = 0;
+      }
+
+      // Idle Detection
+      if (this.interactionState === 'Following' || this.interactionState === 'Anchored') {
+          if (!this.isListening && !this.isProcessingAudio && currentSpeed < 0.1) {
+              this.idleTimer += safeDt;
+              if (this.idleTimer > 15.0) { // 15 seconds idle
+                  jugModel.setMood('bored');
+              }
+          } else {
+              this.idleTimer = 0;
+          }
+      } else {
+          this.idleTimer = 0;
       }
 
       jugModel.update(safeDt, speedMult);

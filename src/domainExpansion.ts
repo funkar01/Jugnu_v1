@@ -502,6 +502,15 @@ export class DomainExpansionSystem extends createSystem({
                 
                 // Swap texture when sphere is invisible
                 this.currentDomainIndex = this.targetDomainIndex;
+                
+                // Set Jugnu mood to winking on domain switch
+                this.queries.jugnu.entities.forEach(e => {
+                    const jugModel = e.object3D as any;
+                    if (jugModel && typeof jugModel.setMood === 'function') {
+                        jugModel.setMood('winking');
+                    }
+                });
+                
                 const newTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]);
                 if (newTex) {
                     newTex.colorSpace = THREE.SRGBColorSpace;
@@ -596,6 +605,12 @@ export class DomainExpansionSystem extends createSystem({
                     this.queries.jugnu.entities.forEach(e => {
                         if (e.getValue(Jugnu, "instructionStep") === 1) {
                             e.setValue(Jugnu, "instructionStep", 2);
+                        }
+                        
+                        // Trigger blushing exactly when Domain Expansion gesture happens
+                        const jugModel = e.object3D as any;
+                        if (jugModel && typeof jugModel.setMood === 'function') {
+                            jugModel.setMood('blushing');
                         }
                     });
                 }
