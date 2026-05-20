@@ -76,6 +76,7 @@ export class DomainExpansionSystem extends createSystem({
     private locationPin!: THREE.Group;
     private minimapMapPlane!: THREE.Mesh;
     private minimapMapPlaneMat!: THREE.MeshBasicMaterial;
+    private menuToggleButtonMesh!: THREE.Mesh;
     
     // Scale tracking for table & menu animations
     private isTableSpawned = false;
@@ -482,6 +483,30 @@ export class DomainExpansionSystem extends createSystem({
         this.menuMesh.position.set(-0.32, 0.08, 0);
         this.menuMesh.rotation.y = Math.PI / 6; // Angled facing inward towards the player
         this.tableGroup.add(this.menuMesh);
+
+        // Interactive Holographic Menu Toggle Button on the table console base
+        const btnGeom = new THREE.CylinderGeometry(0.018, 0.018, 0.008, 32);
+        const btnMat = new THREE.MeshPhysicalMaterial({
+            color: 0x00ffff,
+            emissive: 0x003333,
+            metalness: 0.9,
+            roughness: 0.1,
+            transparent: true,
+            opacity: 0.9,
+            transmission: 0.3
+        });
+        this.menuToggleButtonMesh = new THREE.Mesh(btnGeom, btnMat);
+        // Positioned at the front edge of the circular table deck
+        this.menuToggleButtonMesh.position.set(0.0, 0.005, 0.13);
+        this.tableGroup.add(this.menuToggleButtonMesh);
+
+        // Neon cyber ring accent on the console button
+        const btnRingGeom = new THREE.RingGeometry(0.016, 0.018, 32);
+        const btnRingMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+        const btnRingMesh = new THREE.Mesh(btnRingGeom, btnRingMat);
+        btnRingMesh.rotation.x = -Math.PI / 2;
+        btnRingMesh.position.y = 0.005;
+        this.menuToggleButtonMesh.add(btnRingMesh);
 
         // Register tableGroup with the world
         this.world.createTransformEntity(this.tableGroup);
@@ -1035,52 +1060,49 @@ export class DomainExpansionSystem extends createSystem({
         if (this.switchCooldown > 0) this.switchCooldown -= dt;
 
         const hasLeftWrist = this.getWristData('left', this.wristPos, this.leftWristQuat);
-        if (hasLeftWrist) {
-            this.wristButtonMesh.position.copy(this.wristPos);
-            this.wristButtonMesh.quaternion.copy(this.leftWristQuat);
-            // Move it slightly up along the local Y axis (normal to the back of the wrist)
-            this.wristButtonMesh.translateY(0.03); 
-            this.wristButtonMesh.visible = true;
-        } else {
-            this.wristButtonMesh.visible = false;
-        }
+        // Wrist button is permanently hidden and disabled to prevent accidental touches and crashes
+        this.wristButtonMesh.visible = false;
 
         if (this.menuToggleCooldown > 0) this.menuToggleCooldown -= dt;
 
-        // Toggle via wrist tap
-        let wristTapped = false;
-        if (this.rightTip.lengthSq() > 0 && hasLeftWrist && this.wristButtonMesh.visible) {
-            const dist = this.rightTip.distanceTo(this.wristButtonMesh.position);
-            if (dist < 0.03) { // 3cm distance to tap the button
-                wristTapped = true;
-            }
+        // Middle Finger Pinch Gesture detection (or keyboard 'P' or 'M' for developer fallbacks)
+        if (this.middlePinchCooldown > 0) {
+            this.middlePinchCooldown -= dt;
         }
+        
+        const hasLeft = this.getIndexData('left', this.leftTip);
+        const hasRight = this.getIndexData('right', this.rightTip);
+        const middlePinchDetected = this.checkMiddlePinch() || this.checkMButton();
 
-        if ((wristTapped || this.checkMButton()) && this.menuToggleCooldown <= 0) {
-            this.menuToggleCooldown = 0.8; // 800ms debounce
+        if (middlePinchDetected && this.middlePinchCooldown <= 0) {
+            this.middlePinchCooldown = 0.8;
             this.isTableSpawned = !this.isTableSpawned;
             
             if (this.isTableSpawned) {
                 this.targetTableScale = 1.0;
                 this.tableGroup.visible = true;
                 this.menuMesh.visible = true;
-                this.menuActiveState = true; // Starts active/waiting for proximity
+                this.menuActiveState = false; // Closed/hidden by default! Poking console button toggles it.
 
                 // Spawn circular table in front of the user
                 const dir = new THREE.Vector3(0, 0, -1);
-                dir.applyQuaternion(this.player.head.quaternion);
-                
-                // Position 0.55m in front, and slightly below chin height
-                const spawnPos = this.player.head.position.clone().addScaledVector(dir, 0.55);
-                spawnPos.y -= 0.25; // Ergonomic height for interactive table
+                if (this.player && this.player.head) {
+                    dir.applyQuaternion(this.player.head.quaternion);
+                }
+                const spawnPos = (this.player && this.player.head)
+                    ? this.player.head.position.clone().addScaledVector(dir, 0.55)
+                    : new THREE.Vector3(0, 1.35, -0.55);
+                spawnPos.y -= 0.25; // Ergonomic height
                 
                 this.tableGroup.position.copy(spawnPos);
                 
-                // Rotate table to face the user (Yaw only)
-                const lookTarget = this.player.head.position.clone();
+                const lookTarget = spawnPos.clone();
+                if (this.player && this.player.head) {
+                    lookTarget.copy(this.player.head.position);
+                }
                 lookTarget.y = spawnPos.y;
                 this.tableGroup.lookAt(lookTarget);
-                this.tableGroup.rotateY(Math.PI); // Rotate 180 so left-attached menu is on user's left
+                this.tableGroup.rotateY(Math.PI);
 
                 // Advance Tutorial step
                 this.queries.jugnu.entities.forEach(e => {
@@ -1141,17 +1163,37 @@ export class DomainExpansionSystem extends createSystem({
             }
         }
 
-        const hasLeft = this.getIndexData('left', this.leftTip);
-        const hasRight = this.getIndexData('right', this.rightTip);
 
-        // Middle Finger Pinch Gesture detection (or keyboard 'P')
-        if (this.middlePinchCooldown > 0) {
-            this.middlePinchCooldown -= dt;
+
+        // Check for poking the Holographic Console Menu Toggle Button on the table base
+        let consoleButtonPoked = false;
+        if (this.isTableSpawned && this.currentTableScale > 0.8 && this.menuToggleCooldown <= 0.0) {
+            const btnWorldPos = new THREE.Vector3();
+            this.menuToggleButtonMesh.getWorldPosition(btnWorldPos);
+
+            if (hasLeft) {
+                const distLeft = this.leftTip.distanceTo(btnWorldPos);
+                if (distLeft < 0.035) consoleButtonPoked = true;
+            }
+            if (hasRight) {
+                const distRight = this.rightTip.distanceTo(btnWorldPos);
+                if (distRight < 0.035) consoleButtonPoked = true;
+            }
         }
-        const middlePinchDetected = this.checkMiddlePinch();
-        if (middlePinchDetected && this.middlePinchCooldown <= 0 && this.isTableSpawned) {
-            this.middlePinchCooldown = 0.8;
+
+        if (consoleButtonPoked) {
             this.menuActiveState = !this.menuActiveState;
+            this.menuToggleCooldown = 0.6; // 600ms quick toggle debounce
+            console.log(`[DomainMenu] Console button poked! Toggled menuActiveState: ${this.menuActiveState}`);
+            
+            // Visual feedback: simple pulse animation
+            this.menuToggleButtonMesh.scale.set(1.25, 1.25, 1.25);
+        }
+
+        // Animate the console button scale back to normal smoothly
+        if (this.menuToggleButtonMesh.scale.x > 1.0) {
+            const newScale = Math.max(1.0, this.menuToggleButtonMesh.scale.x - dt * 1.5);
+            this.menuToggleButtonMesh.scale.setScalar(newScale);
         }
 
         // Determine target scale for menu
@@ -1244,7 +1286,8 @@ export class DomainExpansionSystem extends createSystem({
                     }
 
                     if (this.initSphere) {
-                        this.initSphere.position.copy(this.rightTip.lengthSq() > 0 ? this.rightTip : this.player.head.position);
+                        const headPos = (this.player && this.player.head) ? this.player.head.position : new THREE.Vector3(0, 1.6, 0);
+                        this.initSphere.position.copy(this.rightTip.lengthSq() > 0 ? this.rightTip : headPos);
                         this.initSphere.visible = true;
                     }
 
@@ -1341,7 +1384,8 @@ export class DomainExpansionSystem extends createSystem({
 
             if (this.initSphere) {
                 // If hand tracking isn't active (rightTip is 0,0,0), fallback to head position
-                this.initSphere.position.copy(this.rightTip.lengthSq() > 0 ? this.rightTip : this.player.head.position);
+                const headPos = (this.player && this.player.head) ? this.player.head.position : new THREE.Vector3(0, 1.6, 0);
+                this.initSphere.position.copy(this.rightTip.lengthSq() > 0 ? this.rightTip : headPos);
                 this.initSphere.visible = true;
             }
         }
@@ -1396,7 +1440,9 @@ export class DomainExpansionSystem extends createSystem({
                 this.uiMesh.position.y += 0.25; // Float above Jugnu
                 break;
             }
-            this.uiMesh.lookAt(this.player.head.position);
+            if (this.player && this.player.head) {
+                this.uiMesh.lookAt(this.player.head.position);
+            }
 
             // Check interaction for both hands
             const tips = [];
