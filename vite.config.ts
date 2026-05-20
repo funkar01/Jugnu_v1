@@ -40,6 +40,18 @@ export default defineConfig(({ mode }) => {
         target: 'https://generativelanguage.googleapis.com',
         changeOrigin: true,
         rewrite: () => `/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`
+      },
+      // Google Maps Street View Metadata API Proxy
+      '/api/streetview-metadata': {
+        target: 'https://maps.googleapis.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/streetview-metadata/, '/maps/api/streetview/metadata') + `&key=${env.GOOGLE_MAPS_API_KEY}`
+      },
+      // Google Maps Street View Tile Server Proxy to solve CORS
+      '/api/streetview-tile': {
+        target: 'https://cbk0.google.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/streetview-tile/, '/cbk')
       }
     }
   },
