@@ -2,6 +2,9 @@ import { createSystem, AssetManager } from "@iwsdk/core";
 import * as THREE from "three";
 import { Jugnu } from "./jugnu.js";
 
+const IS_DEV = ((import.meta as any).env.VITE_DEBUG_MODE === "true") || (import.meta as any).env.DEV;
+
+
 // Fast 3D Value Noise for the warp shader
 const noiseShader = `
 float hash(vec3 p) {
@@ -110,18 +113,21 @@ export class DomainExpansionSystem extends createSystem({
 
     init() {
         // --- Debug Keyboard Listener for Desktop ---
-        window.addEventListener('keydown', (e) => {
-            if (e.key.toLowerCase() === 'x') this.debugXPressed = true;
-            if (e.key.toLowerCase() === 'y') this.debugYPressed = true;
-            if (e.key.toLowerCase() === 'm') this.debugMPressed = true;
-            if (e.key.toLowerCase() === 'p') this.debugPPressed = true;
-        });
-        window.addEventListener('keyup', (e) => {
-            if (e.key.toLowerCase() === 'x') this.debugXPressed = false;
-            if (e.key.toLowerCase() === 'y') this.debugYPressed = false;
-            if (e.key.toLowerCase() === 'm') this.debugMPressed = false;
-            if (e.key.toLowerCase() === 'p') this.debugPPressed = false;
-        });
+        if (IS_DEV) {
+            window.addEventListener('keydown', (e) => {
+                if (e.key.toLowerCase() === 'x') this.debugXPressed = true;
+                if (e.key.toLowerCase() === 'y') this.debugYPressed = true;
+                if (e.key.toLowerCase() === 'm') this.debugMPressed = true;
+                if (e.key.toLowerCase() === 'p') this.debugPPressed = true;
+            });
+            window.addEventListener('keyup', (e) => {
+                if (e.key.toLowerCase() === 'x') this.debugXPressed = false;
+                if (e.key.toLowerCase() === 'y') this.debugYPressed = false;
+                if (e.key.toLowerCase() === 'm') this.debugMPressed = false;
+                if (e.key.toLowerCase() === 'p') this.debugPPressed = false;
+            });
+        }
+
 
         // --- Phase 2: High-Performance Spatial UI ---
         const canvas = document.createElement('canvas');
@@ -616,7 +622,7 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     private checkMiddlePinch(dt: number): boolean {
-        if (this.debugPPressed) return true; // Keyboard simulation key 'P'
+        if (IS_DEV && this.debugPPressed) return true; // Keyboard simulation key 'P'
         
         let pinched = false;
         const leftTip = new THREE.Vector3();
@@ -1073,11 +1079,11 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     private checkMButton(): boolean {
-        return this.debugMPressed;
+        return IS_DEV && this.debugMPressed;
     }
 
     private checkXButton(): boolean {
-        if (this.debugXPressed) return true;
+        if (IS_DEV && this.debugXPressed) return true;
         const session = this.renderer.xr.getSession();
         if (!session) return false;
         for (const source of session.inputSources) {
@@ -1090,7 +1096,7 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     private checkYButton(): boolean {
-        if (this.debugYPressed) return true;
+        if (IS_DEV && this.debugYPressed) return true;
         const session = this.renderer.xr.getSession();
         if (!session) return false;
         for (const source of session.inputSources) {
@@ -1128,30 +1134,40 @@ export class DomainExpansionSystem extends createSystem({
                 this.targetTableScale = 1.0;
                 this.tableGroup.visible = true;
                 this.menuMesh.visible = true;
-                this.menuActiveState = false; // Closed/hidden by default! Poking console button toggles it.
+                this.menuActiveState = true; // Synced: Open/visible by default alongside minimap!
 
-                // Spawn circular table in front of the user
+                // Spawn circular table exactly 0.55m in front of the user's head (horizontally)
                 const dir = new THREE.Vector3(0, 0, -1);
                 if (this.player && this.player.head) {
                     dir.applyQuaternion(this.player.head.quaternion);
+                    // Extract strictly the Yaw component (rotation around Y-axis) to prevent pitch/roll tilt
+                    dir.y = 0;
+                    dir.normalize();
+                    // Fallback to default forward if looking straight up or down
+                    if (dir.lengthSq() < 0.001) {
+                        dir.set(0, 0, -1);
+                    }
                 }
                 const spawnPos = (this.player && this.player.head)
                     ? this.player.head.position.clone().addScaledVector(dir, 0.55)
-                    : new THREE.Vector3(0, 1.35, -0.55);
-                spawnPos.y -= 0.25; // Ergonomic height
+                    : new THREE.Vector3(0, 1.35 - 0.25, -0.55);
+                
+                if (this.player && this.player.head) {
+                    spawnPos.y -= 0.25; // Offset exactly 0.25m downward from head Y level
+                }
                 
                 this.tableGroup.position.copy(spawnPos);
                 
-                // Prevent NaN matrices: lookTarget must never equal spawnPos. Default to pointing forward.
+                // Level base orientation facing the player horizontally (don't angle/tilt facing them)
                 const lookTarget = spawnPos.clone().add(new THREE.Vector3(0, 0, 1));
                 if (this.player && this.player.head) {
                     lookTarget.copy(this.player.head.position);
                 }
-                lookTarget.y = spawnPos.y;
+                lookTarget.y = spawnPos.y; // Match Y level strictly to prevent tilting/pitching
                 
                 if (spawnPos.distanceTo(lookTarget) > 0.01) {
                     this.tableGroup.lookAt(lookTarget);
-                    this.tableGroup.rotateY(Math.PI);
+                    this.tableGroup.rotateY(Math.PI); // Orient to face the user properly
                 }
 
                 // Advance Tutorial step
@@ -1440,14 +1456,14 @@ export class DomainExpansionSystem extends createSystem({
         }
 
         // Debug Spheres update
-        if (hasLeft) {
+        if (IS_DEV && hasLeft) {
             this.leftDebugSphere.position.copy(this.leftTip);
             this.leftDebugSphere.visible = true;
         } else {
             this.leftDebugSphere.visible = false;
         }
 
-        if (hasRight) {
+        if (IS_DEV && hasRight) {
             this.rightDebugSphere.position.copy(this.rightTip);
             this.rightDebugSphere.visible = true;
         } else {

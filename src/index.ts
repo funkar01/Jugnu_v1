@@ -33,13 +33,17 @@ import { Robot, RobotSystem } from "./robot.js";
 import { Jugnu, JugnuSystem, TranscriptUI } from "./jugnu.js";
 import { JugnuV3Model } from "./JugnuV3Model.js";
 import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
+import { JugnuDebugBoard } from "./JugnuDebugBoard.js";
 import { RoomVisualizerSystem } from "./roomVisualizer.js";
 import { DomainExpansionSystem } from "./domainExpansion.js";
 import { CityMapSystem } from "./cityMapSystem.js";
 import { ACESFilmicToneMapping } from "three";
 
+export const IS_DEV = ((import.meta as any).env.VITE_DEBUG_MODE === "true") || (import.meta as any).env.DEV;
+
 // FIX: Changed paths to use "./" (Relative) instead of "/" (Absolute)
 const assets: AssetManifest = {
+
   chimeSound: {
     url: "./audio/chime.mp3", // Changed from /audio/
     type: AssetType.Audio,
@@ -207,11 +211,26 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       density: 1.0
     });
 
+  if (IS_DEV) {
+    const box = new Box3();
+    box.setFromCenterAndSize(new Vector3(0, 0, 0), new Vector3(0.3, 0.3, 0.3));
+    const debugBoxHelper = new Box3Helper(box, 0x00ff00); // Glowing green physics box helper
+    juguModel.add(debugBoxHelper);
+  }
+
   const transcriptBoard = new JugnuTranscriptBoard();
   transcriptBoard.position.set(1.0, deskTopY + 0.5, -1.0);
   transcriptBoard.rotation.y = -Math.PI / 8; // Angled slightly towards the user
   world.createTransformEntity(transcriptBoard)
     .addComponent(TranscriptUI);
+
+  if (IS_DEV) {
+    const debugBoard = new JugnuDebugBoard();
+    debugBoard.position.set(-1.0, deskTopY + 0.5, -1.0);
+    debugBoard.rotation.y = Math.PI / 8; // Angled slightly towards the user (mirrors transcript board)
+    world.createTransformEntity(debugBoard);
+  }
+
 
 
 
