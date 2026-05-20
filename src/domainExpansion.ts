@@ -100,6 +100,14 @@ export class DomainExpansionSystem extends createSystem({
     private wasMiddlePinchingRight = false;
     private middlePinchCooldown = 0;
 
+    // Sustained-release timers to filter hand-tracking noise/jitter (de-noising)
+    private leftMiddlePinchReleasedTime = 0.5; // Initialize in a fully-released state
+    private rightMiddlePinchReleasedTime = 0.5;
+
+    // Track active loaded environment to avoid redundant load/render cycles
+    private loadedTab: 'genai' | 'maps' | 'none' = 'none';
+    private loadedDomainIndex = -1;
+
     init() {
         // --- Debug Keyboard Listener for Desktop ---
         window.addEventListener('keydown', (e) => {
@@ -607,7 +615,7 @@ export class DomainExpansionSystem extends createSystem({
         return false;
     }
 
-    private checkMiddlePinch(): boolean {
+    private checkMiddlePinch(dt: number): boolean {
         if (this.debugPPressed) return true; // Keyboard simulation key 'P'
         
         let pinched = false;
@@ -617,16 +625,35 @@ export class DomainExpansionSystem extends createSystem({
         const isLeftMiddlePinching = this.getMiddlePinchData('left', leftTip);
         const isRightMiddlePinching = this.getMiddlePinchData('right', rightTip);
         
-        // Edge trigger detection for pinch start
-        if (isLeftMiddlePinching && !this.wasMiddlePinchingLeft) {
-            pinched = true;
-        }
-        if (isRightMiddlePinching && !this.wasMiddlePinchingRight) {
-            pinched = true;
+        // Left hand de-noising
+        if (isLeftMiddlePinching) {
+            // Only fire a pinch trigger if it was consistently released for >= 400ms
+            if (this.leftMiddlePinchReleasedTime >= 0.4 && !this.wasMiddlePinchingLeft) {
+                pinched = true;
+                this.wasMiddlePinchingLeft = true;
+            }
+            this.leftMiddlePinchReleasedTime = 0.0;
+        } else {
+            this.leftMiddlePinchReleasedTime += dt;
+            if (this.leftMiddlePinchReleasedTime >= 0.4) {
+                this.wasMiddlePinchingLeft = false;
+            }
         }
         
-        this.wasMiddlePinchingLeft = isLeftMiddlePinching;
-        this.wasMiddlePinchingRight = isRightMiddlePinching;
+        // Right hand de-noising
+        if (isRightMiddlePinching) {
+            // Only fire a pinch trigger if it was consistently released for >= 400ms
+            if (this.rightMiddlePinchReleasedTime >= 0.4 && !this.wasMiddlePinchingRight) {
+                pinched = true;
+                this.wasMiddlePinchingRight = true;
+            }
+            this.rightMiddlePinchReleasedTime = 0.0;
+        } else {
+            this.rightMiddlePinchReleasedTime += dt;
+            if (this.rightMiddlePinchReleasedTime >= 0.4) {
+                this.wasMiddlePinchingRight = false;
+            }
+        }
         
         return pinched;
     }
@@ -1091,7 +1118,7 @@ export class DomainExpansionSystem extends createSystem({
         
         const hasLeft = this.getIndexData('left', this.leftTip);
         const hasRight = this.getIndexData('right', this.rightTip);
-        const middlePinchDetected = this.checkMiddlePinch() || this.checkMButton();
+        const middlePinchDetected = this.checkMiddlePinch(dt) || this.checkMButton();
 
         if (middlePinchDetected && this.middlePinchCooldown <= 0) {
             this.middlePinchCooldown = 0.8;
@@ -1227,8 +1254,8 @@ export class DomainExpansionSystem extends createSystem({
             this.menuMesh.scale.setScalar(this.currentMenuScale);
         }
 
-        // Domain Menu Poke Interactions (Only allowed when expanded for precision)
-        if (this.isTableSpawned && this.currentMenuScale > 0.8 && this.menuMesh.visible && this.rightTip.lengthSq() > 0) {
+        // Domain Menu Poke Interactions (Only allowed when expanded for precision and not middle-pinching)
+        if (this.isTableSpawned && this.currentMenuScale > 0.8 && this.menuMesh.visible && this.rightTip.lengthSq() > 0 && !this.wasMiddlePinchingRight) {
             const localTip = this.rightTip.clone();
             this.menuMesh.worldToLocal(localTip);
 
@@ -1269,6 +1296,15 @@ export class DomainExpansionSystem extends createSystem({
                 }
                 // Check if Poke is in the LAUNCH button area (y < -0.06)
                 else if (localTip.y < -0.06 && Math.abs(localTip.x) < 0.3 && this.menuToggleCooldown <= 0.0) {
+                    if (this.loadedTab === this.activeTab && this.loadedDomainIndex === this.currentDomainIndex && this.state === 'Bleed') {
+                        console.log(`[DomainMenu] Active portal [${this.activeTab}: ${this.currentDomainIndex}] is already launched and active. Skipping redundant load.`);
+                        this.menuActiveState = false; // Collapse menu anyway
+                        this.menuToggleCooldown = 0.5; // Short debounce
+                        return;
+                    }
+                    this.loadedTab = this.activeTab;
+                    this.loadedDomainIndex = this.currentDomainIndex;
+
                     this.menuActiveState = false; // Collapse menu after launching portal
                     this.menuToggleCooldown = 1.0; // 1s selection debounce
 
@@ -1549,6 +1585,8 @@ export class DomainExpansionSystem extends createSystem({
             if (this.bleedProgress <= 0.0) {
                 this.bleedProgress = 0.0;
                 this.state = 'None';
+                this.loadedTab = 'none';
+                this.loadedDomainIndex = -1;
                 // Wait 2 seconds before allowing re-trigger to prevent instant loop
                 setTimeout(() => { this.isDomainExpansionTriggered = false; }, 2000);
                 if (this.domainMesh) this.domainMesh.visible = false;
