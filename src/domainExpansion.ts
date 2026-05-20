@@ -407,10 +407,20 @@ export class DomainExpansionSystem extends createSystem({
             
             const dist = Math.sqrt(bx*bx + bz*bz);
             const bh = Math.max(0.01, 0.05 - dist * 0.15) + Math.random() * 0.02;
+            const rotY = Math.random() * Math.PI;
 
-            bData.push({ x: bx, z: bz, w: bw, d: bd, h: bh, rot: Math.random() * Math.PI });
+            bData.push({ x: bx, z: bz, w: bw, d: bd, h: bh, rot: rotY });
+            
+            // Set the full static matrix once on init
+            dummy.position.set(bx, 0, bz);
+            dummy.rotation.y = rotY;
+            dummy.scale.set(bw, bh, bd);
+            dummy.updateMatrix();
+            this.minimapBuildings.setMatrixAt(i, dummy.matrix);
+            
             this.minimapBuildings.setColorAt(i, bColors.setHSL(0.5 + Math.random() * 0.1, 0.8, 0.5));
         }
+        this.minimapBuildings.instanceMatrix.needsUpdate = true;
         this.minimapBuildings.userData.bData = bData;
         this.tableGroup.add(this.minimapBuildings);
 
@@ -970,8 +980,11 @@ export class DomainExpansionSystem extends createSystem({
             const tex = new THREE.CanvasTexture(canvas);
             tex.colorSpace = THREE.SRGBColorSpace;
             tex.needsUpdate = true;
+            
+            const oldTex = this.minimapMapPlaneMat.map;
             this.minimapMapPlaneMat.map = tex;
             this.minimapMapPlaneMat.needsUpdate = true;
+            if (oldTex) oldTex.dispose();
         } else {
             // Load real Google Static Map centered on current location
             const c = this.coords[this.currentDomainIndex];
@@ -979,17 +992,20 @@ export class DomainExpansionSystem extends createSystem({
             
             const apiKey = "AIzaSyB0XK4ln1T1h1CfGvpE6KpPXg4SbU4PAoo";
             const mapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${c.lat},${c.lng}&zoom=15&size=512x512&scale=2&maptype=roadmap&${style}&key=${apiKey}`;
-
+ 
             console.log(`[Minimap] Fetching dynamic Google Map for coords: ${c.lat}, ${c.lng}`);
-
+ 
             const img = new Image();
             img.crossOrigin = "anonymous";
             img.onload = () => {
                 const tex = new THREE.Texture(img);
                 tex.colorSpace = THREE.SRGBColorSpace;
                 tex.needsUpdate = true;
+                
+                const oldTexOnLoad = this.minimapMapPlaneMat.map;
                 this.minimapMapPlaneMat.map = tex;
                 this.minimapMapPlaneMat.needsUpdate = true;
+                if (oldTexOnLoad) oldTexOnLoad.dispose();
                 console.log(`[Minimap] Successfully updated Google Map texture on table base.`);
             };
             img.onerror = () => {
@@ -998,16 +1014,16 @@ export class DomainExpansionSystem extends createSystem({
                 canvas.width = 512;
                 canvas.height = 512;
                 const ctx = canvas.getContext('2d')!;
-
+ 
                 ctx.fillStyle = '#100c14';
                 ctx.fillRect(0, 0, 512, 512);
-
+ 
                 ctx.strokeStyle = 'rgba(255, 165, 0, 0.4)';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.arc(256, 256, 180, 0, Math.PI * 2);
                 ctx.stroke();
-
+ 
                 ctx.fillStyle = '#ffa500';
                 ctx.font = 'bold 24px monospace';
                 ctx.textAlign = 'center';
@@ -1016,11 +1032,14 @@ export class DomainExpansionSystem extends createSystem({
                 ctx.font = '16px monospace';
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
                 ctx.fillText("MAP CONNECTION ENCRYPTED", 256, 280);
-
+ 
                 const tex = new THREE.CanvasTexture(canvas);
                 tex.colorSpace = THREE.SRGBColorSpace;
+                
+                const oldTexOnError = this.minimapMapPlaneMat.map;
                 this.minimapMapPlaneMat.map = tex;
                 this.minimapMapPlaneMat.needsUpdate = true;
+                if (oldTexOnError) oldTexOnError.dispose();
             };
             img.src = mapUrl;
         }
@@ -1096,13 +1115,17 @@ export class DomainExpansionSystem extends createSystem({
                 
                 this.tableGroup.position.copy(spawnPos);
                 
-                const lookTarget = spawnPos.clone();
+                // Prevent NaN matrices: lookTarget must never equal spawnPos. Default to pointing forward.
+                const lookTarget = spawnPos.clone().add(new THREE.Vector3(0, 0, 1));
                 if (this.player && this.player.head) {
                     lookTarget.copy(this.player.head.position);
                 }
                 lookTarget.y = spawnPos.y;
-                this.tableGroup.lookAt(lookTarget);
-                this.tableGroup.rotateY(Math.PI);
+                
+                if (spawnPos.distanceTo(lookTarget) > 0.01) {
+                    this.tableGroup.lookAt(lookTarget);
+                    this.tableGroup.rotateY(Math.PI);
+                }
 
                 // Advance Tutorial step
                 this.queries.jugnu.entities.forEach(e => {
@@ -1127,18 +1150,8 @@ export class DomainExpansionSystem extends createSystem({
             }
             this.tableGroup.scale.setScalar(this.currentTableScale);
 
-            // Animate buildings growth
-            const bldDummy = new THREE.Object3D();
-            const bData = this.minimapBuildings.userData.bData;
-            for (let i = 0; i < bData.length; i++) {
-                const b = bData[i];
-                bldDummy.position.set(b.x, 0, b.z);
-                bldDummy.rotation.y = b.rot;
-                bldDummy.scale.set(b.w, b.h * this.currentTableScale, b.d);
-                bldDummy.updateMatrix();
-                this.minimapBuildings.setMatrixAt(i, bldDummy.matrix);
-            }
-            this.minimapBuildings.instanceMatrix.needsUpdate = true;
+            // GPU-Accelerated building growth along the Y axis
+            this.minimapBuildings.scale.set(1.0, this.currentTableScale, 1.0);
         }
 
         // Animate circular table elements when active
