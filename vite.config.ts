@@ -44,11 +44,13 @@ function streetViewProxyPlugin(apiKey: string): Plugin {
 
         // ── GET /api/sv/session ─────────────────────────────────────────────
         if (req.url === "/api/sv/session") {
+          console.log(`[SV-Proxy] GET /api/sv/session`);
           try {
             const session = await getSession();
             res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
             res.end(JSON.stringify({ session }));
           } catch (e: any) {
+            console.error(`[SV-Proxy] GET /api/sv/session failed:`, e.message);
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: e.message }));
           }
@@ -62,6 +64,7 @@ function streetViewProxyPlugin(apiKey: string): Plugin {
           req.on("end", async () => {
             try {
               const { lat, lng } = JSON.parse(body);
+              console.log(`[SV-Proxy] POST /api/sv/panoid - lat: ${lat}, lng: ${lng}`);
               const session = await getSession();
               const upstreamRes = await fetch(
                 `https://tile.googleapis.com/v1/streetview/panoIds?session=${session}&key=${apiKey}`,
@@ -73,13 +76,16 @@ function streetViewProxyPlugin(apiKey: string): Plugin {
               );
               const data = await upstreamRes.json() as { panoIds?: string[]; error?: unknown };
               if (!upstreamRes.ok || !data.panoIds?.length) {
+                console.warn(`[SV-Proxy] No panoId resolved for ${lat}, ${lng}. Status: ${upstreamRes.status}. Data:`, JSON.stringify(data));
                 res.writeHead(404, { "Content-Type": "application/json" });
                 res.end(JSON.stringify({ error: "No panorama found", detail: data }));
                 return;
               }
+              console.log(`[SV-Proxy] Resolved panoId: ${data.panoIds[0]}`);
               res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
               res.end(JSON.stringify({ panoId: data.panoIds[0] }));
             } catch (e: any) {
+              console.error(`[SV-Proxy] POST /api/sv/panoid failed:`, e.message);
               res.writeHead(500, { "Content-Type": "application/json" });
               res.end(JSON.stringify({ error: e.message }));
             }
@@ -94,13 +100,19 @@ function streetViewProxyPlugin(apiKey: string): Plugin {
             const [, z, x, y, qs] = tileMatch;
             const params = new URLSearchParams(qs);
             const panoId = params.get("panoId");
-            if (!panoId) { res.writeHead(400); res.end("Missing panoId"); return; }
+            console.log(`[SV-Proxy] GET tile ${z}/${x}/${y} - panoId: ${panoId}`);
+            if (!panoId) {
+              console.warn(`[SV-Proxy] Missing panoId for tile request`);
+              res.writeHead(400); res.end("Missing panoId"); return;
+            }
             const session = await getSession();
             const tileUrl = `https://tile.googleapis.com/v1/streetview/tiles/${z}/${x}/${y}?session=${session}&panoId=${panoId}&key=${apiKey}`;
             const tileRes = await fetch(tileUrl);
             if (!tileRes.ok) {
+              const errText = await tileRes.text();
+              console.error(`[SV-Proxy] Upstream tile fetch failed. Status: ${tileRes.status}. Error:`, errText);
               res.writeHead(tileRes.status);
-              res.end(await tileRes.text());
+              res.end(errText);
               return;
             }
             const buffer = Buffer.from(await tileRes.arrayBuffer());
@@ -112,6 +124,7 @@ function streetViewProxyPlugin(apiKey: string): Plugin {
             });
             res.end(buffer);
           } catch (e: any) {
+            console.error(`[SV-Proxy] Tile endpoint exception:`, e.message);
             res.writeHead(500);
             res.end(e.message);
           }
@@ -151,6 +164,11 @@ export default defineConfig(({ mode }) => {
       host: "0.0.0.0",
       port: 8081,
       open: true,
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+      },
       proxy: {
         // Keep Gemini proxy
         '/api/gemini': {

@@ -29,6 +29,8 @@ export class DomainExpansionSystem extends createSystem({
     private hoverProgresses: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
     private domainMesh!: THREE.Mesh;
     private domainMat!: THREE.MeshBasicMaterial;
+    private stadiumMesh!: THREE.Group;
+    private stadiumBaseScale = 1.0;
     private isDomainActive = false;
     private bleedProgress = 0.0;
     private exitTimer = 0;
@@ -86,6 +88,16 @@ export class DomainExpansionSystem extends createSystem({
     private rotationHandedness: 'left' | 'right' | 'none' = 'none';
     private initialHandAngle = 0;
     private initialTableRotationY = 0;
+
+    // Two-handed Pinch to Scale circular table (Command Deck)
+    private isTwoHandScaling = false;
+    private initialHandDist = 0.0;
+    private initialUserScale = 1.0;
+    private userTableScale = 1.0;
+    private lastLoggedScale = 1.0;
+    private lastLeftPinch = false;
+    private lastRightPinch = false;
+
 
     // Keyboard debug listeners
     private debugMPressed = false;
@@ -300,7 +312,38 @@ export class DomainExpansionSystem extends createSystem({
 
         this.minimapBuildings.instanceMatrix.needsUpdate = true;
         this.minimapBuildings.userData.bData = bData;
+        this.minimapBuildings.visible = false; // Hide default buildings
         this.tableGroup.add(this.minimapBuildings);
+
+        // Load custom stadium model
+        const stadiumAsset = AssetManager.getGLTF("wankhede");
+        if (stadiumAsset) {
+            this.stadiumMesh = stadiumAsset.scene.clone();
+            
+            // Measure bounding box to scale it correctly to fit the map
+            const box = new THREE.Box3().setFromObject(this.stadiumMesh);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            
+            // We want the stadium to fit nicely inside the table, about 0.24m in diameter
+            const maxDim = Math.max(size.x, size.z);
+            this.stadiumBaseScale = 0.24 / (maxDim || 1.0);
+            this.stadiumMesh.scale.setScalar(this.stadiumBaseScale);
+            this.stadiumMesh.position.set(0, 0.008, 0);
+            this.tableGroup.add(this.stadiumMesh);
+        } else {
+            // Fallback circular procedural stadium
+            const fallbackGroup = new THREE.Group();
+            const outerWall = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.12, 0.12, 0.02, 32, 1, true),
+                new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide, wireframe: true })
+            );
+            fallbackGroup.add(outerWall);
+            this.stadiumMesh = fallbackGroup as any;
+            this.stadiumMesh.position.set(0, 0.008, 0);
+            this.stadiumBaseScale = 1.0;
+            this.tableGroup.add(this.stadiumMesh);
+        }
 
         // Location Pin (Pure triangle geometries)
         this.locationPin = new THREE.Group();
@@ -479,6 +522,15 @@ export class DomainExpansionSystem extends createSystem({
 
         // Register tableGroup with the world
         this.world.createTransformEntity(this.tableGroup);
+
+        // Pre-compile shaders in WebGL to prevent any WebXR stutters/crashes
+        try {
+            this.renderer.compile(this.tableGroup, this.camera);
+            this.renderer.compile(this.domainMesh, this.camera);
+            console.log("[DomainExpansionSystem] Shader pre-compilation successful!");
+        } catch (e) {
+            console.warn("[DomainExpansionSystem] Shader pre-compilation failed/skipped:", e);
+        }
     }
 
     private getIndexData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
@@ -647,6 +699,9 @@ export class DomainExpansionSystem extends createSystem({
             this.isTableSpawned = !this.isTableSpawned;
             
             if (this.isTableSpawned) {
+                this.userTableScale = 1.0;
+                this.lastLoggedScale = 1.0;
+                this.isTwoHandScaling = false;
                 this.targetTableScale = 1.0;
                 this.tableGroup.visible = true;
                 this.isRotatingMap = false; // Reset rotation state
@@ -700,6 +755,12 @@ export class DomainExpansionSystem extends createSystem({
         }
 
         // Smoothly interpolate table scale (clamped to 0.01 minimum to prevent non-invertible matrices)
+        if (this.isTableSpawned) {
+            this.targetTableScale = this.userTableScale;
+        } else {
+            this.targetTableScale = 0.0;
+        }
+
         if (this.currentTableScale !== this.targetTableScale) {
             this.currentTableScale += (this.targetTableScale - this.currentTableScale) * dt * 8.0;
             if (Math.abs(this.currentTableScale - this.targetTableScale) < 0.01) {
@@ -729,52 +790,95 @@ export class DomainExpansionSystem extends createSystem({
             const hasLeftIndex = this.getIndexData('left', leftIndexPinchPos);
             const hasRightIndex = this.getIndexData('right', rightIndexPinchPos);
 
-            // 2. Pinch-to-Rotate Map Turntable Interaction (Index + Thumb pinch)
-            if (!this.isRotatingMap) {
-                // Check if either hand is pinching close to the table base to start rotation
-                let startedRotation = false;
-                if (isRightIndexPinching) {
-                    const distToTable = rightIndexPinchPos.distanceTo(this.tableGroup.position);
-                    if (distToTable < 0.28) { // 28cm radius of interaction
-                        this.isRotatingMap = true;
-                        this.rotationHandedness = 'right';
-                        startedRotation = true;
-                    }
-                }
-                if (isLeftIndexPinching && !startedRotation) {
-                    const distToTable = leftIndexPinchPos.distanceTo(this.tableGroup.position);
-                    if (distToTable < 0.28) {
-                        this.isRotatingMap = true;
-                        this.rotationHandedness = 'left';
-                        startedRotation = true;
-                    }
-                }
+            // Log index pinch status transitions
+            if (isLeftIndexPinching !== this.lastLeftPinch) {
+                console.log(`[DomainExpansion] Left Index Pinch changed: ${isLeftIndexPinching ? "PINCHING" : "RELEASED"} at pos: (${leftIndexPinchPos.x.toFixed(2)}, ${leftIndexPinchPos.y.toFixed(2)}, ${leftIndexPinchPos.z.toFixed(2)})`);
+                this.lastLeftPinch = isLeftIndexPinching;
+            }
+            if (isRightIndexPinching !== this.lastRightPinch) {
+                console.log(`[DomainExpansion] Right Index Pinch changed: ${isRightIndexPinching ? "PINCHING" : "RELEASED"} at pos: (${rightIndexPinchPos.x.toFixed(2)}, ${rightIndexPinchPos.y.toFixed(2)}, ${rightIndexPinchPos.z.toFixed(2)})`);
+                this.lastRightPinch = isRightIndexPinching;
+            }
+
+            // Two-handed Pinch to Scale Gesture (No proximity bounds, works field-of-view-wide!)
+            if (isLeftIndexPinching && isRightIndexPinching) {
+                const currentHandDist = leftIndexPinchPos.distanceTo(rightIndexPinchPos);
                 
-                if (startedRotation) {
-                    // Record start of the drag
-                    const handPos = this.rotationHandedness === 'right' ? rightIndexPinchPos : leftIndexPinchPos;
-                    const dx = handPos.x - this.tableGroup.position.x;
-                    const dz = handPos.z - this.tableGroup.position.z;
-                    this.initialHandAngle = Math.atan2(dx, dz);
-                    this.initialTableRotationY = this.tableGroup.rotation.y;
-                }
-            } else {
-                // We are actively rotating: check if the corresponding hand is still pinching
-                const isStillPinching = this.rotationHandedness === 'right' ? isRightIndexPinching : isLeftIndexPinching;
-                const handPos = this.rotationHandedness === 'right' ? rightIndexPinchPos : leftIndexPinchPos;
-                
-                if (isStillPinching) {
-                    // Compute angle delta relative to table center and spin the table!
-                    const dx = handPos.x - this.tableGroup.position.x;
-                    const dz = handPos.z - this.tableGroup.position.z;
-                    const currentAngle = Math.atan2(dx, dz);
-                    const angleDiff = currentAngle - this.initialHandAngle;
-                    
-                    this.tableGroup.rotation.y = this.initialTableRotationY + angleDiff;
+                if (!this.isTwoHandScaling) {
+                    this.isTwoHandScaling = true;
+                    this.initialHandDist = currentHandDist;
+                    this.initialUserScale = this.userTableScale;
+                    console.log(`[DomainExpansion] Two-handed scaling ENGAGED. Hand distance: ${currentHandDist.toFixed(3)}m. Base Scale: ${this.userTableScale.toFixed(2)}`);
                 } else {
-                    // Released pinch: lock rotation
-                    this.isRotatingMap = false;
-                    this.rotationHandedness = 'none';
+                    if (this.initialHandDist > 0.01) {
+                        const ratio = currentHandDist / this.initialHandDist;
+                        const targetUserScale = this.initialUserScale * ratio;
+                        
+                        // strictly clamped from 1.0 (base 0.60m diameter) up to 5.0 (3.0m maximum diameter)
+                        this.userTableScale = THREE.MathUtils.clamp(targetUserScale, 1.0, 5.0);
+                        
+                        // Log only on significant scale changes to avoid spamming the debug board
+                        if (Math.abs(this.userTableScale - this.lastLoggedScale) > 0.2) {
+                            console.log(`[DomainExpansion] Scaling: current scale is ${this.userTableScale.toFixed(2)}`);
+                            this.lastLoggedScale = this.userTableScale;
+                        }
+                    }
+                }
+                this.isRotatingMap = false; // Override rotation when scaling
+                this.rotationHandedness = 'none';
+            } else {
+                if (this.isTwoHandScaling) {
+                    console.log(`[DomainExpansion] Two-handed scaling COMPLETED. Final scale: ${this.userTableScale.toFixed(2)}`);
+                    this.isTwoHandScaling = false;
+                }
+
+                // 2. Pinch-to-Rotate Map Turntable Interaction (Index + Thumb pinch)
+                if (!this.isRotatingMap) {
+                    // Check if either hand is pinching close to the table base to start rotation (scaled by current scale!)
+                    let startedRotation = false;
+                    if (isRightIndexPinching) {
+                        const distToTable = rightIndexPinchPos.distanceTo(this.tableGroup.position);
+                        if (distToTable < 0.28 * this.currentTableScale) { // 28cm radius of interaction (scaled!)
+                            this.isRotatingMap = true;
+                            this.rotationHandedness = 'right';
+                            startedRotation = true;
+                        }
+                    }
+                    if (isLeftIndexPinching && !startedRotation) {
+                        const distToTable = leftIndexPinchPos.distanceTo(this.tableGroup.position);
+                        if (distToTable < 0.28 * this.currentTableScale) {
+                            this.isRotatingMap = true;
+                            this.rotationHandedness = 'left';
+                            startedRotation = true;
+                        }
+                    }
+                    
+                    if (startedRotation) {
+                        // Record start of the drag
+                        const handPos = this.rotationHandedness === 'right' ? rightIndexPinchPos : leftIndexPinchPos;
+                        const dx = handPos.x - this.tableGroup.position.x;
+                        const dz = handPos.z - this.tableGroup.position.z;
+                        this.initialHandAngle = Math.atan2(dx, dz);
+                        this.initialTableRotationY = this.tableGroup.rotation.y;
+                    }
+                } else {
+                    // We are actively rotating: check if the corresponding hand is still pinching
+                    const isStillPinching = this.rotationHandedness === 'right' ? isRightIndexPinching : isLeftIndexPinching;
+                    const handPos = this.rotationHandedness === 'right' ? rightIndexPinchPos : leftIndexPinchPos;
+                    
+                    if (isStillPinching) {
+                        // Compute angle delta relative to table center and spin the table!
+                        const dx = handPos.x - this.tableGroup.position.x;
+                        const dz = handPos.z - this.tableGroup.position.z;
+                        const currentAngle = Math.atan2(dx, dz);
+                        const angleDiff = currentAngle - this.initialHandAngle;
+                        
+                        this.tableGroup.rotation.y = this.initialTableRotationY + angleDiff;
+                    } else {
+                        // Released pinch: lock rotation
+                        this.isRotatingMap = false;
+                        this.rotationHandedness = 'none';
+                    }
                 }
             }
 

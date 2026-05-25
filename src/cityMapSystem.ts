@@ -1,10 +1,12 @@
-import { createSystem } from "@iwsdk/core";
+import { createSystem, AssetManager } from "@iwsdk/core";
 import * as THREE from "three";
 
 export class CityMapSystem extends createSystem() {
     private mapRoot!: THREE.Group;
     private mapContent!: THREE.Group; // Group for panning content
     private buildingsMesh!: THREE.InstancedMesh;
+    private stadiumMesh!: THREE.Group;
+    private stadiumBaseScale = 1.0;
     private trafficBoxes: THREE.Mesh[] = [];
     private targetScale = 0.0;
     private currentScale = 0.0;
@@ -23,6 +25,22 @@ export class CityMapSystem extends createSystem() {
     private isPinching = false;
     private lastPinchPos = new THREE.Vector3();
     private mapOffset = new THREE.Vector2(0, 0);
+
+    // Two-handed Pinch to Scale
+    private isTwoHandScaling = false;
+    private initialHandDist = 0.0;
+    private initialUserScale = 1.0;
+    private userScaleFactor = 1.0;
+    private shakaCooldown = 0.0;
+
+    // Log states to prevent console spam
+    private lastLeftPinch = false;
+    private lastRightPinch = false;
+    private lastLoggedScale = 1.0;
+    private wasShakaLeft = false;
+
+
+
 
     init() {
         this.mapRoot = new THREE.Group();
@@ -89,7 +107,38 @@ export class CityMapSystem extends createSystem() {
             this.buildingsMesh.setColorAt(i, color.setHSL(0.6, 0.2, l * 0.2));
         }
         this.buildingsMesh.userData.bData = buildingData;
+        this.buildingsMesh.visible = false; // Hide default buildings
         this.mapContent.add(this.buildingsMesh);
+
+        // Load custom stadium model
+        const stadiumAsset = AssetManager.getGLTF("wankhede");
+        if (stadiumAsset) {
+            this.stadiumMesh = stadiumAsset.scene.clone();
+            
+            // Measure bounding box to scale it correctly to fit the map
+            const box = new THREE.Box3().setFromObject(this.stadiumMesh);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            
+            // We want it to be about 0.20m diameter (0.10m radius) to fit the minimap beautifully
+            const maxDim = Math.max(size.x, size.z);
+            this.stadiumBaseScale = 0.20 / (maxDim || 1.0);
+            this.stadiumMesh.scale.setScalar(this.stadiumBaseScale);
+            this.stadiumMesh.position.set(0, 0.008, 0);
+            this.mapContent.add(this.stadiumMesh);
+        } else {
+            // Fallback circular procedural stadium
+            const fallbackGroup = new THREE.Group();
+            const outerWall = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.1, 0.1, 0.02, 32, 1, true),
+                new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide, wireframe: true })
+            );
+            fallbackGroup.add(outerWall);
+            this.stadiumMesh = fallbackGroup as any;
+            this.stadiumMesh.position.set(0, 0.008, 0);
+            this.stadiumBaseScale = 1.0;
+            this.mapContent.add(this.stadiumMesh);
+        }
 
         // Traffic geometry
         const trafficGeom = new THREE.BoxGeometry(0.002, 0.002, 0.004);
@@ -136,6 +185,14 @@ export class CityMapSystem extends createSystem() {
         this.mapRoot.add(pinGroup);
 
         this.world.createTransformEntity(this.mapRoot);
+
+        // Pre-compile shaders in WebGL to prevent any first-time WebXR stutter/crashes
+        try {
+            this.renderer.compile(this.mapRoot, this.camera);
+            console.log("[CityMapSystem] Shader pre-compilation successful!");
+        } catch (e) {
+            console.warn("[CityMapSystem] Shader pre-compilation failed/skipped:", e);
+        }
     }
 
     private getJointPose(hand: XRHand, jointName: XRHandJoint, refSpace: XRReferenceSpace): XRPose | null {
@@ -178,138 +235,216 @@ export class CityMapSystem extends createSystem() {
     private getPinchData(handedness: 'left' | 'right', refSpace: XRReferenceSpace, tipPosOut: THREE.Vector3): boolean {
         const source = this.input.getPrimaryInputSource(handedness);
         const frame = this.xrFrame;
-        if (!source || !source.hand || !frame || typeof frame.getJointPose !== 'function') return false;
+        if (!source || !source.hand || !frame) return false;
         
         const indexTip = source.hand.get('index-finger-tip');
         const thumbTip = source.hand.get('thumb-tip');
         if (!indexTip || !thumbTip) return false;
 
+        if (!refSpace || typeof frame.getJointPose !== 'function') return false;
+
         const indexPose = frame.getJointPose(indexTip, refSpace);
         const thumbPose = frame.getJointPose(thumbTip, refSpace);
         
         if (indexPose && thumbPose) {
-           const ip = new THREE.Vector3().copy(indexPose.transform.position as any);
-           const tp = new THREE.Vector3().copy(thumbPose.transform.position as any);
-           
-           const isPinching = ip.distanceTo(tp) < 0.02;
-           tipPosOut.copy(ip).applyMatrix4(this.player.matrixWorld);
-           return isPinching;
+            const ix = indexPose.transform.position.x;
+            const iy = indexPose.transform.position.y;
+            const iz = indexPose.transform.position.z;
+            const tx = thumbPose.transform.position.x;
+            const ty = thumbPose.transform.position.y;
+            const tz = thumbPose.transform.position.z;
+
+            // Generous 3.5cm threshold for highly robust index-thumb pinch detection in VR
+            const distSq = (ix - tx) ** 2 + (iy - ty) ** 2 + (iz - tz) ** 2;
+            const isPinching = distSq < 0.035 * 0.035;
+
+            tipPosOut.set(ix, iy, iz);
+            if (this.player) {
+                tipPosOut.applyMatrix4(this.player.matrixWorld);
+            }
+
+            return isPinching;
         }
         return false;
     }
 
     update(dt: number) {
-        let shakaDetected = false;
-        let mapTargetPos = new THREE.Vector3();
-        let mapTargetQuat = new THREE.Quaternion();
+        // 1. Update shaka cooldown timer
+        if (this.shakaCooldown > 0) {
+            this.shakaCooldown -= dt;
+        }
 
+        // 2. Detect Shaka gesture on left hand
+        let shakaDetected = false;
         const leftSource = this.input.getPrimaryInputSource('left');
-        const rightSource = this.input.getPrimaryInputSource('right');
         const frame = this.xrFrame;
         const refSpace = this.renderer.xr.getReferenceSpace();
 
         if (leftSource && leftSource.hand && frame && refSpace) {
             const gestureData = this.detectShakaGesture(leftSource.hand, refSpace);
-            
             if (gestureData && gestureData.isShaka) {
                 shakaDetected = true;
-                
-                // Position exactly at the wrist/forearm like a smartwatch hologram
-                // Y: 3cm above back of wrist, Z: 8cm towards the elbow (forearm)
-                const offset = new THREE.Vector3(0, 0.03, 0.08); 
-                offset.applyQuaternion(gestureData.wristQuat);
-                
-                mapTargetPos.copy(gestureData.wristPos).add(offset);
-                mapTargetPos.applyMatrix4(this.player.matrixWorld);
-
-                // Level Orientation: Extract only Yaw (Y-axis rotation) relative to player
-                const euler = new THREE.Euler().setFromQuaternion(gestureData.wristQuat, "YXZ");
-                mapTargetQuat.setFromEuler(new THREE.Euler(0, euler.y, 0));
-                
-                const playerRot = new THREE.Quaternion();
-                this.player.matrixWorld.decompose(new THREE.Vector3(), playerRot, new THREE.Vector3());
-                mapTargetQuat.premultiply(playerRot);
             }
         }
 
-        // Pinch to Drag (Panning) logic
-        if (this.isMapActive && refSpace) {
-            const pinchPos = new THREE.Vector3();
-            // Check right hand for pinch (or left hand if you want, but Shaka is left hand)
-            const rightPinch = this.getPinchData('right', refSpace, pinchPos);
+        // 3. Handle Shaka spatial toggle (Rising-edge triggered to prevent rapid toggle loops)
+        if (shakaDetected && !this.wasShakaLeft) {
+            this.isMapActive = !this.isMapActive;
             
-            if (rightPinch) {
-                if (!this.isPinching) {
-                    // Start pinch
-                    this.isPinching = true;
-                    this.lastPinchPos.copy(pinchPos);
+            console.log(`[CityMapSystem] Toggle triggered! New Active State: ${this.isMapActive}`);
+
+            if (this.isMapActive) {
+                // Spawn stably floating 0.4m in front of chest (0.25m below head)
+                if (this.player && this.player.head) {
+                    const headPos = new THREE.Vector3();
+                    this.player.head.getWorldPosition(headPos);
+                    
+                    const headQuat = new THREE.Quaternion();
+                    this.player.head.getWorldQuaternion(headQuat);
+                    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(headQuat);
+                    forward.y = 0; // Keep horizontal
+                    forward.normalize();
+                    
+                    // Floating position: 0.4m in front, 0.25m below head
+                    const spawnPos = new THREE.Vector3().copy(headPos).addScaledVector(forward, 0.4);
+                    spawnPos.y = headPos.y - 0.25;
+                    
+                    this.mapRoot.position.copy(spawnPos);
+                    
+                    // Singularity-free look at player (face player)
+                    const dx = headPos.x - spawnPos.x;
+                    const dz = headPos.z - spawnPos.z;
+                    const yaw = Math.atan2(dx, dz);
+                    this.mapRoot.quaternion.setFromEuler(new THREE.Euler(0, yaw + Math.PI, 0));
+                    
+                    console.log(`[CityMapSystem] Floating minimap spawned at position: (${spawnPos.x.toFixed(2)}, ${spawnPos.y.toFixed(2)}, ${spawnPos.z.toFixed(2)})`);
                 } else {
-                    // Continue pinch: calculate delta in local map space
-                    const delta = new THREE.Vector3().subVectors(pinchPos, this.lastPinchPos);
-                    
-                    // Transform delta into map's local space to know panning direction
-                    const invRot = this.mapRoot.quaternion.clone().invert();
-                    delta.applyQuaternion(invRot);
-                    
-                    // Apply delta to map offset
-                    // Invert x/z because dragging right should move map left
-                    this.mapOffset.x -= delta.x;
-                    this.mapOffset.y -= delta.z; // mapped to z
-                    
-                    this.lastPinchPos.copy(pinchPos);
+                    // Fallback absolute spawn
+                    this.mapRoot.position.set(0, 1.25, -0.4);
+                    this.mapRoot.quaternion.setFromEuler(new THREE.Euler(0, Math.PI, 0));
+                    console.log(`[CityMapSystem] Floating minimap spawned at absolute fallback.`);
                 }
+                
+                this.mapRoot.visible = true;
+                
+                // Reset panning, scaling, and physics velocity back to default on fresh spawn
+                this.mapOffset.set(0, 0);
+                this.userScaleFactor = 1.0;
+                this.velocity.set(0, 0, 0);
+                
+                // Reset pinch logging states
+                this.lastLeftPinch = false;
+                this.lastRightPinch = false;
+                this.lastLoggedScale = 1.0;
             } else {
-                this.isPinching = false;
+                console.log(`[CityMapSystem] Minimap closing, animating scale down to 0.`);
+            }
+        }
+        this.wasShakaLeft = shakaDetected; // Save shaka state for rising-edge check
+
+        // 4. Two-handed Pinch to Scale & Single-handed Drag Panning (Active only if Map is Active)
+        if (this.isMapActive && refSpace) {
+            const leftPinchPos = new THREE.Vector3();
+            const rightPinchPos = new THREE.Vector3();
+            
+            const leftPinch = this.getPinchData('left', refSpace, leftPinchPos);
+            const rightPinch = this.getPinchData('right', refSpace, rightPinchPos);
+            
+            // Console Logging for Pinch Detection State Transitions (Clean, non-spammy)
+            if (leftPinch !== this.lastLeftPinch) {
+                console.log(`[CityMapSystem] Left Hand Pinch changed: ${leftPinch ? "PINCHING" : "RELEASED"} at pos: (${leftPinchPos.x.toFixed(2)}, ${leftPinchPos.y.toFixed(2)}, ${leftPinchPos.z.toFixed(2)})`);
+                this.lastLeftPinch = leftPinch;
+            }
+            if (rightPinch !== this.lastRightPinch) {
+                console.log(`[CityMapSystem] Right Hand Pinch changed: ${rightPinch ? "PINCHING" : "RELEASED"} at pos: (${rightPinchPos.x.toFixed(2)}, ${rightPinchPos.y.toFixed(2)}, ${rightPinchPos.z.toFixed(2)})`);
+                this.lastRightPinch = rightPinch;
+            }
+
+            if (leftPinch && rightPinch) {
+                // Two-handed scaling interaction (We remove distance checks entirely for dual-pinch to scale,
+                // making the gesture 100% robust and reliable anywhere in your field of view!)
+                const currentHandDist = leftPinchPos.distanceTo(rightPinchPos);
+                
+                if (!this.isTwoHandScaling) {
+                    this.isTwoHandScaling = true;
+                    this.initialHandDist = currentHandDist;
+                    this.initialUserScale = this.userScaleFactor;
+                    console.log(`[CityMapSystem] Two-handed scaling ENGAGED. Hand distance: ${currentHandDist.toFixed(3)}m. Base Scale: ${this.userScaleFactor.toFixed(2)}`);
+                } else {
+                    // Proportional scaling based on hand distance delta
+                    if (this.initialHandDist > 0.01) {
+                        const ratio = currentHandDist / this.initialHandDist;
+                        let targetUserScale = this.initialUserScale * ratio;
+                        
+                        // Normal size is 1.0 (0.3m diameter) to max 3.0m diameter (10.0 scale multiplier)
+                        this.userScaleFactor = THREE.MathUtils.clamp(targetUserScale, 1.0, 10.0);
+                        
+                        // Log only on significant scale changes to avoid spamming the debug board
+                        if (Math.abs(this.userScaleFactor - this.lastLoggedScale) > 0.5) {
+                            console.log(`[CityMapSystem] Scaling: current scale is ${this.userScaleFactor.toFixed(2)}`);
+                            this.lastLoggedScale = this.userScaleFactor;
+                        }
+                    }
+                }
+                this.isPinching = false; // Disable single hand panning
+            } else {
+                if (this.isTwoHandScaling) {
+                    console.log(`[CityMapSystem] Two-handed scaling COMPLETED. Final scale: ${this.userScaleFactor.toFixed(2)}`);
+                    this.isTwoHandScaling = false;
+                }
+                
+                // Single-handed Drag Panning (Right hand only) - Adding a generous 40cm distance check to avoid accidental trigger
+                const distRightToMap = rightPinchPos.distanceTo(this.mapRoot.position);
+                if (rightPinch && distRightToMap < 0.40) {
+                    if (!this.isPinching) {
+                        this.isPinching = true;
+                        this.lastPinchPos.copy(rightPinchPos);
+                        console.log(`[CityMapSystem] Single-handed panning ENGAGED.`);
+                    } else {
+                        const delta = new THREE.Vector3().subVectors(rightPinchPos, this.lastPinchPos);
+                        const invRot = this.mapRoot.quaternion.clone().invert();
+                        delta.applyQuaternion(invRot);
+                        
+                        // Precise visual "sticky" panning scaled by the current scale factor
+                        const scaleScale = Math.max(0.01, this.currentScale);
+                        this.mapOffset.x -= delta.x / scaleScale;
+                        this.mapOffset.y -= delta.z / scaleScale;
+                        
+                        this.lastPinchPos.copy(rightPinchPos);
+                    }
+                } else {
+                    if (this.isPinching) {
+                        console.log(`[CityMapSystem] Single-handed panning completed. Map offset: (${this.mapOffset.x.toFixed(2)}, ${this.mapOffset.y.toFixed(2)})`);
+                        this.isPinching = false;
+                    }
+                }
             }
         } else {
             this.isPinching = false;
+            this.isTwoHandScaling = false;
         }
 
-        // State Machine for map visibility
-        if (shakaDetected) {
-            if (!this.isMapActive) {
-                this.isMapActive = true;
-                this.mapRoot.visible = true;
-                this.mapRoot.position.copy(mapTargetPos); // Snap on initial appear
-                this.mapRoot.quaternion.copy(mapTargetQuat);
-            }
-            this.targetScale = 1.0;
+        // 5. Target Scale State Machine
+        if (this.isMapActive) {
+            this.targetScale = this.userScaleFactor;
         } else {
             this.targetScale = 0.0;
         }
 
-        // Smoothly lerp scale
+        // 6. Smoothly lerp scale
         if (this.currentScale !== this.targetScale) {
             this.currentScale += (this.targetScale - this.currentScale) * 10.0 * dt;
             if (Math.abs(this.currentScale - this.targetScale) < 0.01) {
                 this.currentScale = this.targetScale;
                 if (this.currentScale === 0) {
-                    this.isMapActive = false;
                     this.mapRoot.visible = false;
                 }
             }
             this.mapRoot.scale.setScalar(this.currentScale);
         }
 
-        // Update logic if active
-        if (this.isMapActive) {
-            // Spring Arm Tracking
-            if (shakaDetected) {
-                const hoverTarget = mapTargetPos;
-                
-                // Spring physics: F = -k*x - c*v
-                const safeDt = Math.min(dt, 0.03);
-                const displacement = new THREE.Vector3().subVectors(this.mapRoot.position, hoverTarget);
-                const force = displacement.multiplyScalar(-this.springStiffness * 0.5); // Soft spring
-                force.sub(this.velocity.clone().multiplyScalar(this.springDamping));
-
-                this.velocity.add(force.multiplyScalar(safeDt));
-                this.mapRoot.position.add(this.velocity.clone().multiplyScalar(safeDt));
-                
-                // Slerp rotation
-                this.mapRoot.quaternion.slerp(mapTargetQuat, 10.0 * safeDt);
-            }
-
+        // 7. Update components visual animation loop if visible
+        if (this.currentScale > 0.0) {
             this.mapRoot.userData.time += dt;
 
             // Animate Pin
@@ -349,6 +484,26 @@ export class CityMapSystem extends createSystem() {
                 this.buildingsMesh.setMatrixAt(i, dummy.matrix);
             }
             this.buildingsMesh.instanceMatrix.needsUpdate = true;
+
+            // Stadium Panning Update
+            if (this.stadiumMesh) {
+                let px = this.mapOffset.x;
+                let pz = this.mapOffset.y;
+                
+                const distToCenter = Math.sqrt(px*px + pz*pz);
+                
+                if (distToCenter < mapRadius) {
+                    this.stadiumMesh.position.set(px, 0.008, pz);
+                    this.stadiumMesh.visible = true;
+                    
+                    // Smoothly scale down as it reaches the edge
+                    const edgeDist = mapRadius - distToCenter;
+                    const fadeScale = Math.min(1.0, edgeDist / 0.03); // Fade out in last 3cm
+                    this.stadiumMesh.scale.setScalar(this.stadiumBaseScale * fadeScale);
+                } else {
+                    this.stadiumMesh.visible = false;
+                }
+            }
 
             // Animate Traffic (orbiting traffic also affected by panning center)
             for (const t of this.trafficData) {

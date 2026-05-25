@@ -69,6 +69,11 @@ const assets: AssetManifest = {
     type: AssetType.GLTF,
     priority: "critical",
   },
+  wankhede: {
+    url: "./gltf/Wankhede.glb",
+    type: AssetType.GLTF,
+    priority: "critical",
+  },
   domainEnv: {
     url: "./Domains/Domain.png",
     type: AssetType.Texture,
@@ -118,7 +123,9 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     features: {
       handTracking: true,
       meshDetection: true,
-      planeDetection: true
+      planeDetection: true,
+      hitTest: true,
+      anchors: true
     }
   },
   features: {
@@ -211,12 +218,15 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       density: 1.0
     });
 
+  // Hide the glowing green physics box helper
+  /*
   if (IS_DEV) {
     const box = new Box3();
     box.setFromCenterAndSize(new Vector3(0, 0, 0), new Vector3(0.3, 0.3, 0.3));
     const debugBoxHelper = new Box3Helper(box, 0x00ff00); // Glowing green physics box helper
     juguModel.add(debugBoxHelper);
   }
+  */
 
   const transcriptBoard = new JugnuTranscriptBoard();
   transcriptBoard.position.set(1.0, deskTopY + 0.5, -1.0);
