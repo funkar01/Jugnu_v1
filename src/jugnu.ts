@@ -68,7 +68,7 @@ export class JugnuSystem extends createSystem({
   private springStiffness = 150.0;
   private springDamping = 12.0;
   private centerPos = new THREE.Vector3(0, 1.45, -0.8);
-  private floatRadius = 0.6;
+  private floatRadius = 0.12; // Calmed float radius (from 0.25 to 0.12) to avoid excessive drift
   private tempScale = new THREE.Vector3();
   private handVelocity = new THREE.Vector3();
   private previousHandPos = new THREE.Vector3();
@@ -489,8 +489,25 @@ export class JugnuSystem extends createSystem({
     const safeDt = Math.min(dt, 0.03);
 
     // --- Pinch State Machine ---
-    const isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
-    const isPinchingRight = this.getPinchData('right', this.rightPinchTip);
+    let isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
+    let isPinchingRight = this.getPinchData('right', this.rightPinchTip);
+
+    // Safeguard: ignore index pinches if the user is currently rotating the tactical map or pinching near the open table
+    if ((window as any).isRotatingMap) {
+        isPinchingLeft = false;
+        isPinchingRight = false;
+    }
+    if ((window as any).minimapTableVisible) {
+        const tablePos = (window as any).minimapTablePosition as THREE.Vector3;
+        if (tablePos) {
+            if (this.leftPinchTip.distanceTo(tablePos) < 0.35) {
+                isPinchingLeft = false;
+            }
+            if (this.rightPinchTip.distanceTo(tablePos) < 0.35) {
+                isPinchingRight = false;
+            }
+        }
+    }
 
     if (this.interactionState === 'Idle' || this.interactionState === 'Following' || this.interactionState === 'Anchored') {
         let activeHand: 'left' | 'right' | null = null;
@@ -709,15 +726,17 @@ export class JugnuSystem extends createSystem({
               forward.y = 0; 
               forward.normalize();
               
-              const targetCenter = this.headPos.clone().add(forward.multiplyScalar(0.6)); 
-              targetCenter.y -= 0.15; 
+              // Calmed down: float farther away (1.25m instead of 0.95m) and lower to stay out of directly blocking user face
+              const targetCenter = this.headPos.clone().add(forward.multiplyScalar(1.25)); 
+              targetCenter.y -= 0.22; 
               
-              this.centerPos.lerp(targetCenter, 2.0 * safeDt);
+              // Calmed down: slower following transition (0.7x instead of 1.0x) so it floats lazily
+              this.centerPos.lerp(targetCenter, 0.7 * safeDt);
           }
 
-          const floatX = this.noise(this.floatTime * 0.5, 0) * this.floatRadius;
-          const floatY = this.noise(this.floatTime * 0.5, 1) * this.floatRadius * 0.5;
-          const floatZ = this.noise(this.floatTime * 0.5, 2) * this.floatRadius;
+          const floatX = this.noise(this.floatTime * 0.18, 0) * this.floatRadius;
+          const floatY = this.noise(this.floatTime * 0.18, 1) * this.floatRadius * 0.5;
+          const floatZ = this.noise(this.floatTime * 0.18, 2) * this.floatRadius;
           const hoverTarget = this.centerPos.clone().add(new THREE.Vector3(floatX, floatY, floatZ));
 
           const displacement = new THREE.Vector3().subVectors(obj.position, hoverTarget);
