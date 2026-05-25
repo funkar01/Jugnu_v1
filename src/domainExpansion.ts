@@ -1166,6 +1166,10 @@ export class DomainExpansionSystem extends createSystem({
         lCtx.fillStyle = '#020d1e';
         lCtx.fillRect(0, 0, 1024, 512);
         
+        // Mirror canvas horizontally so it is readable from the inside of the sphere!
+        lCtx.translate(1024, 0);
+        lCtx.scale(-1, 1);
+        
         lCtx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
         lCtx.lineWidth = 2;
         lCtx.strokeRect(50, 50, 924, 412);
@@ -1183,17 +1187,49 @@ export class DomainExpansionSystem extends createSystem({
         this.domainMat.needsUpdate = true;
         
         try {
-            const metaUrl = `/api/streetview-metadata?location=${lat},${lng}`;
-            const metaRes = await fetch(metaUrl);
-            if (!metaRes.ok) throw new Error("Metadata request failed");
-            const meta = await metaRes.json();
+            let panoId = "";
             
-            if (meta.status !== "OK" || !meta.pano_id) {
-                throw new Error("No Street View panorama found at these coordinates");
+            // Path 1: Query Google Maps Metadata Proxy (requires active API key/billing)
+            try {
+                const metaUrl = `/api/streetview-metadata?location=${lat},${lng}`;
+                console.log(`[StreetView] Path 1: Querying metadata proxy: ${metaUrl}`);
+                const metaRes = await fetch(metaUrl);
+                if (metaRes.ok) {
+                    const meta = await metaRes.json();
+                    if (meta.status === "OK" && meta.pano_id) {
+                        panoId = meta.pano_id;
+                        console.log(`[StreetView] Path 1 Success! Found Pano ID: ${panoId}`);
+                    } else {
+                        console.warn(`[StreetView] Path 1 proxy returned status: ${meta.status}`);
+                    }
+                }
+            } catch (e) {
+                console.warn(`[StreetView] Path 1 proxy metadata request failed:`, e);
             }
             
-            const panoId = meta.pano_id;
-            console.log(`[StreetView] Found Pano ID: ${panoId}`);
+            // Path 2: Query Public Keyless CBK JSON API via local proxy (solves CORS!)
+            if (!panoId) {
+                try {
+                    const cbkMetaUrl = `/api/streetview-tile?output=json&ll=${lat},${lng}`;
+                    console.log(`[StreetView] Path 2: Querying public cbk metadata via proxy: ${cbkMetaUrl}`);
+                    const cbkRes = await fetch(cbkMetaUrl);
+                    if (cbkRes.ok) {
+                        const cbkData = await cbkRes.json();
+                        if (cbkData && cbkData.Location && cbkData.Location.panoId) {
+                            panoId = cbkData.Location.panoId;
+                            console.log(`[StreetView] Path 2 Success! Found Pano ID: ${panoId}`);
+                        } else {
+                            console.warn(`[StreetView] Path 2 JSON missing Location.panoId:`, cbkData);
+                        }
+                    }
+                } catch (e) {
+                    console.error(`[StreetView] Path 2 public cbk metadata request failed:`, e);
+                }
+            }
+            
+            if (!panoId) {
+                throw new Error("No Street View panorama found at these coordinates");
+            }
             
             const tiles: { x: number; y: number; img: HTMLImageElement }[] = [];
             const promises: Promise<void>[] = [];
@@ -1207,34 +1243,16 @@ export class DomainExpansionSystem extends createSystem({
                             const img = new Image();
                             img.crossOrigin = "anonymous";
                             
-                            const proxyUrl = `/api/streetview-tile?output=tile&panoid=${panoId}&zoom=2&x=${tx}&y=${ty}`;
-                            const fallbackUrl = `https://cbk0.google.com/cbk?output=tile&panoid=${panoId}&zoom=2&x=${tx}&y=${ty}`;
+                            // Fetch all tiles securely via the local CORS-proof proxy!
+                            const tileUrl = `/api/streetview-tile?output=tile&panoid=${panoId}&zoom=2&x=${tx}&y=${ty}`;
                             
                             const loaded = new Promise<void>((resolve, reject) => {
                                 img.onload = () => resolve();
                                 img.onerror = () => reject(new Error(`Failed to load tile x:${tx}, y:${ty}`));
                             });
                             
-                            try {
-                                img.src = proxyUrl;
-                                await Promise.race([
-                                    loaded,
-                                    new Promise((_, rej) => setTimeout(() => rej(new Error("Timeout")), 3500))
-                                ]);
-                            } catch (e) {
-                                console.warn(`[StreetView] Proxy failed or timed out for tile x:${tx}, y:${ty}. Falling back directly to cbk.google.com...`);
-                                const imgFallback = new Image();
-                                imgFallback.crossOrigin = "anonymous";
-                                const fallbackLoaded = new Promise<void>((resolve, reject) => {
-                                    imgFallback.onload = () => resolve();
-                                    imgFallback.onerror = () => reject(new Error("Fallback failed"));
-                                });
-                                imgFallback.src = fallbackUrl;
-                                await fallbackLoaded;
-                                tiles.push({ x: tx, y: ty, img: imgFallback });
-                                return;
-                            }
-                            
+                            img.src = tileUrl;
+                            await loaded;
                             tiles.push({ x: tx, y: ty, img });
                         })()
                     );
@@ -1248,6 +1266,10 @@ export class DomainExpansionSystem extends createSystem({
             stitchCanvas.width = 2048;
             stitchCanvas.height = 1024;
             const sCtx = stitchCanvas.getContext('2d')!;
+            
+            // Mirror canvas horizontally so it is readable from the inside of the sphere!
+            sCtx.translate(2048, 0);
+            sCtx.scale(-1, 1);
             
             tiles.forEach(tile => {
                 sCtx.drawImage(tile.img, tile.x * 512, tile.y * 512, 512, 512);
@@ -1329,6 +1351,10 @@ export class DomainExpansionSystem extends createSystem({
             const eCtx = errorCanvas.getContext('2d')!;
             eCtx.fillStyle = '#1e0202';
             eCtx.fillRect(0, 0, 1024, 512);
+            
+            // Mirror canvas horizontally so it is readable from the inside of the sphere!
+            eCtx.translate(1024, 0);
+            eCtx.scale(-1, 1);
             
             eCtx.strokeStyle = '#ff3333';
             eCtx.lineWidth = 4;
