@@ -832,19 +832,7 @@ export class JugnuSystem extends createSystem({
 
     // Update Instruction Board Position & Text
     if (activeJugnuModel && this.instructionBoard) {
-        if (instructionStep >= 3) {
-            this.instructionBoard.visible = false;
-        } else {
-            this.instructionBoard.visible = true;
-            this.instructionBoard.setStep(instructionStep);
-            
-            // Position to the top-right
-            const offset = new THREE.Vector3(0.2, 0.25, 0);
-            offset.applyQuaternion(this.player.head.quaternion);
-            
-            this.instructionBoard.position.copy(activeJugnuPos).add(offset);
-            this.instructionBoard.lookAt(this.headPos);
-        }
+        this.instructionBoard.visible = false;
     }
     
     if (activeJugnuPos.lengthSq() > 0) {

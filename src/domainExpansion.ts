@@ -1156,224 +1156,877 @@ export class DomainExpansionSystem extends createSystem({
         return tex;
     }
 
-    private async loadStreetView(lat: number, lng: number) {
-        console.log(`[StreetView] Fetching panorama metadata for: ${lat}, ${lng}`);
-        
-        const loadingCanvas = document.createElement('canvas');
-        loadingCanvas.width = 1024;
-        loadingCanvas.height = 512;
-        const lCtx = loadingCanvas.getContext('2d')!;
-        lCtx.fillStyle = '#020d1e';
-        lCtx.fillRect(0, 0, 1024, 512);
-        
-        // Mirror canvas horizontally so it is readable from the inside of the sphere!
-        lCtx.translate(1024, 0);
-        lCtx.scale(-1, 1);
-        
-        lCtx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
-        lCtx.lineWidth = 2;
-        lCtx.strokeRect(50, 50, 924, 412);
-        
-        lCtx.fillStyle = '#00ffff';
-        lCtx.font = 'bold 32px monospace';
-        lCtx.textAlign = 'center';
-        lCtx.fillText("INITIATING SECURE SATELLITE DATA-LINK...", 512, 220);
-        lCtx.fillText("STITCHING QUANTUM PANORAMA TILES (ZOOM 2)...", 512, 280);
-        
-        const loadingTex = new THREE.CanvasTexture(loadingCanvas);
-        loadingTex.colorSpace = THREE.SRGBColorSpace;
-        loadingTex.mapping = THREE.EquirectangularReflectionMapping;
-        this.domainMat.map = loadingTex;
+    private loadStreetView(lat: number, lng: number) {
+        // Identify city for fallback & HUD label
+        let cityKey = "TOKYO";
+        if (Math.abs(lat - 40.7580) < 0.001) cityKey = "NEW_YORK";
+        else if (Math.abs(lat - 48.8584) < 0.001) cityKey = "PARIS";
+        else if (Math.abs(lat - 41.8902) < 0.001) cityKey = "ROME";
+
+        // Show loading state immediately (synchronous)
+        this._applyLoadingScreen(cityKey, lat, lng);
+
+        // Kick off real fetch pipeline asynchronously
+        this._fetchRealPanorama(lat, lng, cityKey).catch(err => {
+            console.error(`[StreetView] Pipeline failed, falling back to procedural:`, err);
+            this._applyFallbackPanorama(cityKey, lat, lng);
+        });
+    }
+
+    private _applyLoadingScreen(cityKey: string, lat: number, lng: number) {
+        const W = 2048, H = 1024;
+        const canvas = document.createElement('canvas');
+        canvas.width = W; canvas.height = H;
+        const ctx = canvas.getContext('2d')!;
+
+        const bg = ctx.createLinearGradient(0, 0, 0, H);
+        bg.addColorStop(0, '#020812'); bg.addColorStop(1, '#010408');
+        ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+        ctx.save();
+        ctx.translate(W, 0); ctx.scale(-1, 1);
+
+        ctx.strokeStyle = 'rgba(0,255,255,0.06)'; ctx.lineWidth = 1;
+        for (let x = 0; x < W; x += 64) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+        for (let y = 0; y < H; y += 64) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+        ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 6;
+        ctx.strokeRect(16, 16, W - 32, H - 32);
+
+        ctx.strokeStyle = 'rgba(0,255,255,0.4)'; ctx.lineWidth = 3;
+        [80, 150, 240].forEach(r => { ctx.beginPath(); ctx.arc(W/2, H/2, r, 0, Math.PI*2); ctx.stroke(); });
+
+        ctx.strokeStyle = 'rgba(0,255,255,0.6)'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(W/2 - 300, H/2); ctx.lineTo(W/2 - 20, H/2);
+        ctx.moveTo(W/2 + 20, H/2); ctx.lineTo(W/2 + 300, H/2);
+        ctx.moveTo(W/2, H/2 - 300); ctx.lineTo(W/2, H/2 - 20);
+        ctx.moveTo(W/2, H/2 + 20); ctx.lineTo(W/2, H/2 + 300);
+        ctx.stroke();
+
+        ctx.shadowColor = '#00ffff'; ctx.shadowBlur = 16;
+        ctx.fillStyle = '#00ffff'; ctx.textAlign = 'center';
+        const cityLabels: Record<string, string> = {
+            TOKYO: 'SHIBUYA CROSSING \u2022 TOKYO',
+            NEW_YORK: 'TIMES SQUARE \u2022 NEW YORK',
+            PARIS: 'CHAMP DE MARS \u2022 PARIS',
+            ROME: 'COLOSSEO \u2022 ROMA'
+        };
+        ctx.font = 'bold 52px monospace';
+        ctx.fillText(cityLabels[cityKey] || cityKey, W/2, 90);
+        ctx.font = '34px monospace'; ctx.fillStyle = 'rgba(0,255,255,0.85)';
+        ctx.fillText(`LAT ${lat.toFixed(4)}\u00b0   LNG ${lng.toFixed(4)}\u00b0`, W/2, 148);
+        ctx.font = 'bold 42px monospace'; ctx.fillStyle = '#00ffff';
+        ctx.fillText('ACQUIRING SATELLITE LINK...', W/2, H/2 - 30);
+        ctx.font = '30px monospace'; ctx.fillStyle = 'rgba(0,255,255,0.7)';
+        ctx.fillText('FETCHING STREET VIEW PANORAMA TILES', W/2, H/2 + 20);
+        ctx.restore();
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.mapping = THREE.EquirectangularReflectionMapping;
+        this.domainMat.map = tex;
         this.domainMat.needsUpdate = true;
-        
-        try {
-            let panoId = "";
-            
-            // Path 1: Query Google Maps Metadata Proxy (requires active API key/billing)
-            try {
-                const metaUrl = `/api/streetview-metadata?location=${lat},${lng}`;
-                console.log(`[StreetView] Path 1: Querying metadata proxy: ${metaUrl}`);
-                const metaRes = await fetch(metaUrl);
-                if (metaRes.ok) {
-                    const meta = await metaRes.json();
-                    if (meta.status === "OK" && meta.pano_id) {
-                        panoId = meta.pano_id;
-                        console.log(`[StreetView] Path 1 Success! Found Pano ID: ${panoId}`);
-                    } else {
-                        console.warn(`[StreetView] Path 1 proxy returned status: ${meta.status}`);
-                    }
-                }
-            } catch (e) {
-                console.warn(`[StreetView] Path 1 proxy metadata request failed:`, e);
+    }
+
+    private async _fetchRealPanorama(lat: number, lng: number, cityKey: string) {
+        console.log(`[StreetView] Starting pipeline for ${cityKey} (${lat}, ${lng})`);
+
+        // Step 1: Get panoId from server-side proxy
+        const panoRes = await fetch('/api/sv/panoid', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat, lng })
+        });
+        if (!panoRes.ok) {
+            const err = await panoRes.json().catch(() => ({ error: panoRes.statusText })) as { error: string };
+            throw new Error(`PanoId lookup failed: ${err.error}`);
+        }
+        const { panoId } = await panoRes.json() as { panoId: string };
+        console.log(`[StreetView] Got panoId: ${panoId}`);
+
+        // Step 2: Fetch 8 tiles in parallel (zoom=2 -> 4 cols x 2 rows, 512x512 each)
+        const ZOOM = 2, COLS = 4, ROWS = 2, tileSize = 512;
+        const tilePromises: Promise<{ x: number; y: number; img: HTMLImageElement }>[] = [];
+        for (let x = 0; x < COLS; x++) {
+            for (let y = 0; y < ROWS; y++) {
+                tilePromises.push(new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.onload = () => resolve({ x, y, img });
+                    img.onerror = () => reject(new Error(`Tile ${x},${y} failed to load`));
+                    img.src = `/api/sv/tile/${ZOOM}/${x}/${y}?panoId=${encodeURIComponent(panoId)}`;
+                }));
             }
-            
-            // Path 2: Query Public Keyless CBK JSON API via local proxy (solves CORS!)
-            if (!panoId) {
-                try {
-                    const cbkMetaUrl = `/api/streetview-tile?output=json&ll=${lat},${lng}`;
-                    console.log(`[StreetView] Path 2: Querying public cbk metadata via proxy: ${cbkMetaUrl}`);
-                    const cbkRes = await fetch(cbkMetaUrl);
-                    if (cbkRes.ok) {
-                        const cbkData = await cbkRes.json();
-                        if (cbkData && cbkData.Location && cbkData.Location.panoId) {
-                            panoId = cbkData.Location.panoId;
-                            console.log(`[StreetView] Path 2 Success! Found Pano ID: ${panoId}`);
-                        } else {
-                            console.warn(`[StreetView] Path 2 JSON missing Location.panoId:`, cbkData);
-                        }
-                    }
-                } catch (e) {
-                    console.error(`[StreetView] Path 2 public cbk metadata request failed:`, e);
-                }
+        }
+        const tiles = await Promise.all(tilePromises);
+        console.log(`[StreetView] All ${tiles.length} tiles loaded successfully.`);
+
+        // Step 3: Stitch into 2048x1024 canvas
+        const W = COLS * tileSize;
+        const H = ROWS * tileSize;
+        const stitchCanvas = document.createElement('canvas');
+        stitchCanvas.width = W; stitchCanvas.height = H;
+        const sCtx = stitchCanvas.getContext('2d')!;
+        tiles.forEach(({ x, y, img }) => {
+            sCtx.drawImage(img, x * tileSize, y * tileSize, tileSize, tileSize);
+        });
+
+        // Step 4: Horizontal mirror (for interior sphere reading)
+        const imageData = sCtx.getImageData(0, 0, W, H);
+        const flipped = sCtx.createImageData(W, H);
+        for (let row = 0; row < H; row++) {
+            for (let col = 0; col < W; col++) {
+                const src = (row * W + col) * 4;
+                const dst = (row * W + (W - 1 - col)) * 4;
+                flipped.data[dst]     = imageData.data[src];
+                flipped.data[dst + 1] = imageData.data[src + 1];
+                flipped.data[dst + 2] = imageData.data[src + 2];
+                flipped.data[dst + 3] = imageData.data[src + 3];
             }
-            
-            if (!panoId) {
-                throw new Error("No Street View panorama found at these coordinates");
+        }
+        sCtx.putImageData(flipped, 0, 0);
+
+        // Subtle scanline overlay
+        sCtx.fillStyle = 'rgba(0,0,0,0.07)';
+        for (let scanY = 0; scanY < H; scanY += 4) { sCtx.fillRect(0, scanY, W, 1); }
+
+        // Minimal HUD frame
+        sCtx.strokeStyle = 'rgba(0,255,255,0.65)'; sCtx.lineWidth = 4;
+        sCtx.strokeRect(8, 8, W - 16, H - 16);
+        const cl = 44;
+        [[8,8],[W-8,8],[8,H-8],[W-8,H-8]].forEach(([cx, cy], i) => {
+            const sx = i % 2 === 0 ? 1 : -1;
+            const sy = i < 2 ? 1 : -1;
+            sCtx.beginPath();
+            sCtx.moveTo(cx + sx * cl, cy); sCtx.lineTo(cx, cy); sCtx.lineTo(cx, cy + sy * cl);
+            sCtx.stroke();
+        });
+
+        // Small info text
+        sCtx.shadowColor = '#00ffff'; sCtx.shadowBlur = 8;
+        const cityLabels2: Record<string, string> = {
+            TOKYO: 'SHIBUYA CROSSING \u2022 TOKYO, JAPAN',
+            NEW_YORK: 'TIMES SQUARE \u2022 NEW YORK CITY, USA',
+            PARIS: 'CHAMP DE MARS \u2022 PARIS, FRANCE',
+            ROME: 'COLOSSEO \u2022 ROMA, ITALIA'
+        };
+        sCtx.fillStyle = 'rgba(0,255,255,0.9)'; sCtx.textAlign = 'left';
+        sCtx.font = 'bold 20px monospace';
+        sCtx.fillText(cityLabels2[cityKey] || cityKey, 28, 44);
+        sCtx.font = '14px monospace'; sCtx.fillStyle = 'rgba(0,255,255,0.65)';
+        sCtx.fillText(`${lat.toFixed(4)}\u00b0  ${lng.toFixed(4)}\u00b0  |  PANO ${panoId.substring(0,10)}...`, 28, 66);
+        sCtx.textAlign = 'right'; sCtx.font = 'bold 20px monospace';
+        sCtx.fillStyle = 'rgba(0,255,255,0.9)';
+        sCtx.fillText('GOOGLE STREET VIEW', W - 28, 44);
+        sCtx.textAlign = 'center'; sCtx.font = 'bold 16px monospace';
+        sCtx.fillStyle = 'rgba(0,255,255,0.75)';
+        sCtx.fillText("PINCH 'X' TO EXIT DOMAIN", W/2, H - 18);
+
+        // Step 5: Apply to dome
+        const texture = new THREE.CanvasTexture(stitchCanvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        this.domainMat.map = texture;
+        this.domainMat.needsUpdate = true;
+        console.log(`[StreetView] Real photorealistic panorama applied for ${cityKey}!`);
+    }
+
+    private _applyFallbackPanorama(cityKey: string, lat: number, lng: number) {
+        console.log(`[StreetView] Applying procedural fallback for ${cityKey}`);
+        const W = 4096, H = 2048;
+        const canvas = document.createElement('canvas');
+        canvas.width = W; canvas.height = H;
+        const ctx = canvas.getContext('2d')!;
+        this._drawCityPanorama(ctx, W, H, cityKey, lat, lng);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        this.domainMat.map = texture;
+        this.domainMat.needsUpdate = true;
+    }
+
+    private _drawCityPanorama(ctx: CanvasRenderingContext2D, W: number, H: number, city: string, lat: number, lng: number) {
+        const horizon = H * 0.52; // horizon line (slightly below center)
+
+        // ── SKY ─────────────────────────────────────────────────────────────────
+        if (city === "TOKYO") {
+            // Deep indigo night sky → orange-purple neon horizon
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, horizon);
+            skyGrad.addColorStop(0, '#06001a');
+            skyGrad.addColorStop(0.4, '#0d0530');
+            skyGrad.addColorStop(0.75, '#1a0538');
+            skyGrad.addColorStop(1, '#4a1060');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, W, horizon);
+
+            // Stars
+            ctx.save();
+            for (let s = 0; s < 800; s++) {
+                const sx = Math.random() * W;
+                const sy = Math.random() * horizon * 0.8;
+                const sr = Math.random() * 1.4;
+                const alpha = 0.3 + Math.random() * 0.7;
+                ctx.beginPath();
+                ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255,220,255,${alpha})`;
+                ctx.fill();
             }
-            
-            const tiles: { x: number; y: number; img: HTMLImageElement }[] = [];
-            const promises: Promise<void>[] = [];
-            
-            for (let x = 0; x < 4; x++) {
-                for (let y = 0; y < 2; y++) {
-                    const tx = x;
-                    const ty = y;
-                    promises.push(
-                        (async () => {
-                            const img = new Image();
-                            img.crossOrigin = "anonymous";
-                            
-                            // Fetch all tiles securely via the local CORS-proof proxy!
-                            const tileUrl = `/api/streetview-tile?output=tile&panoid=${panoId}&zoom=2&x=${tx}&y=${ty}`;
-                            
-                            const loaded = new Promise<void>((resolve, reject) => {
-                                img.onload = () => resolve();
-                                img.onerror = () => reject(new Error(`Failed to load tile x:${tx}, y:${ty}`));
-                            });
-                            
-                            img.src = tileUrl;
-                            await loaded;
-                            tiles.push({ x: tx, y: ty, img });
-                        })()
-                    );
-                }
+            ctx.restore();
+
+            // Moon
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(W * 0.15, H * 0.08, 44, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff5e0';
+            ctx.shadowColor = '#ffffa0';
+            ctx.shadowBlur = 30;
+            ctx.fill();
+            ctx.restore();
+
+            // Neon glow at horizon
+            const glowGrad = ctx.createLinearGradient(0, horizon - 120, 0, horizon);
+            glowGrad.addColorStop(0, 'rgba(255,60,180,0)');
+            glowGrad.addColorStop(1, 'rgba(255,40,120,0.55)');
+            ctx.fillStyle = glowGrad;
+            ctx.fillRect(0, horizon - 120, W, 120);
+
+        } else if (city === "NEW_YORK") {
+            // NYC: cool twilight blue-grey sky
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, horizon);
+            skyGrad.addColorStop(0, '#030814');
+            skyGrad.addColorStop(0.45, '#0a1628');
+            skyGrad.addColorStop(0.8, '#1a2a4a');
+            skyGrad.addColorStop(1, '#2a3a5a');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, W, horizon);
+
+            // Stars
+            ctx.save();
+            for (let s = 0; s < 500; s++) {
+                const sx = Math.random() * W;
+                const sy = Math.random() * horizon * 0.6;
+                ctx.beginPath();
+                ctx.arc(sx, sy, Math.random() * 1.2, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(200,220,255,${0.4 + Math.random() * 0.5})`;
+                ctx.fill();
             }
-            
-            await Promise.all(promises);
-            console.log(`[StreetView] Finished downloading all 8 tiles successfully!`);
-            
-            const stitchCanvas = document.createElement('canvas');
-            stitchCanvas.width = 2048;
-            stitchCanvas.height = 1024;
-            const sCtx = stitchCanvas.getContext('2d')!;
-            
-            // Mirror canvas horizontally so it is readable from the inside of the sphere!
-            sCtx.translate(2048, 0);
-            sCtx.scale(-1, 1);
-            
-            tiles.forEach(tile => {
-                sCtx.drawImage(tile.img, tile.x * 512, tile.y * 512, 512, 512);
+            ctx.restore();
+
+            // Warm amber horizon glow (city light pollution)
+            const glowGrad = ctx.createLinearGradient(0, horizon - 180, 0, horizon);
+            glowGrad.addColorStop(0, 'rgba(255,150,50,0)');
+            glowGrad.addColorStop(1, 'rgba(255,120,20,0.4)');
+            ctx.fillStyle = glowGrad;
+            ctx.fillRect(0, horizon - 180, W, 180);
+
+        } else if (city === "PARIS") {
+            // Paris: warm golden-blue dusk
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, horizon);
+            skyGrad.addColorStop(0, '#050218');
+            skyGrad.addColorStop(0.35, '#0a0830');
+            skyGrad.addColorStop(0.65, '#251040');
+            skyGrad.addColorStop(0.85, '#4a1a30');
+            skyGrad.addColorStop(1, '#7a3020');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, W, horizon);
+
+            // Stars
+            ctx.save();
+            for (let s = 0; s < 600; s++) {
+                const sx = Math.random() * W;
+                const sy = Math.random() * horizon * 0.7;
+                ctx.beginPath();
+                ctx.arc(sx, sy, Math.random() * 1.3, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255,240,200,${0.3 + Math.random() * 0.6})`;
+                ctx.fill();
+            }
+            ctx.restore();
+
+            // Golden sunset glow
+            const glowGrad = ctx.createLinearGradient(0, horizon - 200, 0, horizon);
+            glowGrad.addColorStop(0, 'rgba(255,150,50,0)');
+            glowGrad.addColorStop(0.5, 'rgba(255,130,30,0.2)');
+            glowGrad.addColorStop(1, 'rgba(255,180,60,0.5)');
+            ctx.fillStyle = glowGrad;
+            ctx.fillRect(0, horizon - 200, W, 200);
+
+        } else { // ROME
+            // Rome: warm terracotta dusk / late afternoon
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, horizon);
+            skyGrad.addColorStop(0, '#080318');
+            skyGrad.addColorStop(0.4, '#1a0a28');
+            skyGrad.addColorStop(0.7, '#3a1020');
+            skyGrad.addColorStop(1, '#7a2808');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, W, horizon);
+
+            // Stars
+            ctx.save();
+            for (let s = 0; s < 500; s++) {
+                const sx = Math.random() * W;
+                const sy = Math.random() * horizon * 0.65;
+                ctx.beginPath();
+                ctx.arc(sx, sy, Math.random() * 1.2, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255,235,210,${0.3 + Math.random() * 0.6})`;
+                ctx.fill();
+            }
+            ctx.restore();
+
+            // Terracotta sunset glow
+            const glowGrad = ctx.createLinearGradient(0, horizon - 220, 0, horizon);
+            glowGrad.addColorStop(0, 'rgba(255,80,20,0)');
+            glowGrad.addColorStop(0.6, 'rgba(255,100,30,0.25)');
+            glowGrad.addColorStop(1, 'rgba(255,140,50,0.55)');
+            ctx.fillStyle = glowGrad;
+            ctx.fillRect(0, horizon - 220, W, 220);
+        }
+
+        // ── GROUND ───────────────────────────────────────────────────────────────
+        if (city === "TOKYO") {
+            const groundGrad = ctx.createLinearGradient(0, horizon, 0, H);
+            groundGrad.addColorStop(0, '#0a0012');
+            groundGrad.addColorStop(0.3, '#080010');
+            groundGrad.addColorStop(1, '#030008');
+            ctx.fillStyle = groundGrad;
+            ctx.fillRect(0, horizon, W, H - horizon);
+
+            // Wet road reflections
+            this._drawRoadReflections(ctx, W, H, horizon, '#ff40c0', '#00aaff', '#ff8800');
+
+        } else if (city === "NEW_YORK") {
+            const groundGrad = ctx.createLinearGradient(0, horizon, 0, H);
+            groundGrad.addColorStop(0, '#080810');
+            groundGrad.addColorStop(0.4, '#050508');
+            groundGrad.addColorStop(1, '#020204');
+            ctx.fillStyle = groundGrad;
+            ctx.fillRect(0, horizon, W, H - horizon);
+
+            this._drawRoadReflections(ctx, W, H, horizon, '#ffaa00', '#ff4400', '#4488ff');
+
+        } else if (city === "PARIS") {
+            const groundGrad = ctx.createLinearGradient(0, horizon, 0, H);
+            groundGrad.addColorStop(0, '#100808');
+            groundGrad.addColorStop(0.4, '#080404');
+            groundGrad.addColorStop(1, '#040202');
+            ctx.fillStyle = groundGrad;
+            ctx.fillRect(0, horizon, W, H - horizon);
+
+            this._drawRoadReflections(ctx, W, H, horizon, '#ffcc44', '#ff6644', '#aa88ff');
+
+        } else { // ROME
+            const groundGrad = ctx.createLinearGradient(0, horizon, 0, H);
+            groundGrad.addColorStop(0, '#0e0604');
+            groundGrad.addColorStop(0.4, '#090402');
+            groundGrad.addColorStop(1, '#050202');
+            ctx.fillStyle = groundGrad;
+            ctx.fillRect(0, horizon, W, H - horizon);
+
+            this._drawRoadReflections(ctx, W, H, horizon, '#ffaa44', '#ff6622', '#cc9944');
+        }
+
+        // ── SKYLINE / LANDMARKS ──────────────────────────────────────────────────
+        if (city === "TOKYO") {
+            this._drawTokyoSkyline(ctx, W, H, horizon);
+        } else if (city === "NEW_YORK") {
+            this._drawNYCSkyline(ctx, W, H, horizon);
+        } else if (city === "PARIS") {
+            this._drawParisSkyline(ctx, W, H, horizon);
+        } else {
+            this._drawRomeSkyline(ctx, W, H, horizon);
+        }
+
+        // ── SCANLINE OVERLAY ────────────────────────────────────────────────────
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+        for (let y = 0; y < H; y += 4) {
+            ctx.fillRect(0, y, W, 2);
+        }
+        ctx.restore();
+
+        // ── HUD OVERLAY ─────────────────────────────────────────────────────────
+        ctx.save();
+        // Mirror for interior sphere reading
+        ctx.translate(W, 0);
+        ctx.scale(-1, 1);
+
+        // Cyan frame
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 10;
+        ctx.strokeRect(24, 24, W - 48, H - 48);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(0,255,255,0.35)';
+        ctx.strokeRect(36, 36, W - 72, H - 72);
+
+        // Corner accents
+        const cornerLen = 80;
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 6;
+        [
+            [24, 24], [W - 24, 24], [24, H - 24], [W - 24, H - 24]
+        ].forEach(([cx, cy], idx) => {
+            ctx.beginPath();
+            const sx = idx % 2 === 0 ? 1 : -1;
+            const sy = idx < 2 ? 1 : -1;
+            ctx.moveTo(cx + sx * cornerLen, cy);
+            ctx.lineTo(cx, cy);
+            ctx.lineTo(cx, cy + sy * cornerLen);
+            ctx.stroke();
+        });
+
+        // Central crosshair
+        ctx.strokeStyle = 'rgba(0,255,255,0.6)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(W / 2, H / 2, 120, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(W / 2, H / 2, 55, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(W / 2 - 200, H / 2); ctx.lineTo(W / 2 - 20, H / 2);
+        ctx.moveTo(W / 2 + 20, H / 2);  ctx.lineTo(W / 2 + 200, H / 2);
+        ctx.moveTo(W / 2, H / 2 - 200); ctx.lineTo(W / 2, H / 2 - 20);
+        ctx.moveTo(W / 2, H / 2 + 20);  ctx.lineTo(W / 2, H / 2 + 200);
+        ctx.stroke();
+
+        // HUD text
+        ctx.shadowColor = '#00ffff';
+        ctx.shadowBlur = 14;
+        ctx.fillStyle = '#00ffff';
+        ctx.font = 'bold 48px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('COORDINATES LOCKED', 80, 110);
+        ctx.font = '36px monospace';
+        ctx.fillStyle = 'rgba(0,255,255,0.9)';
+        ctx.fillText(`LAT : ${lat.toFixed(4)}°`, 80, 168);
+        ctx.fillText(`LNG : ${lng.toFixed(4)}°`, 80, 218);
+
+        const cityLabels: Record<string,string> = {
+            "TOKYO": "SHIBUYA CROSSING • TOKYO, JAPAN",
+            "NEW_YORK": "TIMES SQUARE • NEW YORK CITY, USA",
+            "PARIS": "CHAMP DE MARS • PARIS, FRANCE",
+            "ROME": "COLOSSEO • ROMA, ITALIA"
+        };
+        ctx.font = 'bold 52px monospace';
+        ctx.fillStyle = '#00ffff';
+        ctx.textAlign = 'center';
+        ctx.fillText(cityLabels[city] || city, W / 2, 110);
+
+        ctx.textAlign = 'right';
+        ctx.font = 'bold 48px monospace';
+        ctx.fillStyle = '#00ffff';
+        ctx.fillText('SAT-LINK ONLINE', W - 80, 110);
+        ctx.font = '36px monospace';
+        ctx.fillStyle = 'rgba(0,255,255,0.9)';
+        ctx.fillText('FEED: SYNTHETIC-RT', W - 80, 168);
+        ctx.fillText('STATUS: IMMERSIVE', W - 80, 218);
+
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 38px monospace';
+        ctx.fillStyle = '#00ffff';
+        ctx.fillText("<<< PINCH 'X' TO EXIT DOMAIN >>>", W / 2, H - 52);
+
+        ctx.restore();
+    }
+
+    private _drawRoadReflections(ctx: CanvasRenderingContext2D, W: number, H: number, horizon: number, c1: string, c2: string, c3: string) {
+        // Perspective road lines
+        const vp = W / 2;
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        for (let i = -6; i <= 6; i++) {
+            ctx.beginPath();
+            ctx.moveTo(vp + i * 60, horizon + 2);
+            ctx.lineTo(vp + i * 800, H);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // Coloured puddle reflections
+        const colours = [c1, c2, c3];
+        for (let r = 0; r < 30; r++) {
+            const rx = Math.random() * W;
+            const ry = horizon + Math.random() * (H - horizon) * 0.9 + 10;
+            const rw = 30 + Math.random() * 120;
+            const rh = 4 + Math.random() * 12;
+            ctx.save();
+            ctx.globalAlpha = 0.08 + Math.random() * 0.12;
+            const col = colours[Math.floor(Math.random() * colours.length)];
+            ctx.fillStyle = col;
+            ctx.beginPath();
+            ctx.ellipse(rx, ry, rw, rh, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    private _drawBuilding(ctx: CanvasRenderingContext2D, x: number, top: number, w: number, h: number, winCols: number, winRows: number, bodyCol: string, litColour: string) {
+        ctx.fillStyle = bodyCol;
+        ctx.fillRect(x, top, w, h);
+
+        // Windows
+        const margin = w * 0.08;
+        const availW = w - margin * 2;
+        const availH = h - margin * 2;
+        const cellW = availW / winCols;
+        const cellH = availH / winRows;
+        for (let wi = 0; wi < winCols; wi++) {
+            for (let hi = 0; hi < winRows; hi++) {
+                const lit = Math.random() > 0.35;
+                if (!lit) continue;
+                ctx.fillStyle = lit ? litColour : 'rgba(0,0,0,0)';
+                ctx.globalAlpha = 0.3 + Math.random() * 0.7;
+                ctx.fillRect(
+                    x + margin + wi * cellW + cellW * 0.12,
+                    top + margin + hi * cellH + cellH * 0.12,
+                    cellW * 0.76,
+                    cellH * 0.76
+                );
+                ctx.globalAlpha = 1.0;
+            }
+        }
+    }
+
+    private _drawTokyoSkyline(ctx: CanvasRenderingContext2D, W: number, H: number, horizon: number) {
+        // Tiled across the full 360° width
+        const tileCount = 3;
+        for (let t = 0; t < tileCount; t++) {
+            const ox = t * (W / tileCount);
+            const tw = W / tileCount;
+
+            // Background mega-structures
+            const bgBuildings = [
+                { rx: 0.02, w: 0.08, h: 0.55 }, { rx: 0.10, w: 0.06, h: 0.65 },
+                { rx: 0.17, w: 0.05, h: 0.48 }, { rx: 0.22, w: 0.09, h: 0.70 },
+                { rx: 0.31, w: 0.07, h: 0.58 }, { rx: 0.38, w: 0.06, h: 0.42 },
+                { rx: 0.44, w: 0.10, h: 0.62 }, { rx: 0.54, w: 0.08, h: 0.50 },
+                { rx: 0.62, w: 0.07, h: 0.68 }, { rx: 0.69, w: 0.05, h: 0.44 },
+                { rx: 0.74, w: 0.09, h: 0.72 }, { rx: 0.84, w: 0.07, h: 0.55 },
+                { rx: 0.91, w: 0.06, h: 0.48 },
+            ];
+            bgBuildings.forEach(b => {
+                const bx = ox + b.rx * tw;
+                const bw = b.w * tw;
+                const bh = b.h * (H - horizon) * 0.9;
+                this._drawBuilding(ctx, bx, horizon - bh, bw, bh, 5, Math.floor(bh / 30), '#0a0018', '#ff50d0');
             });
-            
-            sCtx.fillStyle = 'rgba(0, 255, 255, 0.04)';
-            for (let y = 0; y < 1024; y += 4) {
-                sCtx.fillRect(0, y, 2048, 2);
+
+            // Tokyo Tower (iconic red & white)
+            const ttX = ox + tw * 0.48;
+            const ttBase = horizon;
+            const ttH = (H - horizon) * 0.75;
+
+            ctx.save();
+            ctx.fillStyle = '#cc2200';
+            // Main tower body (tapered triangle)
+            ctx.beginPath();
+            ctx.moveTo(ttX - 6, ttBase);
+            ctx.lineTo(ttX, ttBase - ttH);
+            ctx.lineTo(ttX + 6, ttBase);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = '#ff4400';
+            ctx.beginPath();
+            ctx.moveTo(ttX - 18, ttBase);
+            ctx.lineTo(ttX - 4, ttBase - ttH * 0.65);
+            ctx.lineTo(ttX + 4, ttBase - ttH * 0.65);
+            ctx.lineTo(ttX + 18, ttBase);
+            ctx.closePath();
+            ctx.fill();
+            // Observation deck
+            ctx.fillStyle = '#ff6600';
+            ctx.fillRect(ttX - 20, ttBase - ttH * 0.68, 40, 22);
+            // Beacon glow
+            ctx.beginPath();
+            ctx.arc(ttX, ttBase - ttH, 10, 0, Math.PI * 2);
+            ctx.fillStyle = '#ff0000';
+            ctx.shadowColor = '#ff2200';
+            ctx.shadowBlur = 30;
+            ctx.fill();
+            ctx.restore();
+
+            // Neon signs (rectangles with coloured glow)
+            const neonSigns = [
+                { rx: 0.12, ry: 0.6, w: 0.06, h: 0.06, col: '#ff00cc' },
+                { rx: 0.28, ry: 0.65, w: 0.05, h: 0.05, col: '#00ccff' },
+                { rx: 0.56, ry: 0.58, w: 0.07, h: 0.04, col: '#ffcc00' },
+                { rx: 0.72, ry: 0.62, w: 0.05, h: 0.055, col: '#ff3399' },
+                { rx: 0.85, ry: 0.67, w: 0.06, h: 0.04, col: '#00ff88' },
+            ];
+            neonSigns.forEach(ns => {
+                const nx = ox + ns.rx * tw;
+                const buildH = (H - horizon) * 0.5;
+                const ny = horizon - buildH * ns.ry;
+                const nw = ns.w * tw;
+                const nh = ns.h * (H - horizon);
+                ctx.save();
+                ctx.shadowColor = ns.col;
+                ctx.shadowBlur = 24;
+                ctx.fillStyle = ns.col;
+                ctx.globalAlpha = 0.85;
+                ctx.fillRect(nx, ny, nw, nh);
+                ctx.restore();
+            });
+        }
+    }
+
+    private _drawNYCSkyline(ctx: CanvasRenderingContext2D, W: number, H: number, horizon: number) {
+        const tileCount = 3;
+        for (let t = 0; t < tileCount; t++) {
+            const ox = t * (W / tileCount);
+            const tw = W / tileCount;
+
+            // Dense NYC towers
+            const buildings = [
+                { rx: 0.00, w: 0.07, h: 0.60 }, { rx: 0.07, w: 0.05, h: 0.75 },
+                { rx: 0.12, w: 0.06, h: 0.55 }, { rx: 0.18, w: 0.08, h: 0.80 },
+                { rx: 0.26, w: 0.05, h: 0.65 }, { rx: 0.31, w: 0.09, h: 0.90 },
+                { rx: 0.40, w: 0.06, h: 0.70 }, { rx: 0.46, w: 0.07, h: 0.58 },
+                { rx: 0.53, w: 0.08, h: 0.85 }, { rx: 0.61, w: 0.05, h: 0.68 },
+                { rx: 0.66, w: 0.09, h: 0.78 }, { rx: 0.75, w: 0.06, h: 0.62 },
+                { rx: 0.81, w: 0.07, h: 0.55 }, { rx: 0.88, w: 0.08, h: 0.72 },
+                { rx: 0.96, w: 0.04, h: 0.58 },
+            ];
+            buildings.forEach(b => {
+                const bx = ox + b.rx * tw;
+                const bw = b.w * tw;
+                const bh = b.h * (H - horizon) * 0.85;
+                this._drawBuilding(ctx, bx, horizon - bh, bw, bh, 6, Math.floor(bh / 28), '#080818', '#ffaa44');
+            });
+
+            // Empire State / One WTC spire at centre
+            const espX = ox + tw * 0.5;
+            const espH = (H - horizon) * 0.88;
+            ctx.save();
+            ctx.fillStyle = '#1a2040';
+            ctx.fillRect(espX - 22, horizon - espH, 44, espH);
+            ctx.fillStyle = '#2a3060';
+            ctx.fillRect(espX - 12, horizon - espH * 1.05, 24, espH * 0.1);
+            // Spire
+            ctx.beginPath();
+            ctx.moveTo(espX - 3, horizon - espH * 1.05);
+            ctx.lineTo(espX, horizon - espH * 1.25);
+            ctx.lineTo(espX + 3, horizon - espH * 1.05);
+            ctx.closePath();
+            ctx.fillStyle = '#aaaacc';
+            ctx.fill();
+            // Beacon
+            ctx.beginPath();
+            ctx.arc(espX, horizon - espH * 1.25, 8, 0, Math.PI * 2);
+            ctx.fillStyle = '#ff4400';
+            ctx.shadowColor = '#ff4400';
+            ctx.shadowBlur = 25;
+            ctx.fill();
+            ctx.restore();
+
+            // Times Square billboard lights
+            const billboards = [
+                { rx: 0.20, col: '#ff4400', text: 'TIMES SQ' },
+                { rx: 0.45, col: '#4488ff', text: 'NYC' },
+                { rx: 0.70, col: '#ffcc00', text: 'BROADWAY' },
+            ];
+            billboards.forEach(bb => {
+                const bbX = ox + bb.rx * tw;
+                const bbY = horizon - (H - horizon) * 0.45;
+                ctx.save();
+                ctx.shadowColor = bb.col;
+                ctx.shadowBlur = 20;
+                ctx.fillStyle = bb.col;
+                ctx.globalAlpha = 0.9;
+                ctx.fillRect(bbX, bbY, tw * 0.08, (H - horizon) * 0.10);
+                ctx.restore();
+            });
+        }
+    }
+
+    private _drawParisSkyline(ctx: CanvasRenderingContext2D, W: number, H: number, horizon: number) {
+        const tileCount = 3;
+        for (let t = 0; t < tileCount; t++) {
+            const ox = t * (W / tileCount);
+            const tw = W / tileCount;
+
+            // Haussmann-style buildings (shorter, wider)
+            const buildings = [
+                { rx: 0.00, w: 0.10, h: 0.30 }, { rx: 0.10, w: 0.08, h: 0.35 },
+                { rx: 0.18, w: 0.09, h: 0.28 }, { rx: 0.27, w: 0.07, h: 0.38 },
+                { rx: 0.34, w: 0.11, h: 0.32 }, { rx: 0.45, w: 0.08, h: 0.30 },
+                { rx: 0.53, w: 0.10, h: 0.36 }, { rx: 0.63, w: 0.07, h: 0.28 },
+                { rx: 0.70, w: 0.09, h: 0.34 }, { rx: 0.79, w: 0.10, h: 0.32 },
+                { rx: 0.89, w: 0.08, h: 0.30 },
+            ];
+            buildings.forEach(b => {
+                const bx = ox + b.rx * tw;
+                const bw = b.w * tw;
+                const bh = b.h * (H - horizon) * 1.0;
+                ctx.fillStyle = '#2a1a10';
+                ctx.fillRect(bx, horizon - bh, bw, bh);
+                // Mansard roof
+                ctx.fillStyle = '#1a0e0a';
+                ctx.beginPath();
+                ctx.moveTo(bx, horizon - bh);
+                ctx.lineTo(bx + bw * 0.1, horizon - bh - bh * 0.15);
+                ctx.lineTo(bx + bw * 0.9, horizon - bh - bh * 0.15);
+                ctx.lineTo(bx + bw, horizon - bh);
+                ctx.closePath();
+                ctx.fill();
+                this._drawBuilding(ctx, bx, horizon - bh, bw, bh, 4, Math.floor(bh / 35), 'transparent', '#ffcc88');
+            });
+
+            // Eiffel Tower (centre)
+            const etX = ox + tw * 0.5;
+            const etH = (H - horizon) * 0.80;
+            ctx.save();
+            // Legs
+            ctx.fillStyle = '#8b7040';
+            ctx.beginPath();
+            ctx.moveTo(etX - tw * 0.06, horizon);
+            ctx.lineTo(etX - tw * 0.01, horizon - etH * 0.5);
+            ctx.lineTo(etX - tw * 0.005, horizon - etH * 0.5);
+            ctx.lineTo(etX + tw * 0.005, horizon - etH * 0.5);
+            ctx.lineTo(etX + tw * 0.01, horizon - etH * 0.5);
+            ctx.lineTo(etX + tw * 0.06, horizon);
+            ctx.closePath();
+            ctx.fill();
+            // Second floor
+            ctx.fillStyle = '#9b8050';
+            ctx.fillRect(etX - tw * 0.025, horizon - etH * 0.52, tw * 0.05, etH * 0.07);
+            // Upper section
+            ctx.fillStyle = '#ab9060';
+            ctx.beginPath();
+            ctx.moveTo(etX - tw * 0.015, horizon - etH * 0.55);
+            ctx.lineTo(etX, horizon - etH * 0.92);
+            ctx.lineTo(etX + tw * 0.015, horizon - etH * 0.55);
+            ctx.closePath();
+            ctx.fill();
+            // Antenna
+            ctx.strokeStyle = '#c0a870';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(etX, horizon - etH * 0.92);
+            ctx.lineTo(etX, horizon - etH * 1.02);
+            ctx.stroke();
+            // Beacon (Eiffel light show)
+            ctx.beginPath();
+            ctx.arc(etX, horizon - etH * 1.02, 10, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffcc';
+            ctx.shadowColor = '#ffff88';
+            ctx.shadowBlur = 30;
+            ctx.fill();
+            // Light sweep
+            ctx.save();
+            ctx.globalAlpha = 0.25;
+            ctx.strokeStyle = '#ffff88';
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.moveTo(etX, horizon - etH * 1.02);
+            ctx.lineTo(etX + 200, horizon - etH * 0.6);
+            ctx.stroke();
+            ctx.restore();
+            ctx.restore();
+        }
+    }
+
+    private _drawRomeSkyline(ctx: CanvasRenderingContext2D, W: number, H: number, horizon: number) {
+        const tileCount = 3;
+        for (let t = 0; t < tileCount; t++) {
+            const ox = t * (W / tileCount);
+            const tw = W / tileCount;
+
+            // Roman low skyline with domes and walls
+            const buildings = [
+                { rx: 0.00, w: 0.12, h: 0.20 }, { rx: 0.12, w: 0.09, h: 0.25 },
+                { rx: 0.21, w: 0.10, h: 0.22 }, { rx: 0.31, w: 0.08, h: 0.30 },
+                { rx: 0.40, w: 0.12, h: 0.24 }, { rx: 0.54, w: 0.09, h: 0.28 },
+                { rx: 0.64, w: 0.10, h: 0.22 }, { rx: 0.74, w: 0.08, h: 0.25 },
+                { rx: 0.82, w: 0.11, h: 0.20 }, { rx: 0.93, w: 0.07, h: 0.26 },
+            ];
+            buildings.forEach(b => {
+                const bx = ox + b.rx * tw;
+                const bw = b.w * tw;
+                const bh = b.h * (H - horizon);
+                ctx.fillStyle = '#2e1a0e';
+                ctx.fillRect(bx, horizon - bh, bw, bh);
+                this._drawBuilding(ctx, bx, horizon - bh, bw, bh, 3, Math.floor(bh / 40), 'transparent', '#ffaa55');
+            });
+
+            // Dome of St Peter's
+            ctx.save();
+            const domX = ox + tw * 0.28;
+            const domR = tw * 0.055;
+            const domY = horizon - (H - horizon) * 0.30;
+            ctx.fillStyle = '#1e1408';
+            ctx.fillRect(domX - domR * 0.5, domY, domR, (H - horizon) * 0.30);
+            ctx.beginPath();
+            ctx.arc(domX, domY, domR, Math.PI, 0);
+            ctx.fillStyle = '#2a1e10';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(domX, domY - domR * 0.1, domR * 0.2, Math.PI, 0);
+            ctx.fillStyle = '#3a2818';
+            ctx.fill();
+            ctx.restore();
+
+            // Colosseum (the main landmark - elliptical arched structure)
+            const colX = ox + tw * 0.60;
+            const colW = tw * 0.22;
+            const colH = (H - horizon) * 0.55;
+            const colTop = horizon - colH;
+
+            ctx.save();
+            // Main elliptical body
+            ctx.fillStyle = '#3a2010';
+            ctx.beginPath();
+            ctx.ellipse(colX + colW / 2, colTop + colH * 0.5, colW / 2, colH / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Arch tiers
+            const tiers = 4;
+            for (let tier = 0; tier < tiers; tier++) {
+                const tierY = colTop + (colH / tiers) * tier;
+                const tierH2 = colH / tiers;
+                const archCount = 6 + tier * 2;
+                for (let arch = 0; arch < archCount; arch++) {
+                    const angle = (arch / archCount) * Math.PI * 2;
+                    const rx2 = colW / 2 * 0.88;
+                    const ry2 = colH / 2 * 0.88;
+                    const ax = colX + colW / 2 + rx2 * Math.cos(angle);
+                    const ay = colTop + colH / 2 + ry2 * Math.sin(angle);
+                    const archW = colW * 0.05;
+                    const archH2 = tierH2 * 0.65;
+                    ctx.fillStyle = '#1a0e06';
+                    ctx.globalAlpha = 0.6;
+                    ctx.fillRect(ax - archW / 2, ay - archH2 / 2, archW, archH2);
+                    ctx.globalAlpha = 1.0;
+                }
             }
-            
-            sCtx.strokeStyle = '#00ffff';
-            sCtx.lineWidth = 8;
-            sCtx.strokeRect(20, 20, 2008, 984);
-            
-            sCtx.lineWidth = 2;
-            sCtx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
-            sCtx.strokeRect(30, 30, 1988, 964);
-            
-            sCtx.strokeStyle = 'rgba(0, 255, 255, 0.5)';
-            sCtx.lineWidth = 3;
-            
-            sCtx.beginPath();
-            sCtx.arc(1024, 512, 120, 0, Math.PI * 2);
-            sCtx.stroke();
-            
-            sCtx.beginPath();
-            sCtx.arc(1024, 512, 60, 0, Math.PI * 2);
-            sCtx.stroke();
-            
-            sCtx.beginPath();
-            sCtx.moveTo(1024 - 180, 512); sCtx.lineTo(1024 - 20, 512);
-            sCtx.moveTo(1024 + 20, 512); sCtx.lineTo(1024 + 180, 512);
-            sCtx.moveTo(1024, 512 - 180); sCtx.lineTo(1024, 512 - 20);
-            sCtx.moveTo(1024, 512 + 20); sCtx.lineTo(1024, 512 + 180);
-            sCtx.stroke();
-            
-            sCtx.fillStyle = '#00ffff';
-            sCtx.font = 'bold 28px monospace';
-            sCtx.shadowColor = '#00ffff';
-            sCtx.shadowBlur = 8;
-            
-            sCtx.textAlign = 'left';
-            sCtx.fillText("COORDINATES LOCKED", 60, 80);
-            sCtx.font = '22px monospace';
-            sCtx.fillStyle = 'rgba(0, 255, 255, 0.85)';
-            sCtx.fillText(`LATITUDE  : ${lat.toFixed(6)}°`, 60, 120);
-            sCtx.fillText(`LONGITUDE : ${lng.toFixed(6)}°`, 60, 150);
-            sCtx.fillText(`PANORAMA  : ${panoId.substring(0, 12)}...`, 60, 180);
-            
-            sCtx.textAlign = 'right';
-            sCtx.font = 'bold 28px monospace';
-            sCtx.fillStyle = '#00ffff';
-            sCtx.fillText("SAT-LINK DEPLOYED", 1988, 80);
-            sCtx.font = '22px monospace';
-            sCtx.fillStyle = 'rgba(0, 255, 255, 0.85)';
-            sCtx.fillText("TELEMETRY STATUS: ONLINE", 1988, 120);
-            sCtx.fillText("BANDWIDTH: 4.8 GB/S", 1988, 150);
-            sCtx.fillText("FEED PRESET: HIGH_STITCH", 1988, 180);
-            
-            sCtx.textAlign = 'center';
-            sCtx.font = 'bold 24px monospace';
-            sCtx.fillStyle = '#00ffff';
-            sCtx.fillText("<<< TACTICAL SYSTEM VIEWPORT — PINCH 'X' TO EXIT PASSTHROUGH DOME >>>", 1024, 970);
-            
-            const texture = new THREE.CanvasTexture(stitchCanvas);
-            texture.colorSpace = THREE.SRGBColorSpace;
-            texture.mapping = THREE.EquirectangularReflectionMapping;
-            
-            this.domainMat.map = texture;
-            this.domainMat.needsUpdate = true;
-            console.log(`[StreetView] Seamless high-tech panorama applied to expanded 360 dome sphere successfully.`);
-            
-        } catch (error: any) {
-            console.error(`[StreetView] Error loading street view panorama:`, error);
-            
-            const errorCanvas = document.createElement('canvas');
-            errorCanvas.width = 1024;
-            errorCanvas.height = 512;
-            const eCtx = errorCanvas.getContext('2d')!;
-            eCtx.fillStyle = '#1e0202';
-            eCtx.fillRect(0, 0, 1024, 512);
-            
-            // Mirror canvas horizontally so it is readable from the inside of the sphere!
-            eCtx.translate(1024, 0);
-            eCtx.scale(-1, 1);
-            
-            eCtx.strokeStyle = '#ff3333';
-            eCtx.lineWidth = 4;
-            eCtx.strokeRect(40, 40, 944, 432);
-            
-            eCtx.fillStyle = '#ff3333';
-            eCtx.font = 'bold 36px monospace';
-            eCtx.textAlign = 'center';
-            eCtx.fillText("GPS FEED ERROR / DISCONNECTED", 512, 200);
-            eCtx.font = '24px monospace';
-            eCtx.fillStyle = '#ffaaaa';
-            eCtx.fillText(`MESSAGE: ${error.message || error}`, 512, 260);
-            eCtx.fillText("FALLING BACK TO IMMERSIVE SECURE SCAN STATE", 512, 320);
-            
-            const errorTex = new THREE.CanvasTexture(errorCanvas);
-            errorTex.colorSpace = THREE.SRGBColorSpace;
-            errorTex.mapping = THREE.EquirectangularReflectionMapping;
-            this.domainMat.map = errorTex;
-            this.domainMat.needsUpdate = true;
+
+            // Warm amber glow lighting the Colosseum
+            const colGlow = ctx.createRadialGradient(colX + colW / 2, colTop + colH * 0.6, 0, colX + colW / 2, colTop + colH * 0.6, colW * 0.8);
+            colGlow.addColorStop(0, 'rgba(255,140,40,0.3)');
+            colGlow.addColorStop(1, 'rgba(255,80,10,0)');
+            ctx.fillStyle = colGlow;
+            ctx.fillRect(colX - colW * 0.3, colTop, colW * 1.6, colH);
+
+            ctx.restore();
+
+            // Pine trees (silhouettes)
+            for (let pi = 0; pi < 6; pi++) {
+                const px = ox + tw * (0.05 + pi * 0.16);
+                const ph = (H - horizon) * (0.15 + Math.random() * 0.10);
+                ctx.save();
+                ctx.fillStyle = '#0a0804';
+                ctx.beginPath();
+                ctx.moveTo(px - tw * 0.012, horizon);
+                ctx.lineTo(px, horizon - ph);
+                ctx.lineTo(px + tw * 0.012, horizon);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
         }
     }
 }
