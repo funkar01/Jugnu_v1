@@ -23,7 +23,10 @@ export class DomainExpansionSystem extends createSystem({
     private bubbleMats: THREE.MeshBasicMaterial[] = [];
     private anchorRings: THREE.Mesh[] = [];
     private loaderRings: THREE.Mesh[] = [];
-    private pinchProgresses: number[] = [0, 0, 0, 0];
+    private nameTags: THREE.Mesh[] = [];
+    private nameTagMats: THREE.MeshBasicMaterial[] = [];
+    private pinchProgresses: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
+    private hoverProgresses: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
     private domainMesh!: THREE.Mesh;
     private domainMat!: THREE.MeshBasicMaterial;
     private isDomainActive = false;
@@ -38,7 +41,38 @@ export class DomainExpansionSystem extends createSystem({
     private lastActiveDomainIndex = -1;
 
     private currentDomainIndex = 0;
-    private domainKeys = ["domainEnv", "domainEnv1", "domainEnv2", "domainEnv3"];
+    private domainKeys = [
+        "domainEnv",  // 0: VOID
+        "",           // 1: TOKYO
+        "domainEnv1", // 2: SHRINE
+        "",           // 3: NEW YORK
+        "domainEnv2", // 4: FOREST
+        "",           // 5: PARIS
+        "domainEnv3", // 6: OCEAN
+        ""            // 7: ROME
+    ];
+
+    private realWorldCoords = [
+        { lat: 0, lng: 0 },             // 0: VOID (abstract)
+        { lat: 35.6595, lng: 139.7006 }, // 1: Tokyo Shibuya
+        { lat: 0, lng: 0 },             // 2: SHRINE (abstract)
+        { lat: 40.7580, lng: -73.9855 }, // 3: NYC Times Sq
+        { lat: 0, lng: 0 },             // 4: FOREST (abstract)
+        { lat: 48.8584, lng: 2.2945 },  // 5: Paris Eiffel
+        { lat: 0, lng: 0 },             // 6: OCEAN (abstract)
+        { lat: 41.8902, lng: 12.4922 }  // 7: Rome Colosseum
+    ];
+
+    private domainNames = [
+        "VOID",
+        "TOKYO",
+        "SHRINE",
+        "NEW YORK",
+        "FOREST",
+        "PARIS",
+        "OCEAN",
+        "ROME"
+    ];
 
     // Sustained-release timers to filter hand-tracking noise/jitter (de-noising)
     private leftMiddlePinchReleasedTime = 0.5;
@@ -203,13 +237,12 @@ export class DomainExpansionSystem extends createSystem({
         const bldgGeom = new THREE.BoxGeometry(1, 1, 1);
         bldgGeom.translate(0, 0.5, 0); // Bottom origin
         const bldgMat = new THREE.MeshStandardMaterial({
-            color: 0x00ffff,
-            emissive: 0x003366,
-            metalness: 0.5,
-            roughness: 0.2,
-            transparent: true,
-            opacity: 0.65,
-            depthWrite: false
+            color: 0x0c1e3d,     // Deep slate cyber-blue structure
+            emissive: 0x003366,  // Subtle inner glowing cyber-neon blue accent
+            metalness: 0.85,     // Sleek, premium metallic finish
+            roughness: 0.15,     // Reflective glossy surface to catch VR lighting
+            transparent: false,  // 100% solid, fully removing transparency!
+            depthWrite: true     // Write to depth buffer for perfect opaque occlusion
         });
         this.minimapBuildings = new THREE.InstancedMesh(bldgGeom, bldgMat, numBldgs);
         this.minimapBuildings.frustumCulled = false;
@@ -300,14 +333,15 @@ export class DomainExpansionSystem extends createSystem({
         this.locationPin.add(pinHead, pinBody, pinGlow);
         this.tableGroup.add(this.locationPin);
 
-        // --- Holographic Domain Expansion Selection Bubbles (Diamond arrangement on Edge Ring) ---
+        // --- Holographic Domain Expansion Selection Bubbles (Octagon arrangement on Edge Ring) ---
         const bubbleGeom = new THREE.SphereGeometry(0.035, 32, 16);
         const bubbleRingGeom = new THREE.RingGeometry(0.023, 0.027, 32);
         const loaderRingGeom = new THREE.RingGeometry(0.012, 0.015, 32);
+        const nameTagGeom = new THREE.PlaneGeometry(0.08, 0.02);
 
-        for (let i = 0; i < 4; i++) {
-            // Symmetrical diamond placement on the edge ring (radius = 0.17m)
-            const angle = i * (Math.PI / 2) + Math.PI / 4;
+        for (let i = 0; i < 8; i++) {
+            // Symmetrical octagon placement on the edge ring (radius = 0.17m) at 45-degree intervals
+            const angle = i * (Math.PI / 4);
             const bx = Math.cos(angle) * 0.17;
             const bz = Math.sin(angle) * 0.17;
 
@@ -318,9 +352,19 @@ export class DomainExpansionSystem extends createSystem({
                 depthWrite: false
             });
             
-            const tex = AssetManager.getTexture(this.domainKeys[i]);
-            if (tex) {
-                tex.colorSpace = THREE.SRGBColorSpace;
+            // Alternating pattern: i = 0,2,4,6 are abstract domains; 1,3,5,7 are real-world coordinates
+            if (i % 2 === 0) {
+                const texKey = this.domainKeys[i];
+                const tex = AssetManager.getTexture(texKey);
+                if (tex) {
+                    tex.colorSpace = THREE.SRGBColorSpace;
+                    bMat.map = tex;
+                }
+            } else {
+                // Real-world domain: use a beautiful procedural high-tech cyber sphere texture
+                const name = this.domainNames[i];
+                const coords = this.realWorldCoords[i];
+                const tex = this.createRealWorldBubbleTexture(name, coords.lat, coords.lng);
                 bMat.map = tex;
             }
 
@@ -358,6 +402,22 @@ export class DomainExpansionSystem extends createSystem({
             loaderMesh.scale.setScalar(0.01);
             this.tableGroup.add(loaderMesh);
             this.loaderRings.push(loaderMesh);
+
+            // Floating, billboarding canvas place name tag plate (at y = 0.16)
+            const name = this.domainNames[i];
+            const nameTex = this.createNameTagTexture(name);
+            const nameMat = new THREE.MeshBasicMaterial({
+                map: nameTex,
+                transparent: true,
+                opacity: 0.9,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const nameTagMesh = new THREE.Mesh(nameTagGeom, nameMat);
+            nameTagMesh.position.set(bx, 0.16, bz);
+            this.tableGroup.add(nameTagMesh);
+            this.nameTags.push(nameTagMesh);
+            this.nameTagMats.push(nameMat);
         }
 
         // --- Immersive 360 Dome Sphere (Cinematic shockwave expansion - world radius 20.0m) ---
@@ -719,12 +779,26 @@ export class DomainExpansionSystem extends createSystem({
             }
 
 
-            // 3. Selection Bubbles Pinch-and-Hold 3-Second Charge check
-            let bubblePinchEngaged = [false, false, false, false];
-
-            // Detect overlapping pinch for each of the 4 bubbles
+            // 3. Selection Bubbles Hover Overlap Proximity check & Pinch-and-Hold 3-Second Charge check
+            const hoverState = [false, false, false, false, false, false, false, false];
             const bubbleWorldPos = new THREE.Vector3();
-            for (let i = 0; i < 4; i++) {
+
+            // Hover Proximity Check (6cm threshold)
+            for (let i = 0; i < 8; i++) {
+                this.selectionBubbles[i].getWorldPosition(bubbleWorldPos);
+                let distToLeft = Infinity;
+                let distToRight = Infinity;
+                if (hasLeftIndex) distToLeft = leftIndexPinchPos.distanceTo(bubbleWorldPos);
+                if (hasRightIndex) distToRight = rightIndexPinchPos.distanceTo(bubbleWorldPos);
+                if (distToLeft < 0.06 || distToRight < 0.06) {
+                    hoverState[i] = true;
+                }
+            }
+
+            let bubblePinchEngaged = [false, false, false, false, false, false, false, false];
+
+            // Detect overlapping pinch for each of the 8 bubbles (5cm threshold)
+            for (let i = 0; i < 8; i++) {
                 this.selectionBubbles[i].getWorldPosition(bubbleWorldPos);
 
                 const isPinchingNearLeft = isLeftIndexPinching && leftIndexPinchPos.distanceTo(bubbleWorldPos) < 0.05;
@@ -735,18 +809,29 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
 
-            // Update progresses, loader rings, and trigger events
-            for (let i = 0; i < 4; i++) {
+            // Update progresses, loader rings, billboarding name tags, and trigger events
+            let headPos = new THREE.Vector3(0, 1.6, 0);
+            if (this.player && this.player.head) {
+                this.player.head.getWorldPosition(headPos);
+            }
+
+            for (let i = 0; i < 8; i++) {
                 const bubble = this.selectionBubbles[i];
                 const bMat = this.bubbleMats[i];
                 const ring = this.anchorRings[i];
                 const rMat = ring.material as THREE.MeshBasicMaterial;
                 const loader = this.loaderRings[i];
                 const lMat = loader.material as THREE.MeshBasicMaterial;
+                const nameTag = this.nameTags[i];
 
                 bubble.rotation.y += dt * 0.4;
 
                 const isActive = this.currentDomainIndex === i;
+                const isHovered = hoverState[i];
+
+                // Billboard name tags to face player headset, and make them float exactly 4cm above the bubble
+                nameTag.lookAt(headPos);
+                nameTag.position.set(bubble.position.x, bubble.position.y + 0.04, bubble.position.z);
 
                 if (bubblePinchEngaged[i]) {
                     // Accumulate progress
@@ -765,7 +850,7 @@ export class DomainExpansionSystem extends createSystem({
                     // 2. High-Frequency Visual Vibration Feedback
                     if (chargeRatio > 0.05) {
                         // Vibrate position relative to its default center
-                        const angle = i * (Math.PI / 2) + Math.PI / 4;
+                        const angle = i * (Math.PI / 4);
                         const bx = Math.cos(angle) * 0.17;
                         const bz = Math.sin(angle) * 0.17;
                         const defaultHeight = isActive ? 0.135 : 0.11;
@@ -799,12 +884,20 @@ export class DomainExpansionSystem extends createSystem({
                             this.domainMesh.visible = true;
                             this.domainMesh.position.set(0, 0, 0); // Center on tracking origin
                             
-                            const domeTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]);
-                            if (domeTex) {
-                                domeTex.colorSpace = THREE.SRGBColorSpace;
-                                domeTex.mapping = THREE.EquirectangularReflectionMapping;
-                                this.domainMat.map = domeTex;
-                                this.domainMat.needsUpdate = true;
+                            // Check if this is an abstract domain or a real-world coordinates bubble
+                            if (i % 2 === 0) {
+                                // Abstract domain
+                                const domeTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]);
+                                if (domeTex) {
+                                    domeTex.colorSpace = THREE.SRGBColorSpace;
+                                    domeTex.mapping = THREE.EquirectangularReflectionMapping;
+                                    this.domainMat.map = domeTex;
+                                    this.domainMat.needsUpdate = true;
+                                }
+                            } else {
+                                // Real-world domain: load Google Maps Street View stitching engine
+                                const coords = this.realWorldCoords[i];
+                                this.loadStreetView(coords.lat, coords.lng);
                             }
                         }
 
@@ -825,7 +918,7 @@ export class DomainExpansionSystem extends createSystem({
                     loader.rotation.z += dt * 1.5;
 
                     // Restore default floating/hover behavior
-                    const angle = i * (Math.PI / 2) + Math.PI / 4;
+                    const angle = i * (Math.PI / 4);
                     const bx = Math.cos(angle) * 0.17;
                     const bz = Math.sin(angle) * 0.17;
 
@@ -836,12 +929,14 @@ export class DomainExpansionSystem extends createSystem({
                         bubble.position.y = THREE.MathUtils.lerp(bubble.position.y, targetHeight, 10 * dt);
                         bubble.position.z = THREE.MathUtils.lerp(bubble.position.z, bz, 10 * dt);
                         
-                        const scalePulse = 1.15 + Math.sin(this.radarTime * 3.0) * 0.04;
+                        const baseScale = isHovered ? 1.25 : 1.15;
+                        const scalePulse = baseScale + Math.sin(this.radarTime * 3.0) * 0.04;
                         bubble.scale.setScalar(THREE.MathUtils.lerp(bubble.scale.x, scalePulse, 10 * dt));
                         
                         bMat.opacity = THREE.MathUtils.lerp(bMat.opacity, 0.95, 10 * dt);
                         rMat.color.setHex(0x00ffff);
-                        rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, 0.9, 10 * dt);
+                        const targetRingOpacity = isHovered ? 0.95 : (0.7 + Math.sin(this.radarTime * 5.0) * 0.2);
+                        rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, targetRingOpacity, 10 * dt);
                     } else {
                         // Subtle passive hover for inactive bubbles
                         const hoverPhase = this.radarTime * 1.5 + i * (Math.PI / 2);
@@ -850,11 +945,19 @@ export class DomainExpansionSystem extends createSystem({
                         bubble.position.y = THREE.MathUtils.lerp(bubble.position.y, targetHeight, 10 * dt);
                         bubble.position.z = THREE.MathUtils.lerp(bubble.position.z, bz, 10 * dt);
                         
-                        bubble.scale.setScalar(THREE.MathUtils.lerp(bubble.scale.x, 0.85, 10 * dt));
-                        
-                        bMat.opacity = THREE.MathUtils.lerp(bMat.opacity, 0.45, 10 * dt);
-                        rMat.color.setHex(0x008888);
-                        rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, 0.18, 10 * dt);
+                        // Tactile hover feedback: expand slightly if index finger tip is nearby
+                        if (isHovered) {
+                            bubble.scale.setScalar(THREE.MathUtils.lerp(bubble.scale.x, 1.15, 10 * dt));
+                            bMat.opacity = THREE.MathUtils.lerp(bMat.opacity, 0.85, 10 * dt);
+                            rMat.color.setHex(0x00ffff);
+                            const pulseRing = 0.7 + Math.sin(this.radarTime * 5.0) * 0.15;
+                            rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, pulseRing, 10 * dt);
+                        } else {
+                            bubble.scale.setScalar(THREE.MathUtils.lerp(bubble.scale.x, 0.85, 10 * dt));
+                            bMat.opacity = THREE.MathUtils.lerp(bMat.opacity, 0.45, 10 * dt);
+                            rMat.color.setHex(0x008888);
+                            rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, 0.18, 10 * dt);
+                        }
                     }
                 }
             }
@@ -959,6 +1062,292 @@ export class DomainExpansionSystem extends createSystem({
                     this.domainMesh.visible = false;
                 }
             }
+        }
+    }
+
+    private createRealWorldBubbleTexture(name: string, lat: number, lng: number): THREE.CanvasTexture {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d')!;
+        
+        const grad = ctx.createLinearGradient(0, 0, 0, 256);
+        grad.addColorStop(0, '#020d1e');
+        grad.addColorStop(1, '#051b36');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 512, 256);
+        
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.15)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < 512; x += 32) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, 256);
+            ctx.stroke();
+        }
+        for (let y = 0; y < 256; y += 32) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(512, y);
+            ctx.stroke();
+        }
+        
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(256, 128, 60, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.arc(256, 128, 40, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.fillStyle = '#00ffff';
+        ctx.beginPath();
+        ctx.arc(256, 128, 4, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = '#00ffff';
+        ctx.font = 'bold 36px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(name, 256, 70);
+        
+        ctx.fillStyle = 'rgba(0, 255, 255, 0.85)';
+        ctx.font = '20px monospace';
+        ctx.fillText(`GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)}`, 256, 180);
+        ctx.fillText("SAT-LINK SECURED", 256, 210);
+        
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.needsUpdate = true;
+        return tex;
+    }
+
+    private createNameTagTexture(name: string): THREE.CanvasTexture {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d')!;
+        
+        ctx.clearRect(0, 0, 256, 64);
+        
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 3;
+        ctx.fillStyle = 'rgba(5, 27, 54, 0.8)';
+        
+        const r = 10;
+        ctx.beginPath();
+        ctx.roundRect(4, 4, 248, 56, r);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.shadowColor = '#00ffff';
+        ctx.shadowBlur = 6;
+        ctx.fillStyle = '#00ffff';
+        ctx.font = 'bold 24px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(name, 128, 32);
+        
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.needsUpdate = true;
+        return tex;
+    }
+
+    private async loadStreetView(lat: number, lng: number) {
+        console.log(`[StreetView] Fetching panorama metadata for: ${lat}, ${lng}`);
+        
+        const loadingCanvas = document.createElement('canvas');
+        loadingCanvas.width = 1024;
+        loadingCanvas.height = 512;
+        const lCtx = loadingCanvas.getContext('2d')!;
+        lCtx.fillStyle = '#020d1e';
+        lCtx.fillRect(0, 0, 1024, 512);
+        
+        lCtx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+        lCtx.lineWidth = 2;
+        lCtx.strokeRect(50, 50, 924, 412);
+        
+        lCtx.fillStyle = '#00ffff';
+        lCtx.font = 'bold 32px monospace';
+        lCtx.textAlign = 'center';
+        lCtx.fillText("INITIATING SECURE SATELLITE DATA-LINK...", 512, 220);
+        lCtx.fillText("STITCHING QUANTUM PANORAMA TILES (ZOOM 2)...", 512, 280);
+        
+        const loadingTex = new THREE.CanvasTexture(loadingCanvas);
+        loadingTex.colorSpace = THREE.SRGBColorSpace;
+        loadingTex.mapping = THREE.EquirectangularReflectionMapping;
+        this.domainMat.map = loadingTex;
+        this.domainMat.needsUpdate = true;
+        
+        try {
+            const metaUrl = `/api/streetview-metadata?location=${lat},${lng}`;
+            const metaRes = await fetch(metaUrl);
+            if (!metaRes.ok) throw new Error("Metadata request failed");
+            const meta = await metaRes.json();
+            
+            if (meta.status !== "OK" || !meta.pano_id) {
+                throw new Error("No Street View panorama found at these coordinates");
+            }
+            
+            const panoId = meta.pano_id;
+            console.log(`[StreetView] Found Pano ID: ${panoId}`);
+            
+            const tiles: { x: number; y: number; img: HTMLImageElement }[] = [];
+            const promises: Promise<void>[] = [];
+            
+            for (let x = 0; x < 4; x++) {
+                for (let y = 0; y < 2; y++) {
+                    const tx = x;
+                    const ty = y;
+                    promises.push(
+                        (async () => {
+                            const img = new Image();
+                            img.crossOrigin = "anonymous";
+                            
+                            const proxyUrl = `/api/streetview-tile?output=tile&panoid=${panoId}&zoom=2&x=${tx}&y=${ty}`;
+                            const fallbackUrl = `https://cbk0.google.com/cbk?output=tile&panoid=${panoId}&zoom=2&x=${tx}&y=${ty}`;
+                            
+                            const loaded = new Promise<void>((resolve, reject) => {
+                                img.onload = () => resolve();
+                                img.onerror = () => reject(new Error(`Failed to load tile x:${tx}, y:${ty}`));
+                            });
+                            
+                            try {
+                                img.src = proxyUrl;
+                                await Promise.race([
+                                    loaded,
+                                    new Promise((_, rej) => setTimeout(() => rej(new Error("Timeout")), 3500))
+                                ]);
+                            } catch (e) {
+                                console.warn(`[StreetView] Proxy failed or timed out for tile x:${tx}, y:${ty}. Falling back directly to cbk.google.com...`);
+                                const imgFallback = new Image();
+                                imgFallback.crossOrigin = "anonymous";
+                                const fallbackLoaded = new Promise<void>((resolve, reject) => {
+                                    imgFallback.onload = () => resolve();
+                                    imgFallback.onerror = () => reject(new Error("Fallback failed"));
+                                });
+                                imgFallback.src = fallbackUrl;
+                                await fallbackLoaded;
+                                tiles.push({ x: tx, y: ty, img: imgFallback });
+                                return;
+                            }
+                            
+                            tiles.push({ x: tx, y: ty, img });
+                        })()
+                    );
+                }
+            }
+            
+            await Promise.all(promises);
+            console.log(`[StreetView] Finished downloading all 8 tiles successfully!`);
+            
+            const stitchCanvas = document.createElement('canvas');
+            stitchCanvas.width = 2048;
+            stitchCanvas.height = 1024;
+            const sCtx = stitchCanvas.getContext('2d')!;
+            
+            tiles.forEach(tile => {
+                sCtx.drawImage(tile.img, tile.x * 512, tile.y * 512, 512, 512);
+            });
+            
+            sCtx.fillStyle = 'rgba(0, 255, 255, 0.04)';
+            for (let y = 0; y < 1024; y += 4) {
+                sCtx.fillRect(0, y, 2048, 2);
+            }
+            
+            sCtx.strokeStyle = '#00ffff';
+            sCtx.lineWidth = 8;
+            sCtx.strokeRect(20, 20, 2008, 984);
+            
+            sCtx.lineWidth = 2;
+            sCtx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+            sCtx.strokeRect(30, 30, 1988, 964);
+            
+            sCtx.strokeStyle = 'rgba(0, 255, 255, 0.5)';
+            sCtx.lineWidth = 3;
+            
+            sCtx.beginPath();
+            sCtx.arc(1024, 512, 120, 0, Math.PI * 2);
+            sCtx.stroke();
+            
+            sCtx.beginPath();
+            sCtx.arc(1024, 512, 60, 0, Math.PI * 2);
+            sCtx.stroke();
+            
+            sCtx.beginPath();
+            sCtx.moveTo(1024 - 180, 512); sCtx.lineTo(1024 - 20, 512);
+            sCtx.moveTo(1024 + 20, 512); sCtx.lineTo(1024 + 180, 512);
+            sCtx.moveTo(1024, 512 - 180); sCtx.lineTo(1024, 512 - 20);
+            sCtx.moveTo(1024, 512 + 20); sCtx.lineTo(1024, 512 + 180);
+            sCtx.stroke();
+            
+            sCtx.fillStyle = '#00ffff';
+            sCtx.font = 'bold 28px monospace';
+            sCtx.shadowColor = '#00ffff';
+            sCtx.shadowBlur = 8;
+            
+            sCtx.textAlign = 'left';
+            sCtx.fillText("COORDINATES LOCKED", 60, 80);
+            sCtx.font = '22px monospace';
+            sCtx.fillStyle = 'rgba(0, 255, 255, 0.85)';
+            sCtx.fillText(`LATITUDE  : ${lat.toFixed(6)}°`, 60, 120);
+            sCtx.fillText(`LONGITUDE : ${lng.toFixed(6)}°`, 60, 150);
+            sCtx.fillText(`PANORAMA  : ${panoId.substring(0, 12)}...`, 60, 180);
+            
+            sCtx.textAlign = 'right';
+            sCtx.font = 'bold 28px monospace';
+            sCtx.fillStyle = '#00ffff';
+            sCtx.fillText("SAT-LINK DEPLOYED", 1988, 80);
+            sCtx.font = '22px monospace';
+            sCtx.fillStyle = 'rgba(0, 255, 255, 0.85)';
+            sCtx.fillText("TELEMETRY STATUS: ONLINE", 1988, 120);
+            sCtx.fillText("BANDWIDTH: 4.8 GB/S", 1988, 150);
+            sCtx.fillText("FEED PRESET: HIGH_STITCH", 1988, 180);
+            
+            sCtx.textAlign = 'center';
+            sCtx.font = 'bold 24px monospace';
+            sCtx.fillStyle = '#00ffff';
+            sCtx.fillText("<<< TACTICAL SYSTEM VIEWPORT — PINCH 'X' TO EXIT PASSTHROUGH DOME >>>", 1024, 970);
+            
+            const texture = new THREE.CanvasTexture(stitchCanvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            
+            this.domainMat.map = texture;
+            this.domainMat.needsUpdate = true;
+            console.log(`[StreetView] Seamless high-tech panorama applied to expanded 360 dome sphere successfully.`);
+            
+        } catch (error: any) {
+            console.error(`[StreetView] Error loading street view panorama:`, error);
+            
+            const errorCanvas = document.createElement('canvas');
+            errorCanvas.width = 1024;
+            errorCanvas.height = 512;
+            const eCtx = errorCanvas.getContext('2d')!;
+            eCtx.fillStyle = '#1e0202';
+            eCtx.fillRect(0, 0, 1024, 512);
+            
+            eCtx.strokeStyle = '#ff3333';
+            eCtx.lineWidth = 4;
+            eCtx.strokeRect(40, 40, 944, 432);
+            
+            eCtx.fillStyle = '#ff3333';
+            eCtx.font = 'bold 36px monospace';
+            eCtx.textAlign = 'center';
+            eCtx.fillText("GPS FEED ERROR / DISCONNECTED", 512, 200);
+            eCtx.font = '24px monospace';
+            eCtx.fillStyle = '#ffaaaa';
+            eCtx.fillText(`MESSAGE: ${error.message || error}`, 512, 260);
+            eCtx.fillText("FALLING BACK TO IMMERSIVE SECURE SCAN STATE", 512, 320);
+            
+            const errorTex = new THREE.CanvasTexture(errorCanvas);
+            errorTex.colorSpace = THREE.SRGBColorSpace;
+            errorTex.mapping = THREE.EquirectangularReflectionMapping;
+            this.domainMat.map = errorTex;
+            this.domainMat.needsUpdate = true;
         }
     }
 }
