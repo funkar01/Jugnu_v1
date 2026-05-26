@@ -74,43 +74,23 @@ const assets: AssetManifest = {
     type: AssetType.GLTF,
     priority: "critical",
   },
-  domainEnv: {
-    url: "./Domains/Domain.png",
+  mivCam1: {
+    url: "./CameraViews_HDRI/CamPos (1).png",
     type: AssetType.Texture,
     priority: "critical",
   },
-  domainEnv1: {
-    url: "./Domains/Domain1.png",
+  mivCam2: {
+    url: "./CameraViews_HDRI/CamPos (2).png",
     type: AssetType.Texture,
     priority: "critical",
   },
-  domainEnv2: {
-    url: "./Domains/Domain2.png",
+  mivCam3: {
+    url: "./CameraViews_HDRI/CamPos (3).png",
     type: AssetType.Texture,
     priority: "critical",
   },
-  domainEnv3: {
-    url: "./Domains/Domain3.png",
-    type: AssetType.Texture,
-    priority: "critical",
-  },
-  thumb_domainEnv: {
-    url: "./Domains/thumbs/thumb_Domain.jpg",
-    type: AssetType.Texture,
-    priority: "critical",
-  },
-  thumb_domainEnv1: {
-    url: "./Domains/thumbs/thumb_Domain1.jpg",
-    type: AssetType.Texture,
-    priority: "critical",
-  },
-  thumb_domainEnv2: {
-    url: "./Domains/thumbs/thumb_Domain2.jpg",
-    type: AssetType.Texture,
-    priority: "critical",
-  },
-  thumb_domainEnv3: {
-    url: "./Domains/thumbs/thumb_Domain3.jpg",
+  mivCam4: {
+    url: "./CameraViews_HDRI/CamPos (4).png",
     type: AssetType.Texture,
     priority: "critical",
   },

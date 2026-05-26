@@ -48,8 +48,8 @@ export class DomainExpansionSystem extends createSystem({
     private loaderRings: THREE.Mesh[] = [];
     private nameTags: THREE.Mesh[] = [];
     private nameTagMats: THREE.MeshBasicMaterial[] = [];
-    private pinchProgresses: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
-    private hoverProgresses: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
+    private pinchProgresses: number[] = [0, 0, 0, 0];
+    private hoverProgresses: number[] = [0, 0, 0, 0];
     private domainMesh!: THREE.Mesh;
     private domainMat!: THREE.MeshBasicMaterial;
     private stadiumMesh!: THREE.Group;
@@ -67,36 +67,17 @@ export class DomainExpansionSystem extends createSystem({
 
     private currentDomainIndex = 0;
     private domainKeys = [
-        "domainEnv",  // 0: VOID
-        "",           // 1: TOKYO
-        "domainEnv1", // 2: SHRINE
-        "",           // 3: NEW YORK
-        "domainEnv2", // 4: FOREST
-        "",           // 5: PARIS
-        "domainEnv3", // 6: OCEAN
-        ""            // 7: ROME
-    ];
-
-    private realWorldCoords = [
-        { lat: 0, lng: 0 },             // 0: VOID (abstract)
-        { lat: 35.6595, lng: 139.7006 }, // 1: Tokyo Shibuya
-        { lat: 0, lng: 0 },             // 2: SHRINE (abstract)
-        { lat: 40.7580, lng: -73.9855 }, // 3: NYC Times Sq
-        { lat: 0, lng: 0 },             // 4: FOREST (abstract)
-        { lat: 48.8584, lng: 2.2945 },  // 5: Paris Eiffel
-        { lat: 0, lng: 0 },             // 6: OCEAN (abstract)
-        { lat: 41.8902, lng: 12.4922 }  // 7: Rome Colosseum
+        "mivCam1",
+        "mivCam2",
+        "mivCam3",
+        "mivCam4"
     ];
 
     private domainNames = [
-        "VOID",
-        "TOKYO",
-        "SHRINE",
-        "NEW YORK",
-        "FOREST",
-        "PARIS",
-        "OCEAN",
-        "ROME"
+        "CAM POS (1)",
+        "CAM POS (2)",
+        "CAM POS (3)",
+        "CAM POS (4)"
     ];
 
     // Sustained-release timers to filter hand-tracking noise/jitter (de-noising)
@@ -465,9 +446,9 @@ export class DomainExpansionSystem extends createSystem({
         const loaderRingGeom = new THREE.RingGeometry(0.012, 0.015, 32);
         const nameTagGeom = new THREE.PlaneGeometry(0.08, 0.02);
 
-        for (let i = 0; i < 8; i++) {
-            // Symmetrical octagon placement on the edge ring (radius = 0.17m) at 45-degree intervals
-            const angle = i * (Math.PI / 4);
+        for (let i = 0; i < 4; i++) {
+            // Symmetrical arrangement around the stadium (radius = 0.17m) at 90-degree intervals
+            const angle = i * (Math.PI / 2);
             const bx = Math.cos(angle) * 0.17;
             const bz = Math.sin(angle) * 0.17;
 
@@ -478,19 +459,10 @@ export class DomainExpansionSystem extends createSystem({
                 depthWrite: false
             });
             
-            // Alternating pattern: i = 0,2,4,6 are abstract domains; 1,3,5,7 are real-world coordinates
-            if (i % 2 === 0) {
-                const texKey = this.domainKeys[i];
-                const tex = AssetManager.getTexture(texKey);
-                if (tex) {
-                    tex.colorSpace = THREE.SRGBColorSpace;
-                    bMat.map = tex;
-                }
-            } else {
-                // Real-world domain: use a beautiful procedural high-tech cyber sphere texture
-                const name = this.domainNames[i];
-                const coords = this.realWorldCoords[i];
-                const tex = this.createRealWorldBubbleTexture(name, coords.lat, coords.lng);
+            const texKey = this.domainKeys[i];
+            const tex = AssetManager.getTexture(texKey);
+            if (tex) {
+                tex.colorSpace = THREE.SRGBColorSpace;
                 bMat.map = tex;
             }
 
@@ -1112,11 +1084,11 @@ export class DomainExpansionSystem extends createSystem({
 
 
             // 3. Selection Bubbles Hover Overlap Proximity check & Pinch-and-Hold 3-Second Charge check
-            const hoverState = [false, false, false, false, false, false, false, false];
+            const hoverState = [false, false, false, false];
             const bubbleWorldPos = new THREE.Vector3();
 
             // Hover Proximity Check (6cm threshold)
-            for (let i = 0; i < 8; i++) {
+            for (let i = 0; i < 4; i++) {
                 this.selectionBubbles[i].getWorldPosition(bubbleWorldPos);
                 let distToLeft = Infinity;
                 let distToRight = Infinity;
@@ -1127,10 +1099,10 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
 
-            let bubblePinchEngaged = [false, false, false, false, false, false, false, false];
+            let bubblePinchEngaged = [false, false, false, false];
 
-            // Detect overlapping pinch for each of the 8 bubbles (5cm threshold)
-            for (let i = 0; i < 8; i++) {
+            // Detect overlapping pinch for each of the 4 bubbles (5cm threshold)
+            for (let i = 0; i < 4; i++) {
                 this.selectionBubbles[i].getWorldPosition(bubbleWorldPos);
 
                 const isPinchingNearLeft = isLeftIndexPinching && leftIndexPinchPos.distanceTo(bubbleWorldPos) < 0.05;
@@ -1147,7 +1119,7 @@ export class DomainExpansionSystem extends createSystem({
                 this.player.head.getWorldPosition(headPos);
             }
 
-            for (let i = 0; i < 8; i++) {
+            for (let i = 0; i < 4; i++) {
                 const bubble = this.selectionBubbles[i];
                 const bMat = this.bubbleMats[i];
                 const ring = this.anchorRings[i];
@@ -1182,7 +1154,7 @@ export class DomainExpansionSystem extends createSystem({
                     // 2. High-Frequency Visual Vibration Feedback
                     if (chargeRatio > 0.05) {
                         // Vibrate position relative to its default center
-                        const angle = i * (Math.PI / 4);
+                        const angle = i * (Math.PI / 2);
                         const bx = Math.cos(angle) * 0.17;
                         const bz = Math.sin(angle) * 0.17;
                         const defaultHeight = isActive ? 0.135 : 0.11;
@@ -1216,20 +1188,12 @@ export class DomainExpansionSystem extends createSystem({
                             this.domainMesh.visible = true;
                             this.domainMesh.position.set(0, 0, 0); // Center on tracking origin
                             
-                            // Check if this is an abstract domain or a real-world coordinates bubble
-                            if (i % 2 === 0) {
-                                // Abstract domain
-                                const domeTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]);
-                                if (domeTex) {
-                                    domeTex.colorSpace = THREE.SRGBColorSpace;
-                                    domeTex.mapping = THREE.EquirectangularReflectionMapping;
-                                    this.domainMat.map = domeTex;
-                                    this.domainMat.needsUpdate = true;
-                                }
-                            } else {
-                                // Real-world domain: load Google Maps Street View stitching engine
-                                const coords = this.realWorldCoords[i];
-                                this.loadStreetView(coords.lat, coords.lng);
+                            const domeTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]);
+                            if (domeTex) {
+                                domeTex.colorSpace = THREE.SRGBColorSpace;
+                                domeTex.mapping = THREE.EquirectangularReflectionMapping;
+                                this.domainMat.map = domeTex;
+                                this.domainMat.needsUpdate = true;
                             }
                         }
 
@@ -1250,7 +1214,7 @@ export class DomainExpansionSystem extends createSystem({
                     loader.rotation.z += dt * 1.5;
 
                     // Restore default floating/hover behavior
-                    const angle = i * (Math.PI / 4);
+                    const angle = i * (Math.PI / 2);
                     const bx = Math.cos(angle) * 0.17;
                     const bz = Math.sin(angle) * 0.17;
 
