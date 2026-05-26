@@ -2,6 +2,29 @@ import { createSystem, AssetManager } from "@iwsdk/core";
 import * as THREE from "three";
 import { Jugnu } from "./jugnu.js";
 
+interface PlayerMarker {
+    id: string;
+    name: string;
+    role: 'fielder' | 'batsman' | 'umpire';
+    jersey: string;
+    team: 'blue' | 'yellow' | 'neutral';
+    originalBasePos: THREE.Vector3;
+    targetPos: THREE.Vector3;
+    currentPos: THREE.Vector3;
+    speed: number;
+    stats: {
+        primary: string;
+        secondary: string;
+    };
+    group: THREE.Group;
+    mesh: THREE.Mesh;
+    ring: THREE.Mesh;
+    tag: THREE.Mesh;
+    statsCard: THREE.Group;
+    hoverScale: number;
+    isHovered: boolean;
+}
+
 export class DomainExpansionSystem extends createSystem({
     jugnu: { required: [Jugnu] }
 }) {
@@ -97,6 +120,10 @@ export class DomainExpansionSystem extends createSystem({
     private lastLoggedScale = 1.0;
     private lastLeftPinch = false;
     private lastRightPinch = false;
+
+    // Real-Time low-poly player markers inside Wankhede Stadium
+    private players: PlayerMarker[] = [];
+    private playerSimTime = 0.0;
 
 
     // Keyboard debug listeners
@@ -345,17 +372,20 @@ export class DomainExpansionSystem extends createSystem({
             this.tableGroup.add(this.stadiumMesh);
         }
 
-        // Location Pin (Pure triangle geometries)
+        // Initialize tactical low-poly player markers on the field
+        this.initPlayerMarkers();
+
+        // Location Pin (Pure triangle geometries with transparent materials for smooth scale-gated fade-out)
         this.locationPin = new THREE.Group();
         const pinHead = new THREE.Mesh(
             new THREE.SphereGeometry(0.006, 16, 16),
-            new THREE.MeshBasicMaterial({ color: 0xff3333 })
+            new THREE.MeshBasicMaterial({ color: 0xff3333, transparent: true, opacity: 0.9 })
         );
         pinHead.position.y = 0.02;
         
         const pinBody = new THREE.Mesh(
             new THREE.ConeGeometry(0.004, 0.012, 16),
-            new THREE.MeshBasicMaterial({ color: 0xff3333 })
+            new THREE.MeshBasicMaterial({ color: 0xff3333, transparent: true, opacity: 0.9 })
         );
         pinBody.position.y = 0.01;
         pinBody.rotation.x = Math.PI;
@@ -373,7 +403,60 @@ export class DomainExpansionSystem extends createSystem({
         pinGlow.rotation.x = -Math.PI / 2;
         pinGlow.position.y = 0.004;
         
-        this.locationPin.add(pinHead, pinBody, pinGlow);
+        // Floating high-res Wankhede Stadium location label card
+        const labelCanvas = document.createElement('canvas');
+        labelCanvas.width = 256;
+        labelCanvas.height = 64;
+        const labelCtx = labelCanvas.getContext('2d')!;
+        labelCtx.clearRect(0, 0, 256, 64);
+        
+        // High-tech dark pill background with glowing red border
+        labelCtx.fillStyle = 'rgba(5, 5, 20, 0.88)';
+        labelCtx.strokeStyle = '#ff3333';
+        labelCtx.lineWidth = 4;
+        
+        const r2 = 16;
+        const w2 = 246;
+        const h2 = 54;
+        const x2 = 5;
+        const y2 = 5;
+        
+        labelCtx.beginPath();
+        labelCtx.moveTo(x2 + r2, y2);
+        labelCtx.lineTo(x2 + w2 - r2, y2);
+        labelCtx.quadraticCurveTo(x2 + w2, y2, x2 + w2, y2 + r2);
+        labelCtx.lineTo(x2 + w2, y2 + h2 - r2);
+        labelCtx.quadraticCurveTo(x2 + w2, y2 + h2, x2 + w2 - r2, y2 + h2);
+        labelCtx.lineTo(x2 + r2, y2 + h2);
+        labelCtx.quadraticCurveTo(x2, y2 + h2, x2, y2 + h2 - r2);
+        labelCtx.lineTo(x2, y2 + r2);
+        labelCtx.quadraticCurveTo(x2, y2, x2 + r2, y2);
+        labelCtx.closePath();
+        labelCtx.fill();
+        labelCtx.stroke();
+        
+        labelCtx.fillStyle = '#ffffff';
+        labelCtx.font = 'bold 22px monospace';
+        labelCtx.textAlign = 'center';
+        labelCtx.textBaseline = 'middle';
+        labelCtx.fillText('WANKHEDE STADIUM', 128, 32);
+        
+        const labelTex = new THREE.CanvasTexture(labelCanvas);
+        labelTex.colorSpace = THREE.SRGBColorSpace;
+        labelTex.needsUpdate = true;
+        
+        const labelGeom = new THREE.PlaneGeometry(0.06, 0.015);
+        const labelMat = new THREE.MeshBasicMaterial({
+            map: labelTex,
+            transparent: true,
+            opacity: 0.9,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const pinLabelMesh = new THREE.Mesh(labelGeom, labelMat);
+        pinLabelMesh.position.set(0, 0.035, 0); // Float 3.5cm above base (1.5cm above pin head)
+        
+        this.locationPin.add(pinHead, pinBody, pinGlow, pinLabelMesh);
         this.tableGroup.add(this.locationPin);
 
         // --- Holographic Domain Expansion Selection Bubbles (Octagon arrangement on Edge Ring) ---
@@ -790,6 +873,151 @@ export class DomainExpansionSystem extends createSystem({
             const hasLeftIndex = this.getIndexData('left', leftIndexPinchPos);
             const hasRightIndex = this.getIndexData('right', rightIndexPinchPos);
 
+            // 1.5. Real-Time Player Markers Update & Proximity Hand Hover Engine
+            this.playerSimTime += dt;
+            const triggerSimulation = this.playerSimTime > 6.0;
+            if (triggerSimulation) {
+                this.playerSimTime = 0.0;
+            }
+
+            const isScalingAbove2m = this.currentTableScale > 3.33;
+
+            let playerHeadPos = new THREE.Vector3(0, 1.6, 0);
+            if (this.player && this.player.head) {
+                this.player.head.getWorldPosition(playerHeadPos);
+            }
+
+            const playerWorldPos = new THREE.Vector3();
+
+            // First pass check: determine if any player is actively hovered by the user's index finger
+            let anyPlayerHovered = false;
+            if (isScalingAbove2m) {
+                this.players.forEach(p => {
+                    p.group.getWorldPosition(playerWorldPos);
+                    let distToLeft = Infinity;
+                    let distToRight = Infinity;
+                    if (hasLeftIndex) distToLeft = leftIndexPinchPos.distanceTo(playerWorldPos);
+                    if (hasRightIndex) distToRight = rightIndexPinchPos.distanceTo(playerWorldPos);
+                    if (distToLeft < 0.03 || distToRight < 0.03) {
+                        anyPlayerHovered = true;
+                    }
+                });
+            }
+            
+            this.players.forEach(p => {
+                // Organic Movement Simulation (Field adjustments & crease strolls)
+                if (triggerSimulation) {
+                    if (p.role === 'fielder') {
+                        // Fielders shift organic sub-intervals (max 4mm drift from original base field position)
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = Math.random() * 0.004;
+                        p.targetPos.set(
+                            p.originalBasePos.x + Math.cos(angle) * dist,
+                            p.originalBasePos.y,
+                            p.originalBasePos.z + Math.sin(angle) * dist
+                        );
+                    } else if (p.role === 'batsman') {
+                        // Batsmen stroll along the horizontal pitch axis (X direction) by max 2mm
+                        const stroll = (Math.random() - 0.5) * 0.003;
+                        p.targetPos.set(
+                            p.originalBasePos.x + stroll,
+                            p.originalBasePos.y,
+                            p.originalBasePos.z
+                        );
+                    }
+                }
+
+                // Smooth position LERP
+                p.group.position.lerp(p.targetPos, dt * 1.5);
+                p.currentPos.copy(p.group.position);
+
+                // Rotate underfoot neon radar rings slowly
+                p.ring.rotation.z += dt * 1.2;
+
+                // Cyber-billboard floating tags to face player headset adaptively (Yaw-only in world space to prevent tilting!)
+                const tagWorldPos = new THREE.Vector3();
+                p.tag.getWorldPosition(tagWorldPos);
+                const tagTarget = playerHeadPos.clone();
+                tagTarget.y = tagWorldPos.y; // Level vertical height in world space
+                p.tag.lookAt(tagTarget);
+
+                const cardWorldPos = new THREE.Vector3();
+                p.statsCard.getWorldPosition(cardWorldPos);
+                const cardTarget = playerHeadPos.clone();
+                cardTarget.y = cardWorldPos.y; // Level vertical height in world space
+                p.statsCard.lookAt(cardTarget);
+
+                // Scaling activation check: only load player tags and player markers when scaling is above 2 meters (table scale > 3.33)
+                const isScalingAbove2m = this.currentTableScale > 3.33;
+                
+                // 1. Smoothly fade in/out the player group and markers
+                const targetOpacityPlayer = isScalingAbove2m ? 0.95 : 0.0;
+                const bodyMat = p.mesh.material as THREE.MeshBasicMaterial;
+                bodyMat.opacity += (targetOpacityPlayer - bodyMat.opacity) * dt * 10.0;
+                
+                const ringMat = p.ring.material as THREE.MeshBasicMaterial;
+                const targetOpacityRing = isScalingAbove2m ? 0.5 : 0.0;
+                ringMat.opacity += (targetOpacityRing - ringMat.opacity) * dt * 10.0;
+                
+                // Scale up hovered player
+                let isHovered = false;
+                if (isScalingAbove2m) {
+                    p.group.getWorldPosition(playerWorldPos);
+                    
+                    let distToLeft = Infinity;
+                    let distToRight = Infinity;
+                    
+                    if (hasLeftIndex) distToLeft = leftIndexPinchPos.distanceTo(playerWorldPos);
+                    if (hasRightIndex) distToRight = rightIndexPinchPos.distanceTo(playerWorldPos);
+                    
+                    isHovered = distToLeft < 0.03 || distToRight < 0.03;
+                }
+                p.isHovered = isHovered;
+
+                const targetScale = isHovered ? 1.4 : 1.0;
+                p.hoverScale += (targetScale - p.hoverScale) * dt * 8.0;
+
+                // Smoothly scale the mesh and ring (shrink to zero when below 2m)
+                const baseScaleFactor = isScalingAbove2m ? 1.0 : 0.0;
+                p.mesh.scale.setScalar(THREE.MathUtils.lerp(p.mesh.scale.x, baseScaleFactor * p.hoverScale, dt * 10.0));
+                p.ring.scale.setScalar(THREE.MathUtils.lerp(p.ring.scale.x, baseScaleFactor * p.hoverScale, dt * 10.0));
+                
+                // 2. Smoothly fade in/out and scale the player name tag (declutter: dim/hide on overlap!)
+                const tagMat = p.tag.material as THREE.MeshBasicMaterial;
+                let targetOpacityTag = 0.0;
+                let targetTagScale = 0.0;
+                
+                if (isScalingAbove2m) {
+                    if (isHovered) {
+                        targetOpacityTag = 1.0;
+                        targetTagScale = 1.25;
+                    } else if (anyPlayerHovered) {
+                        targetOpacityTag = 0.15; // Dim other player name tags completely when one is selected
+                        targetTagScale = 0.75;
+                    } else {
+                        targetOpacityTag = 0.45; // Faint, clean, non-obtrusive tag by default
+                        targetTagScale = 0.9;
+                    }
+                }
+                
+                tagMat.opacity += (targetOpacityTag - tagMat.opacity) * dt * 10.0;
+                p.tag.scale.setScalar(THREE.MathUtils.lerp(p.tag.scale.x, targetTagScale, dt * 10.0));
+                
+                p.tag.visible = tagMat.opacity > 0.01;
+                p.mesh.visible = bodyMat.opacity > 0.01;
+                p.ring.visible = ringMat.opacity > 0.01;
+
+                // Fade/Reveal stats card smoothly
+                const cardMesh = p.statsCard.children[0] as THREE.Mesh;
+                const cardMat = cardMesh.material as THREE.MeshBasicMaterial;
+                const targetOpacity = (isHovered && isScalingAbove2m) ? 0.95 : 0.0;
+                cardMat.opacity += (targetOpacity - cardMat.opacity) * dt * 8.0;
+                
+                // Gently raise the card on hover to float above tag
+                cardMesh.position.y = THREE.MathUtils.lerp(0.045, 0.052, (p.hoverScale - 1.0) / 0.4);
+                p.statsCard.visible = cardMat.opacity > 0.01;
+            });
+
             // Log index pinch status transitions
             if (isLeftIndexPinching !== this.lastLeftPinch) {
                 console.log(`[DomainExpansion] Left Index Pinch changed: ${isLeftIndexPinching ? "PINCHING" : "RELEASED"} at pos: (${leftIndexPinchPos.x.toFixed(2)}, ${leftIndexPinchPos.y.toFixed(2)}, ${leftIndexPinchPos.z.toFixed(2)})`);
@@ -1075,6 +1303,30 @@ export class DomainExpansionSystem extends createSystem({
 
             // 6. Pulsing location pin
             this.locationPin.position.y = 0.004 + Math.sin(this.radarTime * 3.5) * 0.003;
+
+            // Yaw-only world-space billboarding for the location pin label
+            const pinWorldPos = new THREE.Vector3();
+            this.locationPin.getWorldPosition(pinWorldPos);
+            const pinTarget = playerHeadPos.clone();
+            pinTarget.y = pinWorldPos.y; // Level vertical height in world space
+            this.locationPin.lookAt(pinTarget);
+
+            // Scale-gated fade-out: Location Pin and Stadium Text Card vanish when zoomed-in above 2m (scale > 3.33)
+            const targetPinOpacity = isScalingAbove2m ? 0.0 : 0.9;
+            this.locationPin.traverse((child) => {
+                if (child instanceof THREE.Mesh) {
+                    const mat = child.material as THREE.MeshBasicMaterial;
+                    if (mat && mat.transparent) {
+                        mat.opacity += (targetPinOpacity - mat.opacity) * dt * 8.0;
+                    }
+                }
+            });
+            
+            // Check opacity of the first mesh child to determine visibility
+            if (this.locationPin.children[0] instanceof THREE.Mesh) {
+                const firstMat = this.locationPin.children[0].material as THREE.MeshBasicMaterial;
+                this.locationPin.visible = firstMat.opacity > 0.01;
+            }
 
             // 7. Holographic Close "X" Button Billboard & Poke check
             if (this.isDomainActive) {
@@ -2132,5 +2384,234 @@ export class DomainExpansionSystem extends createSystem({
                 ctx.restore();
             }
         }
+    }
+
+    private initPlayerMarkers() {
+        const roster = [
+            // Batting Team (Neon Yellow - Placed horizontally at wickets at x = -0.012 and x = 0.012)
+            { id: "b1", name: "V. Kohli", role: "batsman" as const, jersey: "18", team: "yellow" as const, x: 0.012, z: 0.0, primary: "Runs: 82* (53)", secondary: "SR: 154.7" },
+            { id: "b2", name: "R. Sharma", role: "batsman" as const, jersey: "45", team: "yellow" as const, x: -0.012, z: 0.0, primary: "Runs: 45 (28)", secondary: "SR: 160.7" },
+
+            // Umpires (Neutral White - Oriented for horizontal pitch)
+            { id: "u1", name: "K. Dharmasena", role: "umpire" as const, jersey: "U1", team: "neutral" as const, x: -0.018, z: 0.0, primary: "Umpire (Bowler's)", secondary: "Decisions: 100%" },
+            { id: "u2", name: "N. Llong", role: "umpire" as const, jersey: "U2", team: "neutral" as const, x: 0.012, z: 0.018, primary: "Umpire (Square Leg)", secondary: "Decisions: 100%" },
+
+            // Fielding Team (Neon Blue - Aligned horizontally relative to striker at x = 0.012)
+            { id: "f1", name: "M.S. Dhoni", role: "fielder" as const, jersey: "7", team: "blue" as const, x: 0.016, z: 0.0, primary: "Catches: 2, St: 1", secondary: "Active: Wicketkeeper" }, // Wicketkeeper behind striker stumps
+            { id: "f2", name: "J. Bumrah", role: "fielder" as const, jersey: "93", team: "blue" as const, x: -0.024, z: 0.0, primary: "Overs: 3.4-0-18-3", secondary: "Active: Bowler" }, // Bowler at opposite end
+            { id: "f3", name: "R. Jadeja", role: "fielder" as const, jersey: "8", team: "blue" as const, x: 0.015, z: 0.025, primary: "Catches: 1, Runs Out: 1", secondary: "Pos: Point" }, // Point (offside)
+            { id: "f4", name: "H. Pandya", role: "fielder" as const, jersey: "33", team: "blue" as const, x: 0.01, z: 0.025, primary: "Overs: 2-0-15-1", secondary: "Pos: Cover" }, // Cover (offside)
+            { id: "f5", name: "S. Gill", role: "fielder" as const, jersey: "77", team: "blue" as const, x: 0.015, z: -0.01, primary: "Runs Saved: 8", secondary: "Pos: Slip" }, // Slip (offside behind)
+            { id: "f6", name: "K. Rahul", role: "fielder" as const, jersey: "1", team: "blue" as const, x: -0.02, z: -0.045, primary: "Catches: 0", secondary: "Pos: Mid-Wicket" }, // Mid-wicket (legside)
+            { id: "f7", name: "S. Iyer", role: "fielder" as const, jersey: "96", team: "blue" as const, x: -0.025, z: -0.045, primary: "Runs Saved: 4", secondary: "Pos: Mid-On" }, // Mid-on (legside)
+            { id: "f8", name: "A. Patel", role: "fielder" as const, jersey: "20", team: "blue" as const, x: 0.035, z: 0.055, primary: "Overs: 4-0-24-0", secondary: "Pos: Deep Point" }, // Deep point (brought slightly closer to center)
+            { id: "f9", name: "Y. Chahal", role: "fielder" as const, jersey: "3", team: "blue" as const, x: 0.05, z: 0.05, primary: "Overs: 4-0-32-1", secondary: "Pos: Deep Cover" }, // Deep cover (brought slightly closer to center)
+            { id: "f10", name: "M. Siraj", role: "fielder" as const, jersey: "73", team: "blue" as const, x: -0.075, z: 0.0, primary: "Overs: 4-0-28-1", secondary: "Pos: Long-On" }, // Long-on (brought slightly closer to center)
+            { id: "f11", name: "K. Yadav", role: "fielder" as const, jersey: "23", team: "blue" as const, x: -0.065, z: -0.04, primary: "Overs: 4-0-22-2", secondary: "Pos: Deep Mid-Wicket" } // Deep Mid-wicket (brought slightly closer to center)
+        ];
+
+        roster.forEach(p => {
+            const playerGroup = new THREE.Group();
+            // Sit just on the grass pitch
+            playerGroup.position.set(p.x, 0.009, p.z);
+            this.tableGroup.add(playerGroup);
+
+            // 1. Cone body
+            const bodyGeom = new THREE.ConeGeometry(0.003, 0.01, 4);
+            bodyGeom.translate(0, 0.005, 0); // Bottom origin
+
+            let color = 0x00ffff; // Blue
+            if (p.team === 'yellow') color = 0xffff00;
+            else if (p.team === 'neutral') color = 0xffffff;
+
+            const bodyMat = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.95
+            });
+            const mesh = new THREE.Mesh(bodyGeom, bodyMat);
+            playerGroup.add(mesh);
+
+            // 2. Neon underfoot rotating ring decal
+            const ringGeom = new THREE.RingGeometry(0.005, 0.006, 16);
+            ringGeom.rotateX(-Math.PI / 2);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.5,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const ring = new THREE.Mesh(ringGeom, ringMat);
+            playerGroup.add(ring);
+
+            // 3. Floating high-res billboarding name/jersey tag
+            const tag = this.createPlayerTag(p.name, p.jersey, p.team);
+            playerGroup.add(tag);
+
+            // 4. Hover stats board transparent panel mesh
+            const statsCard = this.createPlayerStatsCard(p.name, p.primary, p.secondary, p.team);
+            playerGroup.add(statsCard);
+
+            this.players.push({
+                id: p.id,
+                name: p.name,
+                role: p.role,
+                jersey: p.jersey,
+                team: p.team,
+                originalBasePos: new THREE.Vector3(p.x, 0.009, p.z),
+                targetPos: new THREE.Vector3(p.x, 0.009, p.z),
+                currentPos: new THREE.Vector3(p.x, 0.009, p.z),
+                speed: p.role === 'fielder' ? 0.005 : 0.001,
+                stats: {
+                    primary: p.primary,
+                    secondary: p.secondary
+                },
+                group: playerGroup,
+                mesh: mesh,
+                ring: ring,
+                tag: tag,
+                statsCard: statsCard,
+                hoverScale: 1.0,
+                isHovered: false
+            });
+        });
+    }
+
+    private createPlayerTag(name: string, jersey: string, team: 'blue' | 'yellow' | 'neutral'): THREE.Mesh {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d')!;
+        
+        ctx.clearRect(0, 0, 256, 64);
+        
+        // Draw pill shape
+        ctx.fillStyle = 'rgba(5, 5, 20, 0.8)';
+        ctx.strokeStyle = team === 'blue' ? '#00ffff' : (team === 'yellow' ? '#ffff00' : '#ffffff');
+        ctx.lineWidth = 4;
+        
+        const r = 20;
+        const w = 246;
+        const h = 54;
+        const x = 5;
+        const y = 5;
+        
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 26px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`#${jersey} ${name}`, 128, 32);
+        
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.needsUpdate = true;
+        
+        const tagGeom = new THREE.PlaneGeometry(0.04, 0.01);
+        const tagMat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            opacity: 0.9,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        
+        const mesh = new THREE.Mesh(tagGeom, tagMat);
+        mesh.position.y = 0.02; // Float 2cm above base
+        return mesh;
+    }
+
+    private createPlayerStatsCard(name: string, primary: string, secondary: string, team: 'blue' | 'yellow' | 'neutral'): THREE.Group {
+        const cardGroup = new THREE.Group();
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = 384;
+        canvas.height = 192;
+        const ctx = canvas.getContext('2d')!;
+        
+        ctx.clearRect(0, 0, 384, 192);
+        
+        ctx.fillStyle = 'rgba(2, 6, 26, 0.92)';
+        ctx.strokeStyle = team === 'blue' ? '#00ffff' : (team === 'yellow' ? '#ffff00' : '#ffffff');
+        ctx.lineWidth = 6;
+        
+        const r = 24;
+        const w = 372;
+        const h = 180;
+        const x = 6;
+        const y = 6;
+        
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.strokeStyle = team === 'blue' ? 'rgba(0, 255, 255, 0.4)' : (team === 'yellow' ? 'rgba(255, 255, 0, 0.4)' : 'rgba(255, 255, 255, 0.4)');
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x + 10, y + 25); ctx.lineTo(x + 10, y + 10); ctx.lineTo(x + 25, y + 10);
+        ctx.moveTo(x + w - 25, y + h - 10); ctx.lineTo(x + w - 10, y + h - 10); ctx.lineTo(x + w - 10, y + h - 25);
+        ctx.stroke();
+        
+        ctx.fillStyle = team === 'blue' ? '#00ffff' : (team === 'yellow' ? '#ffff00' : '#ffffff');
+        ctx.font = 'bold 30px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(name.toUpperCase(), x + 30, y + 45);
+        
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.beginPath();
+        ctx.moveTo(x + 30, y + 65);
+        ctx.lineTo(x + w - 30, y + 65);
+        ctx.stroke();
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 24px monospace';
+        ctx.fillText(primary, x + 30, y + 105);
+        
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.font = '22px monospace';
+        ctx.fillText(secondary, x + 30, y + 145);
+        
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.needsUpdate = true;
+        
+        const planeGeom = new THREE.PlaneGeometry(0.08, 0.04);
+        const planeMat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            opacity: 0.0, // Start fully transparent
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        
+        const cardMesh = new THREE.Mesh(planeGeom, planeMat);
+        cardMesh.position.y = 0.045; // float 4.5cm above base
+        cardGroup.add(cardMesh);
+        
+        return cardGroup;
     }
 }
