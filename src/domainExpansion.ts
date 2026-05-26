@@ -48,8 +48,8 @@ export class DomainExpansionSystem extends createSystem({
     private loaderRings: THREE.Mesh[] = [];
     private nameTags: THREE.Mesh[] = [];
     private nameTagMats: THREE.MeshBasicMaterial[] = [];
-    private pinchProgresses: number[] = [0, 0, 0, 0];
-    private hoverProgresses: number[] = [0, 0, 0, 0];
+    private pinchProgresses: number[] = [0, 0, 0, 0, 0];
+    private hoverProgresses: number[] = [0, 0, 0, 0, 0];
     private domainMesh!: THREE.Mesh;
     private domainMat!: THREE.MeshBasicMaterial;
     private stadiumMesh!: THREE.Group;
@@ -58,6 +58,10 @@ export class DomainExpansionSystem extends createSystem({
     private bleedProgress = 0.0;
     private exitTimer = 0;
     private menuToggleCooldown = 0;
+
+    // Video MIV position variables
+    private mivVideo!: HTMLVideoElement;
+    private mivVideoTex!: THREE.VideoTexture;
 
     // Holographic Close "X" button
     private xButton!: THREE.Group;
@@ -70,14 +74,16 @@ export class DomainExpansionSystem extends createSystem({
         "mivCam1",
         "mivCam2",
         "mivCam3",
-        "mivCam4"
+        "mivCam4",
+        "mivVideo"
     ];
 
     private domainNames = [
         "CAM POS (1)",
         "CAM POS (2)",
         "CAM POS (3)",
-        "CAM POS (4)"
+        "CAM POS (4)",
+        "CAM POS (5)"
     ];
 
     // Sustained-release timers to filter hand-tracking noise/jitter (de-noising)
@@ -440,15 +446,36 @@ export class DomainExpansionSystem extends createSystem({
         this.locationPin.add(pinHead, pinBody, pinGlow, pinLabelMesh);
         this.tableGroup.add(this.locationPin);
 
+        // Initialize MIV video for CAM POS (5)
+        this.mivVideo = document.createElement('video');
+        this.mivVideo.src = "./CameraViews_HDRI/CamPos (5).mp4";
+        this.mivVideo.crossOrigin = 'anonymous';
+        this.mivVideo.loop = true;
+        this.mivVideo.muted = true;
+        this.mivVideo.playsInline = true;
+        this.mivVideo.autoplay = true;
+        this.mivVideo.play().catch(e => console.warn("Video autoplay blocked until user interaction", e));
+
+        this.mivVideoTex = new THREE.VideoTexture(this.mivVideo);
+        this.mivVideoTex.colorSpace = THREE.SRGBColorSpace;
+        this.mivVideoTex.mapping = THREE.EquirectangularReflectionMapping;
+
+        // Add a pointerdown listener to trigger play on first interaction (browser requirement)
+        window.addEventListener('pointerdown', () => {
+            if (this.mivVideo && this.mivVideo.paused) {
+                this.mivVideo.play().catch(() => {});
+            }
+        }, { once: true });
+
         // --- Holographic Domain Expansion Selection Bubbles (Octagon arrangement on Edge Ring) ---
         const bubbleGeom = new THREE.SphereGeometry(0.035, 32, 16);
         const bubbleRingGeom = new THREE.RingGeometry(0.023, 0.027, 32);
         const loaderRingGeom = new THREE.RingGeometry(0.012, 0.015, 32);
         const nameTagGeom = new THREE.PlaneGeometry(0.08, 0.02);
 
-        for (let i = 0; i < 4; i++) {
-            // Symmetrical arrangement around the stadium (radius = 0.17m) at 90-degree intervals
-            const angle = i * (Math.PI / 2);
+        for (let i = 0; i < 5; i++) {
+            // Symmetrical arrangement around the stadium (radius = 0.17m) at 72-degree intervals (2 * Math.PI / 5)
+            const angle = i * (2 * Math.PI / 5);
             const bx = Math.cos(angle) * 0.17;
             const bz = Math.sin(angle) * 0.17;
 
@@ -459,11 +486,16 @@ export class DomainExpansionSystem extends createSystem({
                 depthWrite: false
             });
             
-            const texKey = this.domainKeys[i];
-            const tex = AssetManager.getTexture(texKey);
-            if (tex) {
-                tex.colorSpace = THREE.SRGBColorSpace;
-                bMat.map = tex;
+            if (i === 4) {
+                // 5th camera is the live video texture
+                bMat.map = this.mivVideoTex;
+            } else {
+                const texKey = this.domainKeys[i];
+                const tex = AssetManager.getTexture(texKey);
+                if (tex) {
+                    tex.colorSpace = THREE.SRGBColorSpace;
+                    bMat.map = tex;
+                }
             }
 
             const bubbleMesh = new THREE.Mesh(bubbleGeom, bMat);
@@ -1084,11 +1116,11 @@ export class DomainExpansionSystem extends createSystem({
 
 
             // 3. Selection Bubbles Hover Overlap Proximity check & Pinch-and-Hold 3-Second Charge check
-            const hoverState = [false, false, false, false];
+            const hoverState = [false, false, false, false, false];
             const bubbleWorldPos = new THREE.Vector3();
 
             // Hover Proximity Check (6cm threshold)
-            for (let i = 0; i < 4; i++) {
+            for (let i = 0; i < 5; i++) {
                 this.selectionBubbles[i].getWorldPosition(bubbleWorldPos);
                 let distToLeft = Infinity;
                 let distToRight = Infinity;
@@ -1099,10 +1131,10 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
 
-            let bubblePinchEngaged = [false, false, false, false];
+            let bubblePinchEngaged = [false, false, false, false, false];
 
-            // Detect overlapping pinch for each of the 4 bubbles (5cm threshold)
-            for (let i = 0; i < 4; i++) {
+            // Detect overlapping pinch for each of the 5 bubbles (5cm threshold)
+            for (let i = 0; i < 5; i++) {
                 this.selectionBubbles[i].getWorldPosition(bubbleWorldPos);
 
                 const isPinchingNearLeft = isLeftIndexPinching && leftIndexPinchPos.distanceTo(bubbleWorldPos) < 0.05;
@@ -1119,7 +1151,7 @@ export class DomainExpansionSystem extends createSystem({
                 this.player.head.getWorldPosition(headPos);
             }
 
-            for (let i = 0; i < 4; i++) {
+            for (let i = 0; i < 5; i++) {
                 const bubble = this.selectionBubbles[i];
                 const bMat = this.bubbleMats[i];
                 const ring = this.anchorRings[i];
@@ -1154,7 +1186,7 @@ export class DomainExpansionSystem extends createSystem({
                     // 2. High-Frequency Visual Vibration Feedback
                     if (chargeRatio > 0.05) {
                         // Vibrate position relative to its default center
-                        const angle = i * (Math.PI / 2);
+                        const angle = i * (2 * Math.PI / 5);
                         const bx = Math.cos(angle) * 0.17;
                         const bz = Math.sin(angle) * 0.17;
                         const defaultHeight = isActive ? 0.135 : 0.11;
@@ -1188,12 +1220,17 @@ export class DomainExpansionSystem extends createSystem({
                             this.domainMesh.visible = true;
                             this.domainMesh.position.set(0, 0, 0); // Center on tracking origin
                             
-                            const domeTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]);
-                            if (domeTex) {
-                                domeTex.colorSpace = THREE.SRGBColorSpace;
-                                domeTex.mapping = THREE.EquirectangularReflectionMapping;
-                                this.domainMat.map = domeTex;
+                            if (this.currentDomainIndex === 4) {
+                                this.domainMat.map = this.mivVideoTex;
                                 this.domainMat.needsUpdate = true;
+                            } else {
+                                const domeTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]);
+                                if (domeTex) {
+                                    domeTex.colorSpace = THREE.SRGBColorSpace;
+                                    domeTex.mapping = THREE.EquirectangularReflectionMapping;
+                                    this.domainMat.map = domeTex;
+                                    this.domainMat.needsUpdate = true;
+                                }
                             }
                         }
 
@@ -1214,7 +1251,7 @@ export class DomainExpansionSystem extends createSystem({
                     loader.rotation.z += dt * 1.5;
 
                     // Restore default floating/hover behavior
-                    const angle = i * (Math.PI / 2);
+                    const angle = i * (2 * Math.PI / 5);
                     const bx = Math.cos(angle) * 0.17;
                     const bz = Math.sin(angle) * 0.17;
 
@@ -1235,7 +1272,7 @@ export class DomainExpansionSystem extends createSystem({
                         rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, targetRingOpacity, 10 * dt);
                     } else {
                         // Subtle passive hover for inactive bubbles
-                        const hoverPhase = this.radarTime * 1.5 + i * (Math.PI / 2);
+                        const hoverPhase = this.radarTime * 1.5 + i * (2 * Math.PI / 5);
                         const targetHeight = 0.11 + Math.sin(hoverPhase) * 0.005;
                         bubble.position.x = THREE.MathUtils.lerp(bubble.position.x, bx, 10 * dt);
                         bubble.position.y = THREE.MathUtils.lerp(bubble.position.y, targetHeight, 10 * dt);
@@ -1359,6 +1396,20 @@ export class DomainExpansionSystem extends createSystem({
                 this.domainMesh.position.copy(bubbleWorldPos);
                 this.domainMesh.scale.setScalar(0.001);
                 this.domainMat.opacity = 0.0;
+
+                // Update texture mapping for transitioning
+                if (this.currentDomainIndex === 4) {
+                    this.domainMat.map = this.mivVideoTex;
+                    this.domainMat.needsUpdate = true;
+                } else {
+                    const domeTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]);
+                    if (domeTex) {
+                        domeTex.colorSpace = THREE.SRGBColorSpace;
+                        domeTex.mapping = THREE.EquirectangularReflectionMapping;
+                        this.domainMat.map = domeTex;
+                        this.domainMat.needsUpdate = true;
+                    }
+                }
             }
 
             // Expand and center dome sphere at tracking origin (0, 0, 0)
@@ -1380,6 +1431,19 @@ export class DomainExpansionSystem extends createSystem({
                 
                 if (this.domainMesh.scale.x < 0.005 || this.domainMat.opacity < 0.01) {
                     this.domainMesh.visible = false;
+                }
+            }
+        }
+
+        // Play/pause MIV video based on active domain
+        if (this.mivVideo) {
+            if (this.isDomainActive && this.currentDomainIndex === 4) {
+                if (this.mivVideo.paused) {
+                    this.mivVideo.play().catch(() => {});
+                }
+            } else {
+                if (!this.mivVideo.paused) {
+                    this.mivVideo.pause();
                 }
             }
         }
