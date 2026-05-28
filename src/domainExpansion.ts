@@ -25,6 +25,69 @@ interface PlayerMarker {
     isHovered: boolean;
 }
 
+const applyStadiumMaterial = (mat: THREE.Material | undefined, name: string, parentName: string): THREE.Material => {
+    const newMat = new THREE.MeshStandardMaterial();
+    if (mat) {
+        if (typeof (mat as any).copy === 'function') {
+            try {
+                newMat.copy(mat as any);
+            } catch (e) {
+                if ((mat as any).color) newMat.color.copy((mat as any).color);
+                if ((mat as any).map) newMat.map = (mat as any).map;
+            }
+        } else {
+            if ((mat as any).color) newMat.color.copy((mat as any).color);
+            if ((mat as any).map) newMat.map = (mat as any).map;
+        }
+    }
+    
+    const isMatch = (str: string) => name.includes(str) || parentName.includes(str);
+    
+    if (isMatch('field') || isMatch('grass')) {
+        newMat.color.setHex(0x113e19);
+        newMat.roughness = 0.85;
+        newMat.metalness = 0.05;
+    } else if (isMatch('pitch') || isMatch('wicket')) {
+        newMat.color.setHex(0xc2a679);
+        newMat.roughness = 0.9;
+        newMat.metalness = 0.0;
+    } else if (isMatch('stands') || isMatch('seating') || isMatch('seats')) {
+        if (name.includes('.001') || name.includes('1')) {
+            newMat.color.setHex(0xaa2222); // RCB Red stands
+        } else if (name.includes('.002') || name.includes('2')) {
+            newMat.color.setHex(0xcc9900); // RCB Gold stands
+        } else if (name.includes('.003') || name.includes('3')) {
+            newMat.color.setHex(0xe0115f); // RR Pink stands
+        } else {
+            newMat.color.setHex(0x0a1e3f); // Corporate stadium blue
+        }
+        newMat.roughness = 0.6;
+        newMat.metalness = 0.2;
+    } else if (isMatch('boundary') || isMatch('rope')) {
+        newMat.color.setHex(0x00ffff);
+        newMat.emissive.setHex(0x008888);
+        newMat.roughness = 0.2;
+        newMat.metalness = 0.5;
+    } else if (isMatch('floodlight') || isMatch('light')) {
+        newMat.color.setHex(0x334155);
+        newMat.roughness = 0.15;
+        newMat.metalness = 0.9;
+        newMat.emissive.setHex(0xffffff);
+    } else if (isMatch('roof') || isMatch('top') || isMatch('canopy')) {
+        newMat.color.setHex(0xe2e8f0);
+        newMat.roughness = 0.3;
+        newMat.metalness = 0.75;
+        newMat.transparent = true;
+        newMat.opacity = 0.92;
+    } else {
+        newMat.color.setHex(0x0f172a);
+        newMat.roughness = 0.45;
+        newMat.metalness = 0.55;
+    }
+    
+    return newMat;
+};
+
 export class DomainExpansionSystem extends createSystem({
     jugnu: { required: [Jugnu] }
 }) {
@@ -43,25 +106,62 @@ export class DomainExpansionSystem extends createSystem({
 
     // Domain Expansion & 360 Dome variables
     private selectionBubbles: THREE.Mesh[] = [];
-    private bubbleMats: THREE.MeshBasicMaterial[] = [];
+    private bubbleMats: THREE.Material[] = [];
     private anchorRings: THREE.Mesh[] = [];
     private loaderRings: THREE.Mesh[] = [];
     private nameTags: THREE.Mesh[] = [];
     private nameTagMats: THREE.MeshBasicMaterial[] = [];
-    private pinchProgresses: number[] = [0, 0, 0, 0, 0];
-    private hoverProgresses: number[] = [0, 0, 0, 0, 0];
+    private pinchProgresses: number[] = [];
+    private hoverProgresses: number[] = [];
     private domainMesh!: THREE.Mesh;
     private domainMat!: THREE.MeshBasicMaterial;
     private stadiumMesh!: THREE.Group;
     private stadiumBaseScale = 1.0;
+    private arBillboard!: THREE.Group;
+    private arFloatTime = 0;
     private isDomainActive = false;
     private bleedProgress = 0.0;
     private exitTimer = 0;
     private menuToggleCooldown = 0;
 
+    // Left Wrist Button
+    private wristButton!: THREE.Mesh;
+    private wristButtonMat!: THREE.MeshBasicMaterial;
+
     // Video MIV position variables
     private mivVideo!: HTMLVideoElement;
     private mivVideoTex!: THREE.VideoTexture;
+
+    // Real-Time B2B Broadcast Scenario Telemetry
+    private activePrediction: 'SIX' | 'WICKET' | 'DOT' | null = null;
+    private predictionTimer = 0.0;
+    private predictionCooldown = 0.0;
+    private evaluationTimer = 0.0;
+    private predictionStatusText = "SELECT ANALYTICS KERNEL TO INITIATE PROJECTION";
+    private predictionFlashColor = "";
+    private predictionButtons: THREE.Group[] = [];
+    private predictionButtonMats: THREE.MeshBasicMaterial[] = [];
+    
+    private billboardCanvas!: HTMLCanvasElement;
+    private billboardCtx!: CanvasRenderingContext2D;
+    private billboardTexture!: THREE.CanvasTexture;
+
+    // Hawk-Eye Telemetry Splines
+    private hawkeyeLine!: THREE.Line;
+    private hawkeyeBall!: THREE.Mesh;
+    private hawkeyeCurve!: THREE.CatmullRomCurve3;
+    private hawkeyeProgress = 0.0;
+    private hawkeyeTime = 0.0;
+    private hawkeyeRipple!: THREE.Mesh;
+    private hawkeyeRippleMat!: THREE.MeshBasicMaterial;
+    private currentHawkeyePath: 'SIX' | 'WICKET' | 'DOT' = 'DOT';
+    private isHawkeyeRunning = false;
+    private hawkeyeCooldown = 3.0; // Trigger passively after 3s on load
+
+    // Concentric Tech Telemetry Rings
+    private techRing1!: THREE.Mesh;
+    private techRing2!: THREE.Mesh;
+    private techRing3!: THREE.Mesh;
 
     // Holographic Close "X" button
     private xButton!: THREE.Group;
@@ -71,19 +171,21 @@ export class DomainExpansionSystem extends createSystem({
 
     private currentDomainIndex = 0;
     private domainKeys = [
-        "mivCam1",
-        "mivCam2",
-        "mivCam3",
-        "mivCam4",
-        "mivVideo"
+        "mivVideo",
+        "iplCam2",
+        "iplCam3",
+        "iplCam4",
+        "iplCam5",
+        "iplCam6"
     ];
 
     private domainNames = [
-        "CAM POS (1)",
-        "CAM POS (2)",
-        "CAM POS (3)",
-        "CAM POS (4)",
-        "CAM POS (5)"
+        "IPL FINAL (1)",
+        "IPL FINAL (2)",
+        "IPL FINAL (3)",
+        "IPL FINAL (4)",
+        "IPL FINAL (5)",
+        "IPL FINAL (6)"
     ];
 
     // Sustained-release timers to filter hand-tracking noise/jitter (de-noising)
@@ -112,6 +214,23 @@ export class DomainExpansionSystem extends createSystem({
     private players: PlayerMarker[] = [];
     private playerSimTime = 0.0;
 
+    // Ball Tracking & Interactive Sixes Visualization System
+    private activeBall!: THREE.Mesh;
+    private ballTrail!: THREE.Line;
+    private trailPoints: THREE.Vector3[] = [];
+    private maxTrailPoints = 120;
+    private isBallAnimating = false;
+    private ballAnimT = 0.0;
+    private currentSixIndex = -1;
+    private trackingButtons: THREE.Mesh[] = [];
+    private buttonMats: THREE.MeshBasicMaterial[] = [];
+    private buttonLabels: THREE.Mesh[] = [];
+    private buttonPinchProgress: number[] = [0.0, 0.0, 0.0, 0.0];
+    private scoreDisplayMeshes: THREE.Mesh[] = [];
+    // Roof arc parameters (in table-local space)
+    private readonly ROOF_Y = 0.095;      // Height of stadium roof rim
+    private readonly ROOF_RADIUS = 0.096; // Radius of stadium inner roof arc
+
 
     // Keyboard debug listeners
     private debugMPressed = false;
@@ -133,18 +252,73 @@ export class DomainExpansionSystem extends createSystem({
         this.tableGroup.scale.setScalar(0.01); // Safe minimum scale
         this.tableGroup.visible = false;
 
-        // Table base: flat transparent glass cylinder (using safe MeshBasicMaterial - NO transmission)
+        // Overhauled Table base: multi-tiered transparent glass cylinders for luxury depth
         const baseGeom = new THREE.CylinderGeometry(0.2, 0.2, 0.01, 64);
         const baseMat = new THREE.MeshBasicMaterial({
-            color: 0x050515,
+            color: 0x030712, // Ultra-rich obsidian black
             transparent: true,
-            opacity: 0.85,
+            opacity: 0.9,
             side: THREE.DoubleSide,
             depthWrite: false
         });
         this.tableBase = new THREE.Mesh(baseGeom, baseMat);
         this.tableBase.position.y = -0.005;
         this.tableGroup.add(this.tableBase);
+
+        // Volumetric lower cyan base slab to construct glowing depth
+        const underBaseGeom = new THREE.CylinderGeometry(0.18, 0.18, 0.006, 64);
+        const underBaseMat = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.12,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const underBaseMesh = new THREE.Mesh(underBaseGeom, underBaseMat);
+        underBaseMesh.position.y = -0.012;
+        this.tableGroup.add(underBaseMesh);
+
+        // Concentric Tech Ring 1 (Inner rotating telemetry ring)
+        const techRing1Geom = new THREE.RingGeometry(0.065, 0.067, 64);
+        const techRing1Mat = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.22,
+            depthWrite: false
+        });
+        this.techRing1 = new THREE.Mesh(techRing1Geom, techRing1Mat);
+        this.techRing1.rotation.x = -Math.PI / 2;
+        this.techRing1.position.y = 0.0015;
+        this.tableGroup.add(this.techRing1);
+
+        // Concentric Tech Ring 2 (Middle counter-rotating telemetry ring)
+        const techRing2Geom = new THREE.RingGeometry(0.13, 0.132, 64);
+        const techRing2Mat = new THREE.MeshBasicMaterial({
+            color: 0xe2af37, // Golden accent ring
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.18,
+            depthWrite: false
+        });
+        this.techRing2 = new THREE.Mesh(techRing2Geom, techRing2Mat);
+        this.techRing2.rotation.x = -Math.PI / 2;
+        this.techRing2.position.y = 0.0015;
+        this.tableGroup.add(this.techRing2);
+
+        // Concentric Tech Ring 3 (Outer rotating telemetry ring)
+        const techRing3Geom = new THREE.RingGeometry(0.188, 0.19, 64);
+        const techRing3Mat = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.28,
+            depthWrite: false
+        });
+        this.techRing3 = new THREE.Mesh(techRing3Geom, techRing3Mat);
+        this.techRing3.rotation.x = -Math.PI / 2;
+        this.techRing3.position.y = 0.0015;
+        this.tableGroup.add(this.techRing3);
 
         // Glowing outer neon ring (Pure triangle geometry)
         const ringGeom = new THREE.RingGeometry(0.195, 0.2, 64);
@@ -334,6 +508,30 @@ export class DomainExpansionSystem extends createSystem({
         if (stadiumAsset) {
             this.stadiumMesh = stadiumAsset.scene.clone();
             
+            // Traverse child meshes to apply realistic PBR stadium materials
+            this.stadiumMesh.traverse((child: any) => {
+                if (child instanceof THREE.Mesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    
+                    const name = child.name.toLowerCase();
+                    const parentName = child.parent ? child.parent.name.toLowerCase() : "";
+                    
+                    if (Array.isArray(child.material)) {
+                        child.material = child.material.map((m: any) => applyStadiumMaterial(m, name, parentName));
+                    } else {
+                        child.material = applyStadiumMaterial(child.material, name, parentName);
+                    }
+                }
+            });
+
+            // Volumetric-style cyan SpotLight pointing directly at the central pitch
+            const stadiumSpotlight = new THREE.SpotLight(0x00ffff, 8.0, 0.4, Math.PI / 4, 0.5, 1.0);
+            stadiumSpotlight.position.set(0, 0.15, 0);
+            stadiumSpotlight.target.position.set(0, 0, 0);
+            this.stadiumMesh.add(stadiumSpotlight);
+            this.stadiumMesh.add(stadiumSpotlight.target);
+
             // Measure bounding box to scale it correctly to fit the map
             const box = new THREE.Box3().setFromObject(this.stadiumMesh);
             const size = new THREE.Vector3();
@@ -343,8 +541,11 @@ export class DomainExpansionSystem extends createSystem({
             const maxDim = Math.max(size.x, size.z);
             this.stadiumBaseScale = 0.24 / (maxDim || 1.0);
             this.stadiumMesh.scale.setScalar(this.stadiumBaseScale);
-            this.stadiumMesh.position.set(0, 0.008, 0);
+            this.stadiumMesh.position.set(0, -0.002, 0);
             this.tableGroup.add(this.stadiumMesh);
+
+            // Spawn floating 3D TV-style AR matchup broadcast graphic
+            this.initARBillboard();
         } else {
             // Fallback circular procedural stadium
             const fallbackGroup = new THREE.Group();
@@ -354,10 +555,13 @@ export class DomainExpansionSystem extends createSystem({
             );
             fallbackGroup.add(outerWall);
             this.stadiumMesh = fallbackGroup as any;
-            this.stadiumMesh.position.set(0, 0.008, 0);
+            this.stadiumMesh.position.set(0, -0.002, 0);
             this.stadiumBaseScale = 1.0;
             this.tableGroup.add(this.stadiumMesh);
         }
+
+        // Initialize Hawk-Eye Splines & Ball Telemetry
+        this.initHawkEye();
 
         // Initialize tactical low-poly player markers on the field
         this.initPlayerMarkers();
@@ -448,7 +652,7 @@ export class DomainExpansionSystem extends createSystem({
 
         // Initialize MIV video for CAM POS (5)
         this.mivVideo = document.createElement('video');
-        this.mivVideo.src = "./CameraViews_HDRI/CamPos (5).mp4";
+        this.mivVideo.src = "./360Videos/view1.mp4";
         this.mivVideo.crossOrigin = 'anonymous';
         this.mivVideo.loop = true;
         this.mivVideo.muted = true;
@@ -467,30 +671,38 @@ export class DomainExpansionSystem extends createSystem({
             }
         }, { once: true });
 
+        this.pinchProgresses = new Array(this.domainKeys.length).fill(0);
+        this.hoverProgresses = new Array(this.domainKeys.length).fill(0);
+
         // --- Holographic Domain Expansion Selection Bubbles (Octagon arrangement on Edge Ring) ---
         const bubbleGeom = new THREE.SphereGeometry(0.035, 32, 16);
         const bubbleRingGeom = new THREE.RingGeometry(0.023, 0.027, 32);
         const loaderRingGeom = new THREE.RingGeometry(0.012, 0.015, 32);
         const nameTagGeom = new THREE.PlaneGeometry(0.08, 0.02);
 
-        for (let i = 0; i < 5; i++) {
-            // Symmetrical arrangement around the stadium (radius = 0.17m) at 72-degree intervals (2 * Math.PI / 5)
-            const angle = i * (2 * Math.PI / 5);
+        const totalDomains = this.domainKeys.length;
+        for (let i = 0; i < totalDomains; i++) {
+            // Symmetrical arrangement around the stadium (radius = 0.17m)
+            const angle = i * (2 * Math.PI / totalDomains);
             const bx = Math.cos(angle) * 0.17;
             const bz = Math.sin(angle) * 0.17;
 
-            const bMat = new THREE.MeshBasicMaterial({
+            const bMat = new THREE.MeshStandardMaterial({
                 transparent: true,
                 opacity: 0.85,
                 side: THREE.DoubleSide,
-                depthWrite: false
+                depthWrite: false,
+                roughness: 0.15,
+                metalness: 0.85,
+                emissive: new THREE.Color(0x008888),
+                emissiveIntensity: 0.08
             });
             
-            if (i === 4) {
-                // 5th camera is the live video texture
+            const texKey = this.domainKeys[i];
+            if (texKey === "mivVideo") {
+                // Live video texture
                 bMat.map = this.mivVideoTex;
             } else {
-                const texKey = this.domainKeys[i];
                 const tex = AssetManager.getTexture(texKey);
                 if (tex) {
                     tex.colorSpace = THREE.SRGBColorSpace;
@@ -604,8 +816,21 @@ export class DomainExpansionSystem extends createSystem({
         beam2.rotation.z = -Math.PI / 4;
         beam2.position.z = 0.002;
         
-        this.xButton.add(beam1, beam2);
-        this.tableGroup.add(this.xButton);
+        // Initialize Ball Tracking & Interactive Sixes Buttons on the tactical deck
+        this.initBallTracking();
+        this.initTrackingButtons();
+
+        // Initialize Left Wrist Button
+        const wristBtnGeom = new THREE.SphereGeometry(0.015, 16, 16);
+        this.wristButtonMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8, // Neon blue
+            transparent: true,
+            opacity: 0.0,
+            depthWrite: false
+        });
+        this.wristButton = new THREE.Mesh(wristBtnGeom, this.wristButtonMat);
+        this.wristButton.visible = false;
+        this.world.createTransformEntity(this.wristButton);
 
         // Register tableGroup with the world
         this.world.createTransformEntity(this.tableGroup);
@@ -676,6 +901,32 @@ export class DomainExpansionSystem extends createSystem({
             tipPosOut.applyMatrix4(this.player.matrixWorld);
 
             return isPinching;
+        }
+        return false;
+    }
+
+    private getMiddleData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
+        const source = this.input.getPrimaryInputSource(handedness);
+        const frame = this.xrFrame;
+        if (!source || !source.hand || !frame) return false;
+
+        const middleTip = source.hand.get('middle-finger-tip');
+        if (!middleTip) return false;
+
+        const refSpace = this.renderer.xr.getReferenceSpace();
+        if (!refSpace || typeof frame.getJointPose !== 'function') return false;
+
+        const middlePose = frame.getJointPose(middleTip, refSpace);
+
+        if (middlePose) {
+            const mx = middlePose.transform.position.x;
+            const my = middlePose.transform.position.y;
+            const mz = middlePose.transform.position.z;
+
+            tipPosOut.set(mx, my, mz);
+            tipPosOut.applyMatrix4(this.player.matrixWorld);
+
+            return true;
         }
         return false;
     }
@@ -772,6 +1023,183 @@ export class DomainExpansionSystem extends createSystem({
         (window as any).minimapTableVisible = this.tableGroup.visible;
         (window as any).minimapTablePosition = this.tableGroup.position;
 
+        // Animate the B2B concentric tech telemetry rings in opposite directions
+        if (this.tableGroup.visible && this.techRing1 && this.techRing2 && this.techRing3) {
+            this.techRing1.rotation.z += dt * 0.22;
+            this.techRing2.rotation.z -= dt * 0.14;
+            this.techRing3.rotation.z += dt * 0.06;
+        }
+
+        // Update Floating AR TV Billboard (Floating and facing the player head)
+        if (this.arBillboard && this.tableGroup.visible) {
+            this.arFloatTime += dt;
+            // Float up and down gently around Y = 0.115
+            const yOffset = 0.115 + Math.sin(this.arFloatTime * 2.5) * 0.006;
+            this.arBillboard.position.y = yOffset;
+
+            // Make the billboard face the player's head on Y-axis
+            if (this.player && this.player.head) {
+                const headPos = new THREE.Vector3();
+                this.player.head.getWorldPosition(headPos);
+
+                const billboardWorldPos = new THREE.Vector3();
+                this.arBillboard.getWorldPosition(billboardWorldPos);
+
+                // Ignore Y component of head to only rotate on the Y-axis (no awkward vertical tilt)
+                const targetPos = headPos.clone();
+                targetPos.y = billboardWorldPos.y;
+
+                const toHead = new THREE.Vector3().subVectors(targetPos, billboardWorldPos).normalize();
+                
+                // Convert world view direction to tableGroup local space
+                const localToHead = toHead.clone().applyQuaternion(this.tableGroup.quaternion.clone().invert());
+
+                // Align the billboard's forward vector with localToHead direction
+                const angle = Math.atan2(localToHead.x, localToHead.z);
+                this.arBillboard.rotation.y = angle;
+            }
+
+            // --- B2B Broadcast Telemetry Scenario Selection Engine ---
+            if (this.arBillboard.visible && this.currentTableScale <= 1.8) {
+                const leftIndexTip = new THREE.Vector3();
+                const rightIndexTip = new THREE.Vector3();
+                const hasLeft = this.getIndexData('left', leftIndexTip);
+                const hasRight = this.getIndexData('right', rightIndexTip);
+
+                // Cooldown updates
+                if (this.predictionCooldown > 0) this.predictionCooldown -= dt;
+
+                this.predictionButtons.forEach((btn, index) => {
+                    const btnWorldPos = new THREE.Vector3();
+                    btn.getWorldPosition(btnWorldPos);
+
+                    let distToLeft = Infinity;
+                    let distToRight = Infinity;
+                    if (hasLeft) distToLeft = leftIndexTip.distanceTo(btnWorldPos);
+                    if (hasRight) distToRight = rightIndexTip.distanceTo(btnWorldPos);
+
+                    const minDist = Math.min(distToLeft, distToRight);
+                    const isHovered = minDist < 0.025; // 2.5cm proximity
+
+                    // Visual hover scaling feedback
+                    const targetScale = isHovered ? 1.18 : 1.0;
+                    btn.scale.setScalar(THREE.MathUtils.lerp(btn.scale.x, targetScale, 10.0 * dt));
+
+                    // Glow outer wireframe border outline
+                    const borderMat = this.predictionButtonMats[index];
+                    if (borderMat) {
+                        const targetOpacity = isHovered ? 0.95 : 0.45;
+                        borderMat.opacity = THREE.MathUtils.lerp(borderMat.opacity, targetOpacity, 10.0 * dt);
+                    }
+
+                    // Tactile virtual micro-vibrations
+                    const baseLocalX = index === 0 ? -0.038 : (index === 2 ? 0.038 : 0.0);
+                    const jitter = isHovered ? Math.sin(this.radarTime * 55.0) * 0.0006 : 0.0;
+                    btn.position.x = baseLocalX + jitter;
+
+                    // Proximity click tap trigger (1.3cm)
+                    if (minDist < 0.014 && this.predictionCooldown <= 0.0 && !this.activePrediction && this.evaluationTimer <= 0.0) {
+                        this.predictionCooldown = 1.2; // Cooldown limit
+
+                        const betTypes: ('SIX' | 'WICKET' | 'DOT')[] = ['SIX', 'WICKET', 'DOT'];
+                        const betType = betTypes[index];
+
+                        this.activePrediction = betType;
+                        this.predictionTimer = 3.5; // 3.5 seconds computation
+                        this.predictionStatusText = `INITIATING TELEMETRY TRACE: ${betType}`;
+                        
+                        // Visual button compression click feedback
+                        btn.scale.setScalar(0.7);
+
+                        // Trigger visual confirmation flash
+                        this.predictionFlashColor = 'rgba(0, 255, 204, 0.9)'; // Neon cyan flash
+                        
+                        this.redrawBillboard();
+                    }
+                });
+            }
+
+            // --- Telemetry Computation & Trajectory Trigger Engine ---
+            if (this.activePrediction) {
+                this.predictionTimer -= dt;
+                
+                this.redrawBillboard();
+
+                if (this.predictionTimer <= 0.0) {
+                    this.predictionTimer = 0.0;
+                    
+                    // Trigger B2B Hawk-Eye telemetry spline matching the chosen scenario
+                    const chosenBet = this.activePrediction;
+                    this.triggerHawkeye(chosenBet);
+                    
+                    this.activePrediction = null;
+                    this.evaluationTimer = 2.0; // Wait 2s for ball delivery trajectory to complete
+                    this.predictionStatusText = `HAWK-EYE TRAJECTORY CORE RUNNING...`;
+                    this.redrawBillboard();
+                }
+            }
+
+            if (this.evaluationTimer > 0.0) {
+                this.evaluationTimer -= dt;
+                if (this.evaluationTimer <= 0.0) {
+                    this.evaluationTimer = 0.0;
+                    
+                    // Display premium data-rich analysis summaries
+                    const path = this.currentHawkeyePath;
+                    if (path === 'SIX') {
+                        this.predictionStatusText = "exit velocity: 142km/h | launch: 32° | distance: 88m";
+                    } else if (path === 'WICKET') {
+                        this.predictionStatusText = "spin rate: 2200rpm | line: stump line | impact: inline";
+                    } else {
+                        this.predictionStatusText = "defensive index: 92.4% | control ratio: 88.6%";
+                    }
+
+                    this.predictionFlashColor = 'rgba(0, 255, 204, 0.95)'; // Greenish/cyan success flash
+                    this.redrawBillboard();
+
+                    // Restore standard status message after 4.5s
+                    setTimeout(() => {
+                        this.predictionStatusText = "SELECT ANALYTICS KERNEL TO INITIATE PROJECTION";
+                        this.redrawBillboard();
+                    }, 4500);
+                }
+            }
+
+            // Dynamic flash color fade-out
+            if (this.predictionFlashColor) {
+                // Smoothly fade flash color back to empty/standard border
+                if (Math.random() < 0.15) {
+                    this.predictionFlashColor = '';
+                    this.redrawBillboard();
+                }
+            }
+
+            // --- B2B Hawk-Eye Passive Delivery Engine ---
+            // Passively stream Hawk-Eye trajectories to keep the scene alive if no manual query is running
+            if (!this.activePrediction && this.evaluationTimer <= 0.0 && !this.isHawkeyeRunning) {
+                this.hawkeyeCooldown -= dt;
+                if (this.hawkeyeCooldown <= 0.0) {
+                    this.hawkeyeCooldown = 8.0 + Math.random() * 4.0; // passively stream every 8-12s
+                    const paths: ('SIX' | 'WICKET' | 'DOT')[] = ['SIX', 'WICKET', 'DOT'];
+                    const randomPath = paths[Math.floor(Math.random() * paths.length)];
+                    
+                    this.triggerHawkeye(randomPath);
+                    this.predictionStatusText = `PASSIVE STREAM: HAWK-EYE RAW VECTORS (${randomPath})`;
+                    this.redrawBillboard();
+                    
+                    setTimeout(() => {
+                        if (!this.activePrediction && this.evaluationTimer <= 0.0) {
+                            this.predictionStatusText = "SELECT ANALYTICS KERNEL TO INITIATE PROJECTION";
+                            this.redrawBillboard();
+                        }
+                    }, 3500);
+                }
+            }
+
+            // Tick B2B Hawk-Eye spline trajectory physics
+            this.updateHawkEye(dt);
+        }
+
         const leftTip = new THREE.Vector3();
         const rightTip = new THREE.Vector3();
         
@@ -779,12 +1207,64 @@ export class DomainExpansionSystem extends createSystem({
         this.getMiddlePinchData('left', leftTip);
         this.getMiddlePinchData('right', rightTip);
 
-        const middlePinchDetected = this.checkMiddlePinch(dt) || this.checkMButton();
+        // --- Left Wrist Button Tracking & Interaction ---
+        const leftSource = this.input.getPrimaryInputSource('left');
+        const frame = this.xrFrame;
+        let leftWristFound = false;
+        const wristWorldPos = new THREE.Vector3();
 
-        if (middlePinchDetected && this.middlePinchCooldown <= 0) {
-            this.middlePinchCooldown = 0.8;
+        if (leftSource && leftSource.hand && frame) {
+            const wristJoint = leftSource.hand.get('wrist');
+            if (wristJoint) {
+                const refSpace = this.renderer.xr.getReferenceSpace();
+                if (refSpace && typeof frame.getJointPose === 'function') {
+                    const wristPose = frame.getJointPose(wristJoint, refSpace);
+                    if (wristPose) {
+                        const wx = wristPose.transform.position.x;
+                        const wy = wristPose.transform.position.y;
+                        const wz = wristPose.transform.position.z;
+                        wristWorldPos.set(wx, wy, wz);
+                        wristWorldPos.applyMatrix4(this.player.matrixWorld);
+                        leftWristFound = true;
+                    }
+                }
+            }
+        }
+
+        // Position and update visibility of left wrist button
+        if (leftWristFound) {
+            this.wristButton.position.copy(wristWorldPos);
+            // Positioned slightly above the wrist on the dorsal side of the hand for natural tapping
+            this.wristButton.position.y += 0.02; 
+            this.wristButtonMat.opacity = THREE.MathUtils.lerp(this.wristButtonMat.opacity, 0.85, dt * 10.0);
+            this.wristButton.visible = true;
+        } else {
+            this.wristButtonMat.opacity = THREE.MathUtils.lerp(this.wristButtonMat.opacity, 0.0, dt * 10.0);
+            if (this.wristButtonMat.opacity < 0.01) {
+                this.wristButton.visible = false;
+            }
+        }
+
+        // Right index finger tip poke check on the wrist button
+        const rightIndexTip = new THREE.Vector3();
+        const hasRightIndex = this.getIndexData('right', rightIndexTip);
+        let wristButtonTapped = false;
+
+        if (leftWristFound && hasRightIndex) {
+            const distToWrist = rightIndexTip.distanceTo(this.wristButton.position);
+            if (distToWrist < 0.03) { // 3cm tap threshold
+                wristButtonTapped = true;
+            }
+        }
+
+        // Spawn or despawn the minimap table when wrist button is tapped or key M is pressed
+        const toggleMinimap = wristButtonTapped || this.checkMButton();
+
+        if (toggleMinimap && this.menuToggleCooldown <= 0.0) {
+            this.menuToggleCooldown = 0.8;
             this.isTableSpawned = !this.isTableSpawned;
-            
+            console.log(`[DomainExpansion] Minimap table toggled! isTableSpawned: ${this.isTableSpawned}`);
+
             if (this.isTableSpawned) {
                 this.userTableScale = 1.0;
                 this.lastLoggedScale = 1.0;
@@ -794,7 +1274,7 @@ export class DomainExpansionSystem extends createSystem({
                 this.isRotatingMap = false; // Reset rotation state
 
                 // Determine spawning position adaptive to user height, but fixed in space once spawned
-                let pinchPos = new THREE.Vector3(0, 1.15, -0.55);
+                let spawnPos = new THREE.Vector3(0, 1.15, -0.55);
                 let headHeight = 1.6;
 
                 if (this.player && this.player.head) {
@@ -803,33 +1283,27 @@ export class DomainExpansionSystem extends createSystem({
                     headHeight = headPos.y;
 
                     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
-                    // Spawn at hand pinch if active, otherwise in front of the head
-                    if (this.wasMiddlePinchingLeft) {
-                        pinchPos.copy(leftTip);
-                    } else if (this.wasMiddlePinchingRight) {
-                        pinchPos.copy(rightTip);
-                    } else {
-                        pinchPos.copy(headPos).addScaledVector(dir, 0.55);
-                    }
+                    // Spawn 55cm in front of user's head
+                    spawnPos.copy(headPos).addScaledVector(dir, 0.55);
                 }
                 
-                // Adaptive height (fixed on spawn relative to head height - placed at a convenient desk height of headHeight - 0.45 meters)
-                const spawnPos = new THREE.Vector3(pinchPos.x, Math.max(0.4, headHeight - 0.45), pinchPos.z);
-                this.tableGroup.position.copy(spawnPos);
+                // Adaptive desk height (headHeight - 0.45 meters)
+                const finalSpawnPos = new THREE.Vector3(spawnPos.x, Math.max(0.4, headHeight - 0.45), spawnPos.z);
+                this.tableGroup.position.copy(finalSpawnPos);
                 
                 // Singularity-Free Analytical Rotation (faces head's XZ direction)
                 if (this.player && this.player.head) {
                     const headPos = new THREE.Vector3();
                     this.player.head.getWorldPosition(headPos);
-                    const dx = headPos.x - spawnPos.x;
-                    const dz = headPos.z - spawnPos.z;
+                    const dx = headPos.x - finalSpawnPos.x;
+                    const dz = headPos.z - finalSpawnPos.z;
                     const yaw = Math.atan2(dx, dz);
                     this.tableGroup.rotation.set(0, yaw + Math.PI, 0); // Face player
                 } else {
                     this.tableGroup.rotation.set(0, Math.PI, 0);
                 }
 
-                // Advance Tutorial step if needed
+                // Advance Tutorial step 2 -> 3 if needed
                 this.queries.jugnu.entities.forEach(e => {
                     if (e.getValue(Jugnu, "instructionStep") === 2) {
                         e.setValue(Jugnu, "instructionStep", 3);
@@ -867,15 +1341,19 @@ export class DomainExpansionSystem extends createSystem({
         if (this.tableGroup.visible) {
             this.radarTime += dt;
             
-            // 1. Fetch index finger tips
+            // 1. Fetch index finger tips (keep for pointing/hovering)
             const leftIndexPinchPos = new THREE.Vector3();
             const rightIndexPinchPos = new THREE.Vector3();
-            
-            const isLeftIndexPinching = this.getIndexPinchData('left', leftIndexPinchPos);
-            const isRightIndexPinching = this.getIndexPinchData('right', rightIndexPinchPos);
-
             const hasLeftIndex = this.getIndexData('left', leftIndexPinchPos);
             const hasRightIndex = this.getIndexData('right', rightIndexPinchPos);
+
+            // 1.1. Fetch middle finger tips and pinch states for minimap interactions
+            const leftMiddlePinchPos = new THREE.Vector3();
+            const rightMiddlePinchPos = new THREE.Vector3();
+            const isLeftMiddlePinching = this.getMiddlePinchData('left', leftMiddlePinchPos);
+            const isRightMiddlePinching = this.getMiddlePinchData('right', rightMiddlePinchPos);
+            const hasLeftMiddle = this.getMiddleData('left', leftMiddlePinchPos);
+            const hasRightMiddle = this.getMiddleData('right', rightMiddlePinchPos);
 
             // 1.5. Real-Time Player Markers Update & Proximity Hand Hover Engine
             this.playerSimTime += dt;
@@ -935,8 +1413,54 @@ export class DomainExpansionSystem extends createSystem({
                 p.group.position.lerp(p.targetPos, dt * 1.5);
                 p.currentPos.copy(p.group.position);
 
-                // Rotate underfoot neon radar rings slowly
-                p.ring.rotation.z += dt * 1.2;
+                // Dynamic Pose and Running Animations (swinging limbs and body lean)
+                const isMoving = p.group.position.distanceToSquared(p.targetPos) > 0.0000001;
+                const lArm = p.mesh.userData.lArm as THREE.Mesh;
+                const rArm = p.mesh.userData.rArm as THREE.Mesh;
+                const lLeg = p.mesh.userData.lLeg as THREE.Mesh;
+                const rLeg = p.mesh.userData.rLeg as THREE.Mesh;
+                const role = p.mesh.userData.role;
+
+                if (lArm && rArm && lLeg && rLeg) {
+                    if (isMoving) {
+                        // Running animation: swing limbs in alternating cycles
+                        const runCycle = this.radarTime * 15.0; // dynamic swing velocity
+                        const swingAngle = Math.sin(runCycle) * 0.45;
+
+                        lLeg.rotation.x = swingAngle;
+                        rLeg.rotation.x = -swingAngle;
+
+                        if (role !== 'batsman') {
+                            lArm.rotation.x = -swingAngle * 0.8;
+                            rArm.rotation.x = swingAngle * 0.8;
+                        } else {
+                            // Batsmen swing slightly but hold onto their bat
+                            lArm.rotation.x = -Math.PI / 5 + swingAngle * 0.2;
+                            rArm.rotation.x = -Math.PI / 3 - swingAngle * 0.2;
+                        }
+                        // Lean the torso forward dynamically
+                        p.mesh.rotation.x = 0.12;
+                    } else {
+                        // Idle: return smoothly to their dynamic signature stances
+                        p.mesh.rotation.x = THREE.MathUtils.lerp(p.mesh.rotation.x, 0.0, dt * 8.0);
+                        if (role === 'batsman') {
+                            lArm.rotation.x = THREE.MathUtils.lerp(lArm.rotation.x, -Math.PI / 5, dt * 8.0);
+                            rArm.rotation.x = THREE.MathUtils.lerp(rArm.rotation.x, -Math.PI / 3, dt * 8.0);
+                            lLeg.rotation.x = THREE.MathUtils.lerp(lLeg.rotation.x, Math.PI / 10, dt * 8.0);
+                            rLeg.rotation.x = THREE.MathUtils.lerp(rLeg.rotation.x, Math.PI / 10, dt * 8.0);
+                        } else if (role === 'fielder') {
+                            lArm.rotation.x = THREE.MathUtils.lerp(lArm.rotation.x, -Math.PI / 4, dt * 8.0);
+                            rArm.rotation.x = THREE.MathUtils.lerp(rArm.rotation.x, -Math.PI / 4, dt * 8.0);
+                            lLeg.rotation.x = THREE.MathUtils.lerp(lLeg.rotation.x, Math.PI / 12, dt * 8.0);
+                            rLeg.rotation.x = THREE.MathUtils.lerp(rLeg.rotation.x, Math.PI / 12, dt * 8.0);
+                        } else {
+                            lArm.rotation.x = THREE.MathUtils.lerp(lArm.rotation.x, Math.PI / 6, dt * 8.0);
+                            rArm.rotation.x = THREE.MathUtils.lerp(rArm.rotation.x, Math.PI / 6, dt * 8.0);
+                            lLeg.rotation.x = THREE.MathUtils.lerp(lLeg.rotation.x, 0.0, dt * 8.0);
+                            rLeg.rotation.x = THREE.MathUtils.lerp(rLeg.rotation.x, 0.0, dt * 8.0);
+                        }
+                    }
+                }
 
                 // Cyber-billboard floating tags to face player headset adaptively (Yaw-only in world space to prevent tilting!)
                 const tagWorldPos = new THREE.Vector3();
@@ -958,6 +1482,17 @@ export class DomainExpansionSystem extends createSystem({
                 const targetOpacityPlayer = isScalingAbove2m ? 0.95 : 0.0;
                 const bodyMat = p.mesh.material as THREE.MeshBasicMaterial;
                 bodyMat.opacity += (targetOpacityPlayer - bodyMat.opacity) * dt * 10.0;
+
+                const curBodyOpacity = bodyMat.opacity;
+                // Sync opacities recursively to all child meshes of the 3D player model group
+                p.mesh.children.forEach((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        const childMat = child.material as THREE.MeshBasicMaterial;
+                        if (childMat) {
+                            childMat.opacity = curBodyOpacity;
+                        }
+                    }
+                });
                 
                 const ringMat = p.ring.material as THREE.MeshBasicMaterial;
                 const targetOpacityRing = isScalingAbove2m ? 0.5 : 0.0;
@@ -986,21 +1521,29 @@ export class DomainExpansionSystem extends createSystem({
                 p.mesh.scale.setScalar(THREE.MathUtils.lerp(p.mesh.scale.x, baseScaleFactor * p.hoverScale, dt * 10.0));
                 p.ring.scale.setScalar(THREE.MathUtils.lerp(p.ring.scale.x, baseScaleFactor * p.hoverScale, dt * 10.0));
                 
-                // 2. Smoothly fade in/out and scale the player name tag (declutter: dim/hide on overlap!)
+                // 2. Smoothly fade in/out and scale the player name tag
+                // Only batsmen get persistent name tags; other roles only show on hover
                 const tagMat = p.tag.material as THREE.MeshBasicMaterial;
                 let targetOpacityTag = 0.0;
                 let targetTagScale = 0.0;
                 
                 if (isScalingAbove2m) {
+                    const isBatsman = p.role === 'batsman';
                     if (isHovered) {
                         targetOpacityTag = 1.0;
                         targetTagScale = 1.25;
-                    } else if (anyPlayerHovered) {
-                        targetOpacityTag = 0.15; // Dim other player name tags completely when one is selected
+                    } else if (isBatsman && !anyPlayerHovered) {
+                        // Batsmen always show their tag when not overlapped by a hover
+                        targetOpacityTag = 0.85;
+                        targetTagScale = 0.95;
+                    } else if (isBatsman && anyPlayerHovered) {
+                        // Dim batsman tag slightly when another player is hovered
+                        targetOpacityTag = 0.25;
                         targetTagScale = 0.75;
                     } else {
-                        targetOpacityTag = 0.45; // Faint, clean, non-obtrusive tag by default
-                        targetTagScale = 0.9;
+                        // Fielders, umpires: tag hidden unless they are directly hovered
+                        targetOpacityTag = 0.0;
+                        targetTagScale = 0.0;
                     }
                 }
                 
@@ -1014,27 +1557,66 @@ export class DomainExpansionSystem extends createSystem({
                 // Fade/Reveal stats card smoothly
                 const cardMesh = p.statsCard.children[0] as THREE.Mesh;
                 const cardMat = cardMesh.material as THREE.MeshBasicMaterial;
+
+                // Lazy-load RCB card texture the first time the card becomes visible
+                // (background-priority assets are not available during init)
+                if (!cardMat.map && p.statsCard.userData.rcbCardKey) {
+                    const tex = AssetManager.getTexture(p.statsCard.userData.rcbCardKey);
+                    if (tex) {
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        cardMat.map = tex;
+                        cardMat.needsUpdate = true;
+                    }
+                }
+
                 const targetOpacity = (isHovered && isScalingAbove2m) ? 0.95 : 0.0;
                 cardMat.opacity += (targetOpacity - cardMat.opacity) * dt * 8.0;
-                
-                // Gently raise the card on hover to float above tag
-                cardMesh.position.y = THREE.MathUtils.lerp(0.045, 0.052, (p.hoverScale - 1.0) / 0.4);
+
+                const curCardOpacity = cardMat.opacity;
+                const hoverLerp = (p.hoverScale - 1.0) / 0.4;
+                const dy = hoverLerp * 0.007;
+                const dz = hoverLerp * 0.016;
+
+                // Sync opacities and apply 3D depth parallax shifts to all children of statsCard
+                p.statsCard.children.forEach((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        const childMat = child.material as THREE.MeshBasicMaterial;
+                        if (childMat) {
+                            if (child !== cardMesh) {
+                                const baseOpacity = child.userData.baseOpacity ?? 0.85;
+                                childMat.opacity = curCardOpacity * (baseOpacity / 0.95);
+                            }
+                        }
+                        
+                        const baseY = p.statsCard.userData.baseY ?? 0.045;
+                        const baseZ = child.userData.baseZ ?? 0.0;
+
+                        // Slide factor for 3D parallax depth effect
+                        let factor = 1.0;
+                        if (child !== cardMesh && child.userData.baseOpacity !== 0.85) {
+                            factor = 0.6; // Backing panel and border move slightly less
+                        }
+                        child.position.y = baseY + dy * factor;
+                        child.position.z = baseZ + dz * factor;
+                    }
+                });
+
                 p.statsCard.visible = cardMat.opacity > 0.01;
             });
 
-            // Log index pinch status transitions
-            if (isLeftIndexPinching !== this.lastLeftPinch) {
-                console.log(`[DomainExpansion] Left Index Pinch changed: ${isLeftIndexPinching ? "PINCHING" : "RELEASED"} at pos: (${leftIndexPinchPos.x.toFixed(2)}, ${leftIndexPinchPos.y.toFixed(2)}, ${leftIndexPinchPos.z.toFixed(2)})`);
-                this.lastLeftPinch = isLeftIndexPinching;
+            // Log middle pinch status transitions
+            if (isLeftMiddlePinching !== this.lastLeftPinch) {
+                console.log(`[DomainExpansion] Left Middle Pinch changed: ${isLeftMiddlePinching ? "PINCHING" : "RELEASED"} at pos: (${leftMiddlePinchPos.x.toFixed(2)}, ${leftMiddlePinchPos.y.toFixed(2)}, ${leftMiddlePinchPos.z.toFixed(2)})`);
+                this.lastLeftPinch = isLeftMiddlePinching;
             }
-            if (isRightIndexPinching !== this.lastRightPinch) {
-                console.log(`[DomainExpansion] Right Index Pinch changed: ${isRightIndexPinching ? "PINCHING" : "RELEASED"} at pos: (${rightIndexPinchPos.x.toFixed(2)}, ${rightIndexPinchPos.y.toFixed(2)}, ${rightIndexPinchPos.z.toFixed(2)})`);
-                this.lastRightPinch = isRightIndexPinching;
+            if (isRightMiddlePinching !== this.lastRightPinch) {
+                console.log(`[DomainExpansion] Right Middle Pinch changed: ${isRightMiddlePinching ? "PINCHING" : "RELEASED"} at pos: (${rightMiddlePinchPos.x.toFixed(2)}, ${rightMiddlePinchPos.y.toFixed(2)}, ${rightMiddlePinchPos.z.toFixed(2)})`);
+                this.lastRightPinch = isRightMiddlePinching;
             }
 
             // Two-handed Pinch to Scale Gesture (No proximity bounds, works field-of-view-wide!)
-            if (isLeftIndexPinching && isRightIndexPinching) {
-                const currentHandDist = leftIndexPinchPos.distanceTo(rightIndexPinchPos);
+            if (isLeftMiddlePinching && isRightMiddlePinching) {
+                const currentHandDist = leftMiddlePinchPos.distanceTo(rightMiddlePinchPos);
                 
                 if (!this.isTwoHandScaling) {
                     this.isTwoHandScaling = true;
@@ -1064,20 +1646,20 @@ export class DomainExpansionSystem extends createSystem({
                     this.isTwoHandScaling = false;
                 }
 
-                // 2. Pinch-to-Rotate Map Turntable Interaction (Index + Thumb pinch)
+                // 2. Pinch-to-Rotate Map Turntable Interaction (Middle + Thumb pinch)
                 if (!this.isRotatingMap) {
                     // Check if either hand is pinching close to the table base to start rotation (scaled by current scale!)
                     let startedRotation = false;
-                    if (isRightIndexPinching) {
-                        const distToTable = rightIndexPinchPos.distanceTo(this.tableGroup.position);
+                    if (isRightMiddlePinching) {
+                        const distToTable = rightMiddlePinchPos.distanceTo(this.tableGroup.position);
                         if (distToTable < 0.28 * this.currentTableScale) { // 28cm radius of interaction (scaled!)
                             this.isRotatingMap = true;
                             this.rotationHandedness = 'right';
                             startedRotation = true;
                         }
                     }
-                    if (isLeftIndexPinching && !startedRotation) {
-                        const distToTable = leftIndexPinchPos.distanceTo(this.tableGroup.position);
+                    if (isLeftMiddlePinching && !startedRotation) {
+                        const distToTable = leftMiddlePinchPos.distanceTo(this.tableGroup.position);
                         if (distToTable < 0.28 * this.currentTableScale) {
                             this.isRotatingMap = true;
                             this.rotationHandedness = 'left';
@@ -1087,7 +1669,7 @@ export class DomainExpansionSystem extends createSystem({
                     
                     if (startedRotation) {
                         // Record start of the drag
-                        const handPos = this.rotationHandedness === 'right' ? rightIndexPinchPos : leftIndexPinchPos;
+                        const handPos = this.rotationHandedness === 'right' ? rightMiddlePinchPos : leftMiddlePinchPos;
                         const dx = handPos.x - this.tableGroup.position.x;
                         const dz = handPos.z - this.tableGroup.position.z;
                         this.initialHandAngle = Math.atan2(dx, dz);
@@ -1095,8 +1677,8 @@ export class DomainExpansionSystem extends createSystem({
                     }
                 } else {
                     // We are actively rotating: check if the corresponding hand is still pinching
-                    const isStillPinching = this.rotationHandedness === 'right' ? isRightIndexPinching : isLeftIndexPinching;
-                    const handPos = this.rotationHandedness === 'right' ? rightIndexPinchPos : leftIndexPinchPos;
+                    const isStillPinching = this.rotationHandedness === 'right' ? isRightMiddlePinching : isLeftMiddlePinching;
+                    const handPos = this.rotationHandedness === 'right' ? rightMiddlePinchPos : leftMiddlePinchPos;
                     
                     if (isStillPinching) {
                         // Compute angle delta relative to table center and spin the table!
@@ -1116,11 +1698,11 @@ export class DomainExpansionSystem extends createSystem({
 
 
             // 3. Selection Bubbles Hover Overlap Proximity check & Pinch-and-Hold 3-Second Charge check
-            const hoverState = [false, false, false, false, false];
+            const hoverState = new Array(this.domainKeys.length).fill(false);
             const bubbleWorldPos = new THREE.Vector3();
 
             // Hover Proximity Check (6cm threshold)
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < this.domainKeys.length; i++) {
                 this.selectionBubbles[i].getWorldPosition(bubbleWorldPos);
                 let distToLeft = Infinity;
                 let distToRight = Infinity;
@@ -1131,19 +1713,9 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
 
-            let bubblePinchEngaged = [false, false, false, false, false];
-
-            // Detect overlapping pinch for each of the 5 bubbles (5cm threshold)
-            for (let i = 0; i < 5; i++) {
-                this.selectionBubbles[i].getWorldPosition(bubbleWorldPos);
-
-                const isPinchingNearLeft = isLeftIndexPinching && leftIndexPinchPos.distanceTo(bubbleWorldPos) < 0.05;
-                const isPinchingNearRight = isRightIndexPinching && rightIndexPinchPos.distanceTo(bubbleWorldPos) < 0.05;
-
-                if (isPinchingNearLeft || isPinchingNearRight) {
-                    bubblePinchEngaged[i] = true;
-                }
-            }
+            // Index-finger hover activates the charge timer for selection bubbles.
+            // bubblePinchEngaged is now simply an alias for hoverState — no pinch required.
+            const bubblePinchEngaged = hoverState.slice();
 
             // Update progresses, loader rings, billboarding name tags, and trigger events
             let headPos = new THREE.Vector3(0, 1.6, 0);
@@ -1151,7 +1723,7 @@ export class DomainExpansionSystem extends createSystem({
                 this.player.head.getWorldPosition(headPos);
             }
 
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < this.domainKeys.length; i++) {
                 const bubble = this.selectionBubbles[i];
                 const bMat = this.bubbleMats[i];
                 const ring = this.anchorRings[i];
@@ -1183,10 +1755,15 @@ export class DomainExpansionSystem extends createSystem({
                     lMat.opacity = THREE.MathUtils.lerp(0.0, 1.0, chargeRatio);
                     loader.rotation.z += dt * (1.5 + chargeRatio * 15.0); // Spin faster as it charges!
 
+                    // Dynamic visual compression: bubble shrinks and vibrates violently as charge increases
+                    const baseHoverScale = isActive ? 1.25 : 1.15;
+                    const scaleComp = baseHoverScale * (1.0 - chargeRatio * 0.25) + Math.sin(this.radarTime * 65.0) * 0.04 * chargeRatio;
+                    bubble.scale.setScalar(scaleComp);
+
                     // 2. High-Frequency Visual Vibration Feedback
                     if (chargeRatio > 0.05) {
                         // Vibrate position relative to its default center
-                        const angle = i * (2 * Math.PI / 5);
+                        const angle = i * (2 * Math.PI / this.domainKeys.length);
                         const bx = Math.cos(angle) * 0.17;
                         const bz = Math.sin(angle) * 0.17;
                         const defaultHeight = isActive ? 0.135 : 0.11;
@@ -1220,11 +1797,12 @@ export class DomainExpansionSystem extends createSystem({
                             this.domainMesh.visible = true;
                             this.domainMesh.position.set(0, 0, 0); // Center on tracking origin
                             
-                            if (this.currentDomainIndex === 4) {
+                            const currentKey = this.domainKeys[this.currentDomainIndex];
+                            if (currentKey === "mivVideo") {
                                 this.domainMat.map = this.mivVideoTex;
                                 this.domainMat.needsUpdate = true;
                             } else {
-                                const domeTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]);
+                                const domeTex = AssetManager.getTexture(currentKey);
                                 if (domeTex) {
                                     domeTex.colorSpace = THREE.SRGBColorSpace;
                                     domeTex.mapping = THREE.EquirectangularReflectionMapping;
@@ -1251,7 +1829,7 @@ export class DomainExpansionSystem extends createSystem({
                     loader.rotation.z += dt * 1.5;
 
                     // Restore default floating/hover behavior
-                    const angle = i * (2 * Math.PI / 5);
+                    const angle = i * (2 * Math.PI / this.domainKeys.length);
                     const bx = Math.cos(angle) * 0.17;
                     const bz = Math.sin(angle) * 0.17;
 
@@ -1272,7 +1850,7 @@ export class DomainExpansionSystem extends createSystem({
                         rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, targetRingOpacity, 10 * dt);
                     } else {
                         // Subtle passive hover for inactive bubbles
-                        const hoverPhase = this.radarTime * 1.5 + i * (2 * Math.PI / 5);
+                        const hoverPhase = this.radarTime * 1.5 + i * (2 * Math.PI / this.domainKeys.length);
                         const targetHeight = 0.11 + Math.sin(hoverPhase) * 0.005;
                         bubble.position.x = THREE.MathUtils.lerp(bubble.position.x, bx, 10 * dt);
                         bubble.position.y = THREE.MathUtils.lerp(bubble.position.y, targetHeight, 10 * dt);
@@ -1312,8 +1890,15 @@ export class DomainExpansionSystem extends createSystem({
             pinTarget.y = pinWorldPos.y; // Level vertical height in world space
             this.locationPin.lookAt(pinTarget);
 
-            // Scale-gated fade-out: Location Pin and Stadium Text Card vanish when zoomed-in above 2m (scale > 3.33)
-            const targetPinOpacity = isScalingAbove2m ? 0.0 : 0.9;
+            // Scale-gated fade-out: Location Pin and AR Billboard fade away together smoothly as we scale the stadium up
+            // At scale <= 1.8, fully visible. At scale >= 3.0, completely invisible.
+            const fadeFactor = THREE.MathUtils.clamp(
+                THREE.MathUtils.mapLinear(this.currentTableScale, 1.8, 3.0, 1.0, 0.0),
+                0.0,
+                1.0
+            );
+
+            const targetPinOpacity = 0.9 * fadeFactor;
             this.locationPin.traverse((child) => {
                 if (child instanceof THREE.Mesh) {
                     const mat = child.material as THREE.MeshBasicMaterial;
@@ -1327,6 +1912,26 @@ export class DomainExpansionSystem extends createSystem({
             if (this.locationPin.children[0] instanceof THREE.Mesh) {
                 const firstMat = this.locationPin.children[0].material as THREE.MeshBasicMaterial;
                 this.locationPin.visible = firstMat.opacity > 0.01;
+            }
+
+            // Scale-gated fade-out for AR TV Billboard: vanishes smoothly as we scale the stadium up
+            if (this.arBillboard) {
+                this.arBillboard.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        const mat = child.material as THREE.Material;
+                        if (mat && mat.transparent) {
+                            const defOpacity = child.userData.defaultOpacity ?? 0.8;
+                            const targetOpacity = defOpacity * fadeFactor;
+                            mat.opacity += (targetOpacity - mat.opacity) * dt * 8.0;
+                        }
+                    }
+                });
+                
+                // Hide/show the billboard entirely based on opacity to save draw calls
+                if (this.arBillboard.children[1] instanceof THREE.Mesh) {
+                    const firstMat = this.arBillboard.children[1].material as THREE.Material;
+                    this.arBillboard.visible = firstMat.opacity > 0.01;
+                }
             }
 
             // 7. Holographic Close "X" Button Billboard & Poke check
@@ -1378,6 +1983,17 @@ export class DomainExpansionSystem extends createSystem({
                     this.xButton.visible = false;
                 }
             }
+
+            // 8. Update Ball Tracking and Interactive Buttons
+            this.updateBallTracking(dt);
+            // Buttons now use index-finger hover — pass index tip positions
+            this.updateTrackingButtons(
+                leftIndexPinchPos,
+                rightIndexPinchPos,
+                hasLeftIndex,
+                hasRightIndex,
+                dt
+            );
         } else {
             // Table is closed: hide close button instantly
             this.xButton.visible = false;
@@ -1398,11 +2014,12 @@ export class DomainExpansionSystem extends createSystem({
                 this.domainMat.opacity = 0.0;
 
                 // Update texture mapping for transitioning
-                if (this.currentDomainIndex === 4) {
+                const currentKey = this.domainKeys[this.currentDomainIndex];
+                if (currentKey === "mivVideo") {
                     this.domainMat.map = this.mivVideoTex;
                     this.domainMat.needsUpdate = true;
                 } else {
-                    const domeTex = AssetManager.getTexture(this.domainKeys[this.currentDomainIndex]);
+                    const domeTex = AssetManager.getTexture(currentKey);
                     if (domeTex) {
                         domeTex.colorSpace = THREE.SRGBColorSpace;
                         domeTex.mapping = THREE.EquirectangularReflectionMapping;
@@ -1437,7 +2054,8 @@ export class DomainExpansionSystem extends createSystem({
 
         // Play/pause MIV video based on active domain
         if (this.mivVideo) {
-            if (this.isDomainActive && this.currentDomainIndex === 4) {
+            const currentKey = this.domainKeys[this.currentDomainIndex];
+            if (this.isDomainActive && currentKey === "mivVideo") {
                 if (this.mivVideo.paused) {
                     this.mivVideo.play().catch(() => {});
                 }
@@ -2414,29 +3032,485 @@ export class DomainExpansionSystem extends createSystem({
         }
     }
 
-    private initPlayerMarkers() {
-        const roster = [
-            // Batting Team (Neon Yellow - Placed horizontally at wickets at x = -0.012 and x = 0.012)
-            { id: "b1", name: "V. Kohli", role: "batsman" as const, jersey: "18", team: "yellow" as const, x: 0.012, z: 0.0, primary: "Runs: 82* (53)", secondary: "SR: 154.7" },
-            { id: "b2", name: "R. Sharma", role: "batsman" as const, jersey: "45", team: "yellow" as const, x: -0.012, z: 0.0, primary: "Runs: 45 (28)", secondary: "SR: 160.7" },
+    private initARBillboard() {
+        this.arBillboard = new THREE.Group();
+        this.arBillboard.position.set(0, 0.115, 0); // Position directly above pitch center
 
-            // Umpires (Neutral White - Oriented for horizontal pitch)
-            { id: "u1", name: "K. Dharmasena", role: "umpire" as const, jersey: "U1", team: "neutral" as const, x: -0.018, z: 0.0, primary: "Umpire (Bowler's)", secondary: "Decisions: 100%" },
-            { id: "u2", name: "N. Llong", role: "umpire" as const, jersey: "U2", team: "neutral" as const, x: 0.012, z: 0.018, primary: "Umpire (Square Leg)", secondary: "Decisions: 100%" },
+        // 1. Light Beam Cylinder
+        const beamGeom = new THREE.CylinderGeometry(0.001, 0.015, 0.08, 16, 1, true);
+        const beamMat = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.12,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const lightBeam = new THREE.Mesh(beamGeom, beamMat);
+        lightBeam.position.y = -0.04; // offset downwards to stretch from pitch to billboard
+        lightBeam.userData.defaultOpacity = 0.12; // Store default opacity for fading
+        this.arBillboard.add(lightBeam);
 
-            // Fielding Team (Neon Blue - Aligned horizontally relative to striker at x = 0.012)
-            { id: "f1", name: "M.S. Dhoni", role: "fielder" as const, jersey: "7", team: "blue" as const, x: 0.016, z: 0.0, primary: "Catches: 2, St: 1", secondary: "Active: Wicketkeeper" }, // Wicketkeeper behind striker stumps
-            { id: "f2", name: "J. Bumrah", role: "fielder" as const, jersey: "93", team: "blue" as const, x: -0.024, z: 0.0, primary: "Overs: 3.4-0-18-3", secondary: "Active: Bowler" }, // Bowler at opposite end
-            { id: "f3", name: "R. Jadeja", role: "fielder" as const, jersey: "8", team: "blue" as const, x: 0.015, z: 0.025, primary: "Catches: 1, Runs Out: 1", secondary: "Pos: Point" }, // Point (offside)
-            { id: "f4", name: "H. Pandya", role: "fielder" as const, jersey: "33", team: "blue" as const, x: 0.01, z: 0.025, primary: "Overs: 2-0-15-1", secondary: "Pos: Cover" }, // Cover (offside)
-            { id: "f5", name: "S. Gill", role: "fielder" as const, jersey: "77", team: "blue" as const, x: 0.015, z: -0.01, primary: "Runs Saved: 8", secondary: "Pos: Slip" }, // Slip (offside behind)
-            { id: "f6", name: "K. Rahul", role: "fielder" as const, jersey: "1", team: "blue" as const, x: -0.02, z: -0.045, primary: "Catches: 0", secondary: "Pos: Mid-Wicket" }, // Mid-wicket (legside)
-            { id: "f7", name: "S. Iyer", role: "fielder" as const, jersey: "96", team: "blue" as const, x: -0.025, z: -0.045, primary: "Runs Saved: 4", secondary: "Pos: Mid-On" }, // Mid-on (legside)
-            { id: "f8", name: "A. Patel", role: "fielder" as const, jersey: "20", team: "blue" as const, x: 0.035, z: 0.055, primary: "Overs: 4-0-24-0", secondary: "Pos: Deep Point" }, // Deep point (brought slightly closer to center)
-            { id: "f9", name: "Y. Chahal", role: "fielder" as const, jersey: "3", team: "blue" as const, x: 0.05, z: 0.05, primary: "Overs: 4-0-32-1", secondary: "Pos: Deep Cover" }, // Deep cover (brought slightly closer to center)
-            { id: "f10", name: "M. Siraj", role: "fielder" as const, jersey: "73", team: "blue" as const, x: -0.075, z: 0.0, primary: "Overs: 4-0-28-1", secondary: "Pos: Long-On" }, // Long-on (brought slightly closer to center)
-            { id: "f11", name: "K. Yadav", role: "fielder" as const, jersey: "23", team: "blue" as const, x: -0.065, z: -0.04, primary: "Overs: 4-0-22-2", secondary: "Pos: Deep Mid-Wicket" } // Deep Mid-wicket (brought slightly closer to center)
+        // 2. Glassmorphic Panel
+        const panelGeom = new THREE.PlaneGeometry(0.12, 0.05);
+        
+        // Premium transparent standard material
+        const panelMat = new THREE.MeshStandardMaterial({
+            color: 0x040e24, // Deep luxury navy
+            roughness: 0.2,
+            metalness: 0.8,
+            transparent: true,
+            opacity: 0.82,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const panel = new THREE.Mesh(panelGeom, panelMat);
+        panel.userData.defaultOpacity = 0.82; // Store default opacity for fading
+        this.arBillboard.add(panel);
+
+        // 3. Dynamic Canvas Texture for TV-style AR Graphic
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d')!;
+
+        this.billboardCanvas = canvas;
+        this.billboardCtx = ctx;
+
+        const labelTex = new THREE.CanvasTexture(canvas);
+        labelTex.colorSpace = THREE.SRGBColorSpace;
+        this.billboardTexture = labelTex;
+
+        const textMat = new THREE.MeshBasicMaterial({
+            map: labelTex,
+            transparent: true,
+            opacity: 0.95,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const textMesh = new THREE.Mesh(panelGeom, textMat);
+        textMesh.position.set(0, 0, 0.001); // prevent z-fighting
+        textMesh.userData.defaultOpacity = 0.95; // Store default opacity for fading
+        this.arBillboard.add(textMesh);
+
+        // subtle wireframe border line slightly offset
+        const wireGeom = new THREE.PlaneGeometry(0.126, 0.056);
+        const wireMat = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.3,
+            depthWrite: false
+        });
+        const wireframe = new THREE.Mesh(wireGeom, wireMat);
+        wireframe.userData.defaultOpacity = 0.3; // Store default opacity for fading
+        this.arBillboard.add(wireframe);
+
+        // Render B2C Predictions Buttons directly under the billboard (so they follow billboarding/floating automatically!)
+        const btnGeom = new THREE.PlaneGeometry(0.034, 0.013);
+        
+        const btnConfigs = [
+            { text: "ANALYZE: SIX", colorHex: "#e2af37", colorVal: 0xe2af37, x: -0.038 },
+            { text: "ANALYZE: WKT", colorHex: "#ff3333", colorVal: 0xff3333, x: 0.0 },
+            { text: "ANALYZE: DOT", colorHex: "#00ffff", colorVal: 0x00ffff, x: 0.038 }
         ];
+
+        this.predictionButtons = [];
+        this.predictionButtonMats = [];
+
+        btnConfigs.forEach((cfg) => {
+            const btnGroup = new THREE.Group();
+            btnGroup.position.set(cfg.x, -0.038, 0.002); // 3.8cm below the scoreboard center
+
+            // 1. Backing panel
+            const backingMat = new THREE.MeshBasicMaterial({
+                color: 0x050c1c,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const backing = new THREE.Mesh(btnGeom, backingMat);
+            backing.userData = { defaultOpacity: 0.8 };
+            btnGroup.add(backing);
+
+            // 2. Neon border outline
+            const borderGeom = new THREE.PlaneGeometry(0.035, 0.014);
+            const borderMat = new THREE.MeshBasicMaterial({
+                color: cfg.colorVal,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.45,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const border = new THREE.Mesh(borderGeom, borderMat);
+            border.userData = { defaultOpacity: 0.45 };
+            this.predictionButtonMats.push(borderMat);
+            btnGroup.add(border);
+
+            // 3. Glowing text canvas texture
+            const btnTex = this.createButtonTexture(cfg.text, cfg.colorHex);
+            const btnTextMat = new THREE.MeshBasicMaterial({
+                map: btnTex,
+                transparent: true,
+                opacity: 0.9,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const btnTextMesh = new THREE.Mesh(btnGeom, btnTextMat);
+            btnTextMesh.position.set(0, 0, 0.0005); // prevent z-fighting
+            btnTextMesh.userData = { defaultOpacity: 0.9 };
+            btnGroup.add(btnTextMesh);
+
+            // Store for hover / click detection
+            btnGroup.userData = { defaultOpacity: 0.95 }; // for scaling fades
+            this.predictionButtons.push(btnGroup);
+            this.arBillboard.add(btnGroup);
+        });
+
+        // Trigger initial dynamic draw
+        this.redrawBillboard();
+
+        this.tableGroup.add(this.arBillboard);
+    }
+
+    private createButtonTexture(text: string, colorHexStr: string): THREE.CanvasTexture {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d')!;
+
+        ctx.clearRect(0, 0, 128, 64);
+
+        // Premium container backing
+        ctx.fillStyle = 'rgba(5, 12, 28, 0.92)';
+        ctx.strokeStyle = colorHexStr;
+        ctx.lineWidth = 4;
+        
+        // Rounded corner rect
+        const x = 3, y = 3, w = 122, h = 58, r = 12;
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Glowing badge text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 20px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 64, 30);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        return tex;
+    }
+
+    private redrawBillboard() {
+        if (!this.billboardCtx || !this.billboardCanvas || !this.billboardTexture) return;
+        const ctx = this.billboardCtx;
+        const canvas = this.billboardCanvas;
+
+        // Clear background
+        ctx.clearRect(0, 0, 512, 256);
+
+        // Draw dynamic gradient background
+        const grad = ctx.createLinearGradient(0, 0, 512, 0);
+        grad.addColorStop(0, 'rgba(10, 25, 45, 0.94)');
+        grad.addColorStop(0.5, 'rgba(4, 10, 24, 0.98)');
+        grad.addColorStop(1, 'rgba(10, 25, 45, 0.94)');
+        
+        ctx.fillStyle = grad;
+        const x = 10, y = 10, w = 492, h = 236, r = 24;
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+        ctx.fill();
+
+        // Glowing border outline
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = this.predictionFlashColor || 'rgba(0, 255, 255, 0.7)';
+        ctx.stroke();
+
+        // Corner futuristic bracket decorations
+        ctx.strokeStyle = '#e2af37';
+        ctx.lineWidth = 6;
+        const offset = 8;
+        // Top-left
+        ctx.beginPath(); ctx.moveTo(x + offset, y + offset + 25); ctx.lineTo(x + offset, y + offset); ctx.lineTo(x + offset + 25, y + offset); ctx.stroke();
+        // Top-right
+        ctx.beginPath(); ctx.moveTo(x + w - offset - 25, y + offset); ctx.lineTo(x + w - offset, y + offset); ctx.lineTo(x + w - offset, y + offset + 25); ctx.stroke();
+        // Bottom-left
+        ctx.beginPath(); ctx.moveTo(x + offset, y + h - offset - 25); ctx.lineTo(x + offset, y + h - offset); ctx.lineTo(x + offset + 25, y + h - offset); ctx.stroke();
+        // Bottom-right
+        ctx.beginPath(); ctx.moveTo(x + w - offset - 25, y + h - offset); ctx.lineTo(x + w - offset, y + h - offset); ctx.lineTo(x + w - offset, y + h - offset - 25); ctx.stroke();
+
+        // Draw header badge "IPL FINALS 2026"
+        ctx.fillStyle = '#e2af37';
+        ctx.font = 'bold 26px "Outfit", "Inter", "Arial Black"';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = 'rgba(226, 175, 55, 0.5)';
+        ctx.shadowBlur = 8;
+        ctx.fillText('IPL FINALS 2026', 256, 46);
+        ctx.shadowBlur = 0;
+
+        // Draw elegant B2B broadcast status
+        ctx.fillStyle = '#00ffcc';
+        ctx.font = 'bold 18px monospace';
+        ctx.textAlign = 'right';
+        ctx.shadowColor = 'rgba(0, 255, 204, 0.4)';
+        ctx.shadowBlur = 6;
+        ctx.fillText("AI TELEMETRY: READY", 470, 46);
+        ctx.shadowBlur = 0;
+
+        // Draw matchup
+        // RCB
+        ctx.fillStyle = '#ff3333';
+        ctx.font = 'bold 76px "Outfit", "Inter", "Arial Black"';
+        ctx.textAlign = 'right';
+        ctx.shadowColor = 'rgba(255, 51, 51, 0.6)';
+        ctx.shadowBlur = 12;
+        ctx.fillText('RCB', 200, 134);
+
+        // VS Shield / Capsule
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.beginPath();
+        ctx.arc(256, 112, 22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'italic bold 24px "Outfit", "Inter", "Arial"';
+        ctx.textAlign = 'center';
+        ctx.fillText('VS', 256, 120);
+
+        // RR
+        ctx.fillStyle = '#e0115f';
+        ctx.font = 'bold 76px "Outfit", "Inter", "Arial Black"';
+        ctx.textAlign = 'left';
+        ctx.shadowColor = 'rgba(224, 17, 95, 0.6)';
+        ctx.shadowBlur = 12;
+        ctx.fillText('RR', 312, 134);
+        ctx.shadowBlur = 0;
+
+        // Bottom status footer - DYNAMIC
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.font = 'bold 18px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.predictionStatusText, 256, 195);
+
+        // Live recording dot / status icon
+        if (this.activePrediction) {
+            ctx.fillStyle = '#ffcc00'; // active query pulsing dot
+            ctx.beginPath();
+            ctx.arc(256, 220, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.font = 'bold 15px monospace';
+            ctx.fillStyle = '#ffcc00';
+            ctx.fillText(`COMPUTING TRAJECTORY VECTORS IN ${(this.predictionTimer).toFixed(1)}s`, 256, 242);
+        } else {
+            ctx.fillStyle = '#ff2222';
+            ctx.beginPath();
+            ctx.arc(148, 220, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+            ctx.font = 'bold 16px "Outfit", "Inter", "Arial"';
+            ctx.fillText('● LIVE AR TELECAST', 256, 226);
+        }
+
+        this.billboardTexture.needsUpdate = true;
+    }
+
+    private initHawkEye() {
+        // Create a thin glowing trajectory line
+        const hawkeyeGeom = new THREE.BufferGeometry();
+        const hawkeyeMat = new THREE.LineBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.0, // Hidden initially
+            linewidth: 2,
+            depthWrite: false
+        });
+        this.hawkeyeLine = new THREE.Line(hawkeyeGeom, hawkeyeMat);
+        this.hawkeyeLine.userData = { defaultOpacity: 0.75 };
+        this.tableGroup.add(this.hawkeyeLine);
+
+        // Glowing ball sphere
+        const ballGeom = new THREE.SphereGeometry(0.0022, 16, 16);
+        const ballMat = new THREE.MeshBasicMaterial({
+            color: 0xffff00,
+            transparent: true,
+            opacity: 0.0,
+            depthWrite: false
+        });
+        this.hawkeyeBall = new THREE.Mesh(ballGeom, ballMat);
+        this.hawkeyeBall.userData = { defaultOpacity: 0.95 };
+        this.tableGroup.add(this.hawkeyeBall);
+
+        // Flat bounce ripple ring on the wicket pitch
+        const rippleGeom = new THREE.RingGeometry(0.0001, 0.005, 32);
+        this.hawkeyeRippleMat = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.0,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        this.hawkeyeRipple = new THREE.Mesh(rippleGeom, this.hawkeyeRippleMat);
+        this.hawkeyeRipple.rotation.x = -Math.PI / 2;
+        this.tableGroup.add(this.hawkeyeRipple);
+    }
+
+    private triggerHawkeye(pathType: 'SIX' | 'WICKET' | 'DOT') {
+        this.currentHawkeyePath = pathType;
+        this.isHawkeyeRunning = true;
+        this.hawkeyeProgress = 0.0;
+        this.hawkeyeTime = 0.0;
+
+        // Define precise local path coordinates on the mini Wankhede wicket pitch
+        const points: THREE.Vector3[] = [];
+        
+        if (pathType === 'SIX') {
+            points.push(new THREE.Vector3(0.0, 0.02, -0.045));    // Bowler crease release
+            points.push(new THREE.Vector3(0.0, 0.001, 0.015));   // Center bounce coordinate
+            points.push(new THREE.Vector3(0.0, 0.016, 0.038));   // Strike zone contact
+            points.push(new THREE.Vector3(0.03, 0.05, 0.065));   // Sky rise arc
+            points.push(new THREE.Vector3(0.06, 0.075, 0.09));   // High peak over stand canopy
+            points.push(new THREE.Vector3(0.08, 0.045, 0.11));   // Landing in stands
+        } else if (pathType === 'WICKET') {
+            points.push(new THREE.Vector3(0.002, 0.02, -0.045)); // Release slightly off-center
+            points.push(new THREE.Vector3(-0.001, 0.001, 0.018));// Bounce close to crease
+            points.push(new THREE.Vector3(-0.002, 0.012, 0.042));// Directly striking stumps!
+            points.push(new THREE.Vector3(-0.004, 0.002, 0.048));// Bumping away
+        } else { // DOT
+            points.push(new THREE.Vector3(-0.002, 0.02, -0.045));
+            points.push(new THREE.Vector3(0.001, 0.001, 0.014));
+            points.push(new THREE.Vector3(0.003, 0.015, 0.038)); // Swing & miss
+            points.push(new THREE.Vector3(0.004, 0.02, 0.047));  // Safely caught by keeper
+        }
+
+        this.hawkeyeCurve = new THREE.CatmullRomCurve3(points);
+        
+        // Populate trajectory line geometry
+        const splinePoints = this.hawkeyeCurve.getPoints(50);
+        this.hawkeyeLine.geometry.setFromPoints(splinePoints);
+        
+        // Reset opacities to active
+        if (this.hawkeyeLine.material instanceof THREE.Material) {
+            this.hawkeyeLine.material.opacity = 0.75;
+            this.hawkeyeLine.material.needsUpdate = true;
+        }
+        if (this.hawkeyeBall.material instanceof THREE.Material) {
+            this.hawkeyeBall.material.opacity = 0.95;
+            this.hawkeyeBall.material.needsUpdate = true;
+        }
+
+        // Set trajectory line color based on path type
+        const lineMat = this.hawkeyeLine.material as THREE.LineBasicMaterial;
+        if (pathType === 'SIX') lineMat.color.setHex(0xe2af37); // Gold Six trajectory
+        else if (pathType === 'WICKET') lineMat.color.setHex(0xff3333); // Red Wicket trajectory
+        else lineMat.color.setHex(0x00ffff); // Cyan Dot trajectory
+
+        // Reset bounce ripple
+        this.hawkeyeRippleMat.opacity = 0.0;
+        this.hawkeyeRipple.scale.setScalar(0.1);
+        this.hawkeyeRipple.position.copy(points[1]); // Set position exactly at bounce coordinates
+    }
+
+    private updateHawkEye(dt: number) {
+        if (!this.isHawkeyeRunning) return;
+
+        this.hawkeyeProgress += dt * 0.9; // Plays the delivery in ~1.1s
+        
+        if (this.hawkeyeProgress >= 1.0) {
+            this.hawkeyeProgress = 1.0;
+            
+            // Fade out spline line and ball over time
+            const lineMat = this.hawkeyeLine.material as THREE.LineBasicMaterial;
+            const ballMat = this.hawkeyeBall.material as THREE.MeshBasicMaterial;
+            
+            lineMat.opacity = Math.max(0, lineMat.opacity - dt * 2.0);
+            ballMat.opacity = Math.max(0, ballMat.opacity - dt * 2.0);
+            
+            if (lineMat.opacity <= 0 && ballMat.opacity <= 0) {
+                this.isHawkeyeRunning = false;
+            }
+            return;
+        }
+
+        // Move ball along spline curve
+        const ballPos = this.hawkeyeCurve.getPointAt(this.hawkeyeProgress);
+        this.hawkeyeBall.position.copy(ballPos);
+
+        // Animate radar bounce ring as the ball passes the bounce point (~30% progress)
+        if (this.hawkeyeProgress >= 0.28 && this.hawkeyeProgress <= 0.55) {
+            const rippleRatio = (this.hawkeyeProgress - 0.28) / 0.27; // goes 0 to 1
+            this.hawkeyeRipple.scale.setScalar(0.1 + rippleRatio * 2.5);
+            this.hawkeyeRippleMat.opacity = Math.max(0, 1.0 - rippleRatio);
+        }
+
+        // Stumps flash alert for wicket outcome (~75% progress)
+        if (this.currentHawkeyePath === 'WICKET' && this.hawkeyeProgress >= 0.72) {
+            if (Math.floor(this.hawkeyeProgress * 50) % 2 === 0) {
+                this.predictionFlashColor = 'rgba(255, 34, 34, 0.9)'; // bright red flash
+            } else {
+                this.predictionFlashColor = 'rgba(255, 255, 255, 0.7)';
+            }
+        }
+    }
+
+    private initPlayerMarkers() {
+        // Positions are in table-local metres (the table diameter is 0.24m = ~0.12m radius).
+        // Cards are 0.055m wide, so fielders need at least 0.06m separation to avoid overlap.
+        // Inner ring r≈0.022-0.030m (pitch/crease), outer ring r≈0.055-0.095m (outfield).
+        const roster = [
+            // ── Batting: Rajasthan Royals (Yellow) ──────────────────────────────
+            { id: "b1", name: "Y. Jaiswal",   role: "batsman" as const, jersey: "1",  team: "yellow" as const, x:  0.013, z:  0.000, primary: "Runs: 68* (42)",       secondary: "SR: 161.9",        rcbCardKey: "" },
+            { id: "b2", name: "S. Samson",    role: "batsman" as const, jersey: "13", team: "yellow" as const, x: -0.013, z:  0.000, primary: "Runs: 31 (20)",        secondary: "SR: 155.0",        rcbCardKey: "" },
+
+            // ── Umpires (Neutral) ────────────────────────────────────────────────
+            { id: "u1", name: "M. Erasmus",   role: "umpire"  as const, jersey: "U1", team: "neutral" as const, x: -0.020, z:  0.000, primary: "Umpire (Bowler's)",   secondary: "Decisions: 100%",  rcbCardKey: "" },
+            { id: "u2", name: "N. Llong",     role: "umpire"  as const, jersey: "U2", team: "neutral" as const, x:  0.013, z:  0.020, primary: "Umpire (Square Leg)", secondary: "Decisions: 100%",  rcbCardKey: "" },
+
+            // ── Fielding: Royal Challengers Bengaluru (Blue) ────────────────────
+            // WK — behind stumps on offside
+            { id: "f1",  name: "J. Cox",        role: "fielder" as const, jersey: "60", team: "blue" as const, x:  0.018, z:  0.000, primary: "Catches: 1, St: 0",    secondary: "Wicketkeeper",      rcbCardKey: "rcbJordanCox"  },
+            // Bowler — opposite end
+            { id: "f2",  name: "B. Kumar",      role: "fielder" as const, jersey: "15", team: "blue" as const, x: -0.028, z:  0.000, primary: "Overs: 3.2-0-22-2",   secondary: "Active: Bowler",    rcbCardKey: "rcbBhuvi"      },
+            // Inner ring — spread at 60° intervals around the pitch
+            { id: "f3",  name: "K. Pandya",     role: "fielder" as const, jersey: "24", team: "blue" as const, x:  0.022, z:  0.026, primary: "Overs: 2-0-18-1",     secondary: "Pos: Point",        rcbCardKey: "rcbKrunal"     },
+            { id: "f4",  name: "V. Kohli",      role: "fielder" as const, jersey: "18", team: "blue" as const, x: -0.004, z:  0.028, primary: "4s/6s: 3/4 | SR:250", secondary: "Pos: Cover",        rcbCardKey: "rcbKohli"      },
+            { id: "f5",  name: "V. Iyer",       role: "fielder" as const, jersey: "10", team: "blue" as const, x:  0.022, z: -0.018, primary: "Runs Saved: 5",        secondary: "Pos: Gully",        rcbCardKey: "rcbVenkatesh"  },
+            // Outer ring — deep field, spread well apart
+            { id: "f6",  name: "T. David",      role: "fielder" as const, jersey: "8",  team: "blue" as const, x: -0.065, z:  0.060, primary: "Catches: 0",           secondary: "Pos: Deep Mid-On",  rcbCardKey: "rcbTimDavid"   },
+            { id: "f7",  name: "J. Bethell",    role: "fielder" as const, jersey: "34", team: "blue" as const, x:  0.065, z:  0.055, primary: "Runs Saved: 4",        secondary: "Pos: Deep Cover",   rcbCardKey: "rcbBethell"    },
+            { id: "f8",  name: "R. Shepherd",   role: "fielder" as const, jersey: "9",  team: "blue" as const, x: -0.075, z: -0.020, primary: "Overs: 2-0-14-1",     secondary: "Pos: Long-On",      rcbCardKey: "rcbShepherd"   },
+            { id: "f9",  name: "J. Hazlewood",  role: "fielder" as const, jersey: "23", team: "blue" as const, x:  0.060, z: -0.055, primary: "Overs: 3-0-20-2",     secondary: "Pos: Fine Leg",     rcbCardKey: "rcbHazlewood"  },
+            { id: "f10", name: "J. Duffy",      role: "fielder" as const, jersey: "77", team: "blue" as const, x: -0.045, z: -0.070, primary: "Overs: 2-0-16-0",     secondary: "Pos: Deep Mid-Wkt", rcbCardKey: "rcbDuffy"      },
+            { id: "f11", name: "R. Patidar",    role: "fielder" as const, jersey: "21", team: "blue" as const, x:  0.002, z: -0.082, primary: "Catches: 1",           secondary: "Pos: Long-Off",     rcbCardKey: "rcbPatidar"    },
+        ];
+
 
         roster.forEach(p => {
             const playerGroup = new THREE.Group();
@@ -2444,41 +3518,156 @@ export class DomainExpansionSystem extends createSystem({
             playerGroup.position.set(p.x, 0.009, p.z);
             this.tableGroup.add(playerGroup);
 
-            // 1. Cone body
-            const bodyGeom = new THREE.ConeGeometry(0.003, 0.01, 4);
-            bodyGeom.translate(0, 0.005, 0); // Bottom origin
+            // 1. Detailed 3D stylized player figure (low-poly spatial representation)
+            // Torso is the base mesh (p.mesh) representing the chest/jersey
+            const torsoGeom = new THREE.CylinderGeometry(0.0024, 0.002, 0.008, 6);
+            torsoGeom.translate(0, 0.004, 0); // Origin at bottom, height = 0.008. Bottom is at y=0, top at y=0.008
 
-            let color = 0x00ffff; // Blue
-            if (p.team === 'yellow') color = 0xffff00;
-            else if (p.team === 'neutral') color = 0xffffff;
+            let primaryColor = 0xaa2222; // RCB Red
+            let secondaryColor = 0xcc9900; // RCB Gold
+            let pantsColor = 0x111827; // RCB Dark Slate Pants
+
+            if (p.team === 'yellow') {
+                primaryColor = 0xe2115f; // RR Pink
+                secondaryColor = 0x0f4c81; // RR Royal Blue
+                pantsColor = 0xf3f4f6; // RR White Pants
+            } else if (p.team === 'neutral') {
+                primaryColor = 0x3b82f6; // Umpire Light Blue
+                secondaryColor = 0x1f2937; // Umpire Dark details
+                pantsColor = 0x111827; // Umpire Black Pants
+            }
 
             const bodyMat = new THREE.MeshBasicMaterial({
-                color: color,
+                color: primaryColor,
                 transparent: true,
                 opacity: 0.95
             });
-            const mesh = new THREE.Mesh(bodyGeom, bodyMat);
+
+            // Torso is mesh
+            const mesh = new THREE.Mesh(torsoGeom, bodyMat);
+            mesh.position.y = 0.005; // Elevated slightly from the grass base
             playerGroup.add(mesh);
 
-            // 2. Neon underfoot rotating ring decal
-            const ringGeom = new THREE.RingGeometry(0.005, 0.006, 16);
+            // Sub-materials for dynamic 3D elements
+            const secMat = new THREE.MeshBasicMaterial({
+                color: secondaryColor,
+                transparent: true,
+                opacity: 0.95
+            });
+            const pantsMat = new THREE.MeshBasicMaterial({
+                color: pantsColor,
+                transparent: true,
+                opacity: 0.95
+            });
+            const skinMat = new THREE.MeshBasicMaterial({
+                color: 0xffdbac, // peach skin
+                transparent: true,
+                opacity: 0.95
+            });
+            const blackMat = new THREE.MeshBasicMaterial({
+                color: 0x111827,
+                transparent: true,
+                opacity: 0.95
+            });
+            const woodMat = new THREE.MeshBasicMaterial({
+                color: 0xd69e2e, // Gold wood brown cricket bat
+                transparent: true,
+                opacity: 0.95
+            });
+
+            // 1.1 Head & Helmet Visor
+            const headGeom = new THREE.SphereGeometry(0.0022, 8, 8);
+            const headMesh = new THREE.Mesh(headGeom, skinMat);
+            headMesh.position.set(0, 0.0095, 0); // centered above torso
+            mesh.add(headMesh);
+
+            const helmetGeom = new THREE.SphereGeometry(0.0025, 8, 8, 0, Math.PI * 2, 0, Math.PI / 1.7);
+            const helmetMesh = new THREE.Mesh(helmetGeom, secMat);
+            helmetMesh.position.set(0, 0.0096, 0);
+            mesh.add(helmetMesh);
+
+            const visorGeom = new THREE.BoxGeometry(0.0035, 0.0008, 0.001);
+            const visorMesh = new THREE.Mesh(visorGeom, blackMat);
+            visorMesh.position.set(0, 0.0096, 0.0022);
+            mesh.add(visorMesh);
+
+            // 1.2 Arms (Left & Right)
+            const lArmGeom = new THREE.CylinderGeometry(0.001, 0.0008, 0.006, 4);
+            lArmGeom.translate(0, -0.003, 0); // Pivot at shoulder
+            const lArmMesh = new THREE.Mesh(lArmGeom, bodyMat);
+            lArmMesh.position.set(-0.0032, 0.0075, 0);
+            mesh.add(lArmMesh);
+
+            const rArmGeom = new THREE.CylinderGeometry(0.001, 0.0008, 0.006, 4);
+            rArmGeom.translate(0, -0.003, 0); // Pivot at shoulder
+            const rArmMesh = new THREE.Mesh(rArmGeom, bodyMat);
+            rArmMesh.position.set(0.0032, 0.0075, 0);
+            mesh.add(rArmMesh);
+
+            // 1.3 Legs (Left & Right)
+            const lLegGeom = new THREE.CylinderGeometry(0.0011, 0.0009, 0.006, 4);
+            lLegGeom.translate(0, -0.003, 0); // Pivot at hip
+            const lLegMesh = new THREE.Mesh(lLegGeom, pantsMat);
+            lLegMesh.position.set(-0.0013, 0.0005, 0);
+            mesh.add(lLegMesh);
+
+            const rLegGeom = new THREE.CylinderGeometry(0.0011, 0.0009, 0.006, 4);
+            rLegGeom.translate(0, -0.003, 0); // Pivot at hip
+            const rLegMesh = new THREE.Mesh(rLegGeom, pantsMat);
+            rLegMesh.position.set(0.0013, 0.0005, 0);
+            mesh.add(rLegMesh);
+
+            // 1.4 Role-specific signature dynamic base poses!
+            if (p.role === 'batsman') {
+                const batGeom = new THREE.BoxGeometry(0.0012, 0.011, 0.0006);
+                batGeom.translate(0, 0.0055, 0); // Origin at bat grip
+                const batMesh = new THREE.Mesh(batGeom, woodMat);
+                batMesh.position.set(0.002, 0.004, 0.002);
+                batMesh.rotation.set(-Math.PI / 4, 0, Math.PI / 6);
+                mesh.add(batMesh);
+
+                lArmMesh.rotation.set(-Math.PI / 5, 0, Math.PI / 6);
+                rArmMesh.rotation.set(-Math.PI / 3, 0, -Math.PI / 6);
+                lLegMesh.rotation.set(Math.PI / 10, 0, -Math.PI / 12);
+                rLegMesh.rotation.set(Math.PI / 10, 0, Math.PI / 12);
+            } else if (p.role === 'fielder') {
+                lArmMesh.rotation.set(-Math.PI / 4, 0, Math.PI / 8);
+                rArmMesh.rotation.set(-Math.PI / 4, 0, -Math.PI / 8);
+                lLegMesh.rotation.set(Math.PI / 12, 0, -Math.PI / 12);
+                rLegMesh.rotation.set(Math.PI / 12, 0, Math.PI / 12);
+            } else {
+                lArmMesh.rotation.set(Math.PI / 6, 0, -Math.PI / 12);
+                rArmMesh.rotation.set(Math.PI / 6, 0, Math.PI / 12);
+            }
+
+            // Save parts inside userData for running animations
+            mesh.userData.lArm = lArmMesh;
+            mesh.userData.rArm = rArmMesh;
+            mesh.userData.lLeg = lLegMesh;
+            mesh.userData.rLeg = rLegMesh;
+            mesh.userData.role = p.role;
+
+            // 2. Underfoot ring decal (Slightly elevated, completely flat to avoid clipping)
+            let ringColor = primaryColor;
+            const ringGeom = new THREE.RingGeometry(0.008, 0.010, 16);
             ringGeom.rotateX(-Math.PI / 2);
             const ringMat = new THREE.MeshBasicMaterial({
-                color: color,
+                color: ringColor,
                 transparent: true,
                 opacity: 0.5,
                 side: THREE.DoubleSide,
                 depthWrite: false
             });
             const ring = new THREE.Mesh(ringGeom, ringMat);
+            ring.position.y = 0.0005; // Slightly raised above grass outfield to completely prevent clipping
             playerGroup.add(ring);
 
             // 3. Floating high-res billboarding name/jersey tag
             const tag = this.createPlayerTag(p.name, p.jersey, p.team);
             playerGroup.add(tag);
 
-            // 4. Hover stats board transparent panel mesh
-            const statsCard = this.createPlayerStatsCard(p.name, p.primary, p.secondary, p.team);
+            // 4. Hover stats card: image card for RCB fielders, canvas card otherwise
+            const statsCard = this.createPlayerStatsCard(p.name, p.primary, p.secondary, p.team, (p as any).rcbCardKey || "");
             playerGroup.add(statsCard);
 
             this.players.push({
@@ -2559,30 +3748,146 @@ export class DomainExpansionSystem extends createSystem({
         });
         
         const mesh = new THREE.Mesh(tagGeom, tagMat);
-        mesh.position.y = 0.02; // Float 2cm above base
+        mesh.position.y = 0.025; // Float 2.5cm above base (above medium player body)
         return mesh;
     }
 
-    private createPlayerStatsCard(name: string, primary: string, secondary: string, team: 'blue' | 'yellow' | 'neutral'): THREE.Group {
+    /**
+     * Creates the hover stats card for a player.
+     * When rcbCardKey is provided, a portrait image card is created.
+     * The RCB texture is applied lazily in the update loop because background-
+     * priority assets may not be loaded yet at init time.
+     */
+    private createPlayerStatsCard(
+        name: string,
+        primary: string,
+        secondary: string,
+        team: 'blue' | 'yellow' | 'neutral',
+        rcbCardKey: string = ""
+    ): THREE.Group {
         const cardGroup = new THREE.Group();
-        
+
+        if (rcbCardKey) {
+            // Portrait card geometry — 5:8 aspect ratio matches the JPEG
+            const planeGeom = new THREE.PlaneGeometry(0.055, 0.088);
+            const planeMat = new THREE.MeshBasicMaterial({
+                transparent: true,
+                opacity: 0.0,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+
+            // Try to apply texture immediately (works if asset already cached)
+            const cardTex = AssetManager.getTexture(rcbCardKey);
+            if (cardTex) {
+                cardTex.colorSpace = THREE.SRGBColorSpace;
+                planeMat.map = cardTex;
+            }
+
+            const cardMesh = new THREE.Mesh(planeGeom, planeMat);
+            const BASE_Y = 0.075;
+            cardMesh.position.y = BASE_Y;
+            cardMesh.position.z = 0.001; // offset forward
+            cardMesh.userData.baseZ = 0.001;
+            cardGroup.add(cardMesh); // Child[0]
+
+            // Holographic B2B backing panel (Obsidian glass style)
+            const backGeom = new THREE.PlaneGeometry(0.060, 0.093);
+            const backMat = new THREE.MeshBasicMaterial({
+                color: 0x050c1c,
+                transparent: true,
+                opacity: 0.0, // Init to 0, synced in update()
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const backMesh = new THREE.Mesh(backGeom, backMat);
+            backMesh.position.y = BASE_Y;
+            backMesh.position.z = 0.0;
+            backMesh.userData.baseZ = 0.0;
+            backMesh.userData.baseOpacity = 0.82;
+            cardGroup.add(backMesh);
+
+            // Neon cyan wireframe border outline
+            const borderGeom = new THREE.PlaneGeometry(0.061, 0.094);
+            const borderMat = new THREE.MeshBasicMaterial({
+                color: 0x00ffff,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.0, // Init to 0, synced in update()
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const borderMesh = new THREE.Mesh(borderGeom, borderMat);
+            borderMesh.position.y = BASE_Y;
+            borderMesh.position.z = 0.0;
+            borderMesh.userData.baseZ = 0.0;
+            borderMesh.userData.baseOpacity = 0.45;
+            cardGroup.add(borderMesh);
+
+            // Golden corner brackets
+            const goldMat = new THREE.MeshBasicMaterial({
+                color: 0xffd700, // Gold
+                transparent: true,
+                opacity: 0.0, // Init to 0, synced in update()
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+
+            const cornerSize = 0.010;
+            const thickness = 0.0012;
+            const halfW = 0.0305;
+            const halfH = 0.047;
+
+            // Helper to add a small segment
+            const addSegment = (w: number, h: number, x: number, y: number) => {
+                const geom = new THREE.PlaneGeometry(w, h);
+                const mesh = new THREE.Mesh(geom, goldMat);
+                mesh.position.set(x, BASE_Y + y, 0.002);
+                mesh.userData.baseZ = 0.002;
+                mesh.userData.baseOpacity = 0.85;
+                cardGroup.add(mesh);
+            };
+
+            // Top-Left corner
+            addSegment(cornerSize, thickness, -halfW + cornerSize / 2, halfH - thickness / 2); // Horizontal
+            addSegment(thickness, cornerSize, -halfW + thickness / 2, halfH - cornerSize / 2); // Vertical
+
+            // Top-Right corner
+            addSegment(cornerSize, thickness, halfW - cornerSize / 2, halfH - thickness / 2); // Horizontal
+            addSegment(thickness, cornerSize, halfW - thickness / 2, halfH - cornerSize / 2); // Vertical
+
+            // Bottom-Left corner
+            addSegment(cornerSize, thickness, -halfW + cornerSize / 2, -halfH + thickness / 2); // Horizontal
+            addSegment(thickness, cornerSize, -halfW + thickness / 2, -halfH + cornerSize / 2); // Vertical
+
+            // Bottom-Right corner
+            addSegment(cornerSize, thickness, halfW - cornerSize / 2, -halfH + thickness / 2); // Horizontal
+            addSegment(thickness, cornerSize, halfW - thickness / 2, -halfH + cornerSize / 2); // Vertical
+
+            // Store metadata for lazy loading and correct position lerp in update()
+            cardGroup.userData.rcbCardKey = rcbCardKey;
+            cardGroup.userData.baseY = BASE_Y;
+            return cardGroup;
+        }
+
+        // ── Fallback: procedural canvas text card ─────────────────────────────
         const canvas = document.createElement('canvas');
         canvas.width = 384;
         canvas.height = 192;
         const ctx = canvas.getContext('2d')!;
-        
+
         ctx.clearRect(0, 0, 384, 192);
-        
+
         ctx.fillStyle = 'rgba(2, 6, 26, 0.92)';
         ctx.strokeStyle = team === 'blue' ? '#00ffff' : (team === 'yellow' ? '#ffff00' : '#ffffff');
         ctx.lineWidth = 6;
-        
+
         const r = 24;
         const w = 372;
         const h = 180;
         const x = 6;
         const y = 6;
-        
+
         ctx.beginPath();
         ctx.moveTo(x + r, y);
         ctx.lineTo(x + w - r, y);
@@ -2596,50 +3901,447 @@ export class DomainExpansionSystem extends createSystem({
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
-        
+
         ctx.strokeStyle = team === 'blue' ? 'rgba(0, 255, 255, 0.4)' : (team === 'yellow' ? 'rgba(255, 255, 0, 0.4)' : 'rgba(255, 255, 255, 0.4)');
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(x + 10, y + 25); ctx.lineTo(x + 10, y + 10); ctx.lineTo(x + 25, y + 10);
         ctx.moveTo(x + w - 25, y + h - 10); ctx.lineTo(x + w - 10, y + h - 10); ctx.lineTo(x + w - 10, y + h - 25);
         ctx.stroke();
-        
+
         ctx.fillStyle = team === 'blue' ? '#00ffff' : (team === 'yellow' ? '#ffff00' : '#ffffff');
         ctx.font = 'bold 30px monospace';
         ctx.textAlign = 'left';
         ctx.fillText(name.toUpperCase(), x + 30, y + 45);
-        
+
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.beginPath();
         ctx.moveTo(x + 30, y + 65);
         ctx.lineTo(x + w - 30, y + 65);
         ctx.stroke();
-        
+
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 24px monospace';
         ctx.fillText(primary, x + 30, y + 105);
-        
+
         ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
         ctx.font = '22px monospace';
         ctx.fillText(secondary, x + 30, y + 145);
-        
+
         const texture = new THREE.CanvasTexture(canvas);
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.needsUpdate = true;
-        
+
         const planeGeom = new THREE.PlaneGeometry(0.08, 0.04);
         const planeMat = new THREE.MeshBasicMaterial({
             map: texture,
             transparent: true,
-            opacity: 0.0, // Start fully transparent
+            opacity: 0.0,
             side: THREE.DoubleSide,
             depthWrite: false
         });
-        
+
         const cardMesh = new THREE.Mesh(planeGeom, planeMat);
-        cardMesh.position.y = 0.045; // float 4.5cm above base
+        cardMesh.position.y = 0.045;
         cardGroup.add(cardMesh);
-        
+
         return cardGroup;
+    }
+
+    private initBallTracking() {
+        // 1. Glowing Ball Mesh (small glowing sphere)
+        const ballGeom = new THREE.SphereGeometry(0.003, 16, 16);
+        const ballMat = new THREE.MeshBasicMaterial({ color: 0xff3300, transparent: true, opacity: 0.0 }); // Start hidden
+        this.activeBall = new THREE.Mesh(ballGeom, ballMat);
+        this.tableGroup.add(this.activeBall);
+
+        // 2. Trajectory Line (glowing neon trail)
+        const trailGeom = new THREE.BufferGeometry();
+        const trailMat = new THREE.LineBasicMaterial({
+            color: 0xff6600,
+            transparent: true,
+            opacity: 0.0,
+            linewidth: 3
+        });
+        this.ballTrail = new THREE.Line(trailGeom, trailMat);
+        this.tableGroup.add(this.ballTrail);
+    }
+
+    private initTrackingButtons() {
+        // ─── Stadium Roof Arc – SixHoloview Buttons ───────────────────────────
+        // 4 action buttons curved along the inner roof rim of the stadium.
+        // The arc spans ~110° centred on the "back" of the stadium (angle = -Math.PI/2 = top of map).
+        // Buttons face inward (toward pitch centre) so the user can read them from above.
+        const buttonInfo = [
+            { label: "SIX: KOHLI",  color: 0xff6600 },
+            { label: "SIX: SHARMA", color: 0xffff00 },
+            { label: "SIX: SCOOP",  color: 0x00ff66 },
+            { label: "CLEAR",       color: 0xff3333 }
+        ];
+
+        const numButtons = buttonInfo.length;
+        // Arc spans 110°, centred at angle 0 (positive-Z axis of the table)
+        const arcSpan    = Math.PI * (110 / 180);
+        const arcCenter  = 0; // face the front of the stadium
+        const arcStart   = arcCenter - arcSpan / 2;
+        const arcStep    = arcSpan / (numButtons - 1);
+
+        // Thin curved button geometry (flat box, small depth)
+        const btnGeom = new THREE.BoxGeometry(0.022, 0.004, 0.008);
+
+        buttonInfo.forEach((b, i) => {
+            const angle = arcStart + i * arcStep;
+
+            // Place on roof rim, pointing inward
+            const bx = Math.sin(angle) * this.ROOF_RADIUS;
+            const bz = Math.cos(angle) * this.ROOF_RADIUS;
+
+            const btnGroup = new THREE.Group();
+            btnGroup.position.set(bx, this.ROOF_Y, bz);
+            // Rotate the group so the button faces the centre (inward)
+            btnGroup.rotation.y = angle + Math.PI; // face pitch centre
+            this.tableGroup.add(btnGroup);
+
+            // Glowing glass plate
+            const bMat = new THREE.MeshBasicMaterial({
+                color: b.color,
+                transparent: true,
+                opacity: 0.55,
+                depthWrite: false
+            });
+            const btnMesh = new THREE.Mesh(btnGeom, bMat);
+            btnGroup.add(btnMesh);
+            this.trackingButtons.push(btnMesh);
+            this.buttonMats.push(bMat);
+
+            // Canvas Text Label rendered on the outward face of the button
+            const canvas = document.createElement('canvas');
+            canvas.width = 192;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d')!;
+            ctx.clearRect(0, 0, 192, 64);
+
+            ctx.fillStyle = 'rgba(3, 3, 15, 0.92)';
+            ctx.fillRect(0, 0, 192, 64);
+
+            const hexStr = b.color === 0xff6600 ? '#ff6600' :
+                           b.color === 0xffff00 ? '#ffff00' :
+                           b.color === 0x00ff66 ? '#00ff66' : '#ff3333';
+            ctx.strokeStyle = hexStr;
+            ctx.lineWidth = 5;
+            ctx.strokeRect(3, 3, 186, 58);
+
+            ctx.shadowColor = hexStr;
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 22px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(b.label, 96, 32);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.needsUpdate = true;
+
+            // Label panel sits just inside the button, tilted slightly outward for readability
+            const labelGeom = new THREE.PlaneGeometry(0.022, 0.007);
+            const labelMat = new THREE.MeshBasicMaterial({
+                map: tex,
+                transparent: true,
+                opacity: 0.95,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const labelMesh = new THREE.Mesh(labelGeom, labelMat);
+            // Float label 8mm above button on the same plane
+            labelMesh.position.set(0, 0.008, 0);
+            btnGroup.add(labelMesh);
+            this.buttonLabels.push(labelMesh);
+        });
+
+        // ─── 3D Score Display – curved arc beside the buttons ─────────────────
+        // Placed on the opposite arc segment (score display on the back half of roof)
+        this.initScoreDisplay();
+    }
+
+    private initScoreDisplay() {
+        // Score display spans a 90° arc on the roof, offset 80° from the button arc center
+        const scoreArcCenter = Math.PI; // back/top of the stadium (opposite side from buttons)
+        const scoreArcSpan   = Math.PI * (80 / 180);
+        const scoreArcStart  = scoreArcCenter - scoreArcSpan / 2;
+        const numSegments    = 5; // number of curved score panels
+        const scoreArcStep   = scoreArcSpan / (numSegments - 1);
+
+        const scoreLines = [
+            { line1: "IPL FINAL 2025",   line2: "WANKHEDE STADIUM" },
+            { line1: "MI  182 / 3",      line2: "20 OVERS" },
+            { line1: "RCB  161 / 7",     line2: "18.4 OVERS" },
+            { line1: "V.KOHLI  82*",     line2: "SR: 154.7" },
+            { line1: "J.BUMRAH  3/18",   line2: "3.4 OVERS" }
+        ];
+
+        for (let i = 0; i < numSegments; i++) {
+            const angle = scoreArcStart + i * scoreArcStep;
+            const px = Math.sin(angle) * this.ROOF_RADIUS;
+            const pz = Math.cos(angle) * this.ROOF_RADIUS;
+
+            // Build canvas panel for this score segment
+            const canvas = document.createElement('canvas');
+            canvas.width  = 256;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d')!;
+            ctx.clearRect(0, 0, 256, 128);
+
+            // Dark holographic background
+            const grad = ctx.createLinearGradient(0, 0, 0, 128);
+            grad.addColorStop(0, 'rgba(2, 8, 28, 0.96)');
+            grad.addColorStop(1, 'rgba(4, 16, 44, 0.96)');
+            ctx.fillStyle = grad;
+            ctx.roundRect(4, 4, 248, 120, 10);
+            ctx.fill();
+
+            // Border glow
+            ctx.strokeStyle = 'rgba(0, 200, 255, 0.85)';
+            ctx.lineWidth = 4;
+            ctx.roundRect(4, 4, 248, 120, 10);
+            ctx.stroke();
+
+            // Corner accents
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(14, 24); ctx.lineTo(14, 14); ctx.lineTo(24, 14);
+            ctx.moveTo(242, 104); ctx.lineTo(242, 114); ctx.lineTo(232, 114);
+            ctx.stroke();
+
+            // Primary text
+            ctx.shadowColor = '#00ffff';
+            ctx.shadowBlur = 12;
+            ctx.fillStyle = '#00ffff';
+            ctx.font = 'bold 26px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(scoreLines[i].line1, 128, 48);
+
+            // Secondary text
+            ctx.shadowBlur = 6;
+            ctx.fillStyle = 'rgba(180, 240, 255, 0.85)';
+            ctx.font = '20px monospace';
+            ctx.fillText(scoreLines[i].line2, 128, 92);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.needsUpdate = true;
+
+            const panelGeom = new THREE.PlaneGeometry(0.028, 0.014);
+            const panelMat = new THREE.MeshBasicMaterial({
+                map: tex,
+                transparent: true,
+                opacity: 0.92,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const panelMesh = new THREE.Mesh(panelGeom, panelMat);
+
+            panelMesh.position.set(px, this.ROOF_Y + 0.006, pz);
+            // Rotate to face inward (toward pitch) and tilt slightly for readability
+            panelMesh.rotation.y = angle + Math.PI;
+            panelMesh.rotation.x = -0.18; // slight downward tilt for readability from above
+
+            this.tableGroup.add(panelMesh);
+            this.scoreDisplayMeshes.push(panelMesh);
+        }
+    }
+
+    private triggerSixAnimation(index: number) {
+        if (index === 3) {
+            // Clear / Reset
+            this.isBallAnimating = false;
+            this.currentSixIndex = -1;
+            (this.activeBall.material as THREE.MeshBasicMaterial).opacity = 0.0;
+            (this.ballTrail.material as THREE.LineBasicMaterial).opacity = 0.0;
+            this.trailPoints = [];
+            this.ballTrail.geometry.setFromPoints([]);
+            console.log("[BallTracking] Active tracking animations cleared!");
+            return;
+        }
+
+        this.currentSixIndex = index;
+        this.isBallAnimating = true;
+        this.ballAnimT = 0.0;
+        this.trailPoints = [];
+        
+        // Make visible and set colors
+        (this.activeBall.material as THREE.MeshBasicMaterial).opacity = 1.0;
+        (this.ballTrail.material as THREE.LineBasicMaterial).opacity = 0.95;
+        
+        const colors = [0xff6600, 0xffff00, 0x00ff66];
+        (this.activeBall.material as THREE.MeshBasicMaterial).color.setHex(colors[index]);
+        (this.ballTrail.material as THREE.LineBasicMaterial).color.setHex(colors[index]);
+
+        console.log(`[BallTracking] Six ${index + 1} animation triggered!`);
+    }
+
+    private updateBallTracking(dt: number) {
+        if (!this.isBallAnimating || this.currentSixIndex === -1) return;
+
+        // Animate from t = 0 to 1 over 2.8 seconds for premium pace
+        const speed = 0.36; // 1.0 / 2.8s
+        this.ballAnimT += dt * speed;
+
+        if (this.ballAnimT >= 1.0) {
+            this.ballAnimT = 0.0;
+            this.trailPoints = []; // Reset trail for next loop
+        }
+
+        const t = this.ballAnimT;
+
+        // Calculate positions
+        let start = new THREE.Vector3();
+        let hitPos = new THREE.Vector3();
+        let landing = new THREE.Vector3();
+        let ballPos = new THREE.Vector3();
+
+        if (this.currentSixIndex === 0) {
+            // Kohli Straight Six over Long-On (Forward-Left direction)
+            start.set(-0.024, 0.009, 0.0); // Bowler
+            hitPos.set(0.012, 0.009, 0.0); // Striker Kohli
+            landing.set(-0.13, 0.009, 0.00); // Straight out over long-on fence!
+            
+            // Phase 1: bowler delivery (t < 0.25)
+            if (t < 0.25) {
+                const subT = t / 0.25;
+                ballPos.lerpVectors(start, hitPos, subT);
+                ballPos.y += Math.sin(subT * Math.PI) * 0.008; // Small delivery bounce
+            } else {
+                const subT = (t - 0.25) / 0.75;
+                // High parabolic curve
+                const control = new THREE.Vector3((hitPos.x + landing.x)/2, 0.08, (hitPos.z + landing.z)/2);
+                
+                // Quadratic Bezier
+                const mt = 1.0 - subT;
+                ballPos.copy(hitPos).multiplyScalar(mt * mt)
+                    .addScaledVector(control, 2 * mt * subT)
+                    .addScaledVector(landing, subT * subT);
+            }
+        } else if (this.currentSixIndex === 1) {
+            // Sharma Pull Shot over Deep Mid-Wicket (Bottom-Left quadrant)
+            start.set(0.024, 0.009, 0.0); // Bowler from opposite stumps
+            hitPos.set(-0.012, 0.009, 0.0); // Striker Sharma
+            landing.set(-0.04, 0.009, 0.12); // Leg-side pull shot over boundary!
+            
+            if (t < 0.25) {
+                const subT = t / 0.25;
+                ballPos.lerpVectors(start, hitPos, subT);
+                ballPos.y += Math.sin(subT * Math.PI) * 0.008;
+            } else {
+                const subT = (t - 0.25) / 0.75;
+                const control = new THREE.Vector3((hitPos.x + landing.x)/2, 0.09, (hitPos.z + landing.z)/2);
+                
+                const mt = 1.0 - subT;
+                ballPos.copy(hitPos).multiplyScalar(mt * mt)
+                    .addScaledVector(control, 2 * mt * subT)
+                    .addScaledVector(landing, subT * subT);
+            }
+        } else if (this.currentSixIndex === 2) {
+            // Kohli Scoop Shot over Fine Leg (Top-Right quadrant, behind striker)
+            start.set(-0.024, 0.009, 0.0);
+            hitPos.set(0.012, 0.009, 0.0);
+            landing.set(0.09, 0.009, -0.09); // Behind the wickets over fine leg boundary!
+            
+            if (t < 0.25) {
+                const subT = t / 0.25;
+                ballPos.lerpVectors(start, hitPos, subT);
+                ballPos.y += Math.sin(subT * Math.PI) * 0.008;
+            } else {
+                const subT = (t - 0.25) / 0.75;
+                const control = new THREE.Vector3((hitPos.x + landing.x)/2, 0.07, (hitPos.z + landing.z)/2);
+                
+                const mt = 1.0 - subT;
+                ballPos.copy(hitPos).multiplyScalar(mt * mt)
+                    .addScaledVector(control, 2 * mt * subT)
+                    .addScaledVector(landing, subT * subT);
+            }
+        }
+
+        // Set active ball position
+        this.activeBall.position.copy(ballPos);
+
+        // Add to trail
+        this.trailPoints.push(ballPos.clone());
+        if (this.trailPoints.length > this.maxTrailPoints) {
+            this.trailPoints.shift();
+        }
+
+        // Update trail geometry
+        this.ballTrail.geometry.setFromPoints(this.trailPoints);
+    }
+
+    /**
+     * Updates SixHoloview roof buttons.
+     * Activation is driven purely by index-finger hover — no pinch required.
+     * Hold index finger over a button for 2 seconds to trigger it.
+     */
+    private updateTrackingButtons(
+        leftIndexPos: THREE.Vector3,
+        rightIndexPos: THREE.Vector3,
+        hasLeft: boolean,
+        hasRight: boolean,
+        dt: number
+    ) {
+        const btnWorldPos = new THREE.Vector3();
+
+        for (let i = 0; i < this.trackingButtons.length; i++) {
+            const btn = this.trackingButtons[i];
+            btn.getWorldPosition(btnWorldPos);
+
+            let distToLeft  = Infinity;
+            let distToRight = Infinity;
+            if (hasLeft)  distToLeft  = leftIndexPos.distanceTo(btnWorldPos);
+            if (hasRight) distToRight = rightIndexPos.distanceTo(btnWorldPos);
+
+            // Hover threshold: index finger tip within 2.5 cm of the button
+            const isHovered = distToLeft < 0.025 || distToRight < 0.025;
+
+            // Glow feedback — brighter when hovered
+            const targetOpacity = isHovered ? 0.97 : 0.55;
+            this.buttonMats[i].opacity += (targetOpacity - this.buttonMats[i].opacity) * 10.0 * dt;
+
+            if (isHovered) {
+                // Accumulate hover dwell time (2-second hold to activate)
+                this.buttonPinchProgress[i] += dt;
+                if (this.buttonPinchProgress[i] > 2.0) {
+                    this.buttonPinchProgress[i] = 2.0;
+                }
+
+                const chargeRatio = this.buttonPinchProgress[i] / 2.0;
+
+                // Vertical stretch as charge indicator
+                btn.scale.y = 1.0 + chargeRatio * 2.5;
+                // Micro-vibration energy feedback
+                btn.position.y = Math.sin(this.radarTime * 60.0) * 0.001 * chargeRatio;
+
+                if (this.buttonPinchProgress[i] >= 2.0 && this.menuToggleCooldown <= 0.0) {
+                    this.menuToggleCooldown = 0.8;
+                    this.buttonPinchProgress[i] = 0.0;
+
+                    // Squeeze shockwave click feedback
+                    btn.scale.set(1.2, 0.4, 1.2);
+                    this.triggerSixAnimation(i);
+                }
+            } else {
+                // Drain dwell time when finger moves away
+                this.buttonPinchProgress[i] -= dt * 2.0;
+                if (this.buttonPinchProgress[i] < 0.0) {
+                    this.buttonPinchProgress[i] = 0.0;
+                }
+
+                // Restore default button geometry
+                btn.scale.y += (1.0 - btn.scale.y) * 10.0 * dt;
+                btn.scale.x += (1.0 - btn.scale.x) * 10.0 * dt;
+                btn.scale.z += (1.0 - btn.scale.z) * 10.0 * dt;
+                btn.position.y += (0.0 - btn.position.y) * 10.0 * dt;
+            }
+        }
     }
 }

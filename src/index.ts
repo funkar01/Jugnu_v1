@@ -11,7 +11,21 @@ import {
   Box3,
   Box3Helper,
   Vector3,
+  stencilMaterial,
+  AmbientLight,
+  DirectionalLight,
+  HemisphereLight,
 } from "@iwsdk/core";
+
+// Configure hand stencil material to act as a holdout (occlusion) mask showing passthrough
+if (stencilMaterial) {
+  stencilMaterial.colorWrite = false;
+  stencilMaterial.transparent = false;
+  stencilMaterial.depthWrite = true;
+  stencilMaterial.depthTest = true;
+  stencilMaterial.needsUpdate = true;
+}
+
 
 import {
   AudioSource,
@@ -37,7 +51,7 @@ import { JugnuDebugBoard } from "./JugnuDebugBoard.js";
 import { RoomVisualizerSystem } from "./roomVisualizer.js";
 import { DomainExpansionSystem } from "./domainExpansion.js";
 import { CityMapSystem } from "./cityMapSystem.js";
-import { ACESFilmicToneMapping } from "three";
+import { ACESFilmicToneMapping, Color, GridHelper, Material } from "three";
 
 export const IS_DEV = ((import.meta as any).env.VITE_DEBUG_MODE === "true") || (import.meta as any).env.DEV;
 
@@ -70,30 +84,58 @@ const assets: AssetManifest = {
     priority: "critical",
   },
   wankhede: {
-    url: "./gltf/Wankhede.glb",
+    url: "./gltf/Wankhede Stadium/Wankhede.glb",
     type: AssetType.GLTF,
     priority: "critical",
   },
-  mivCam1: {
-    url: "./CameraViews_HDRI/CamPos (1).png",
+  iplCam1: {
+    url: "./Domains/IPLfinal (1).png",
     type: AssetType.Texture,
     priority: "critical",
   },
-  mivCam2: {
-    url: "./CameraViews_HDRI/CamPos (2).png",
+  iplCam2: {
+    url: "./Domains/IPLfinal (2).png",
     type: AssetType.Texture,
     priority: "critical",
   },
-  mivCam3: {
-    url: "./CameraViews_HDRI/CamPos (3).png",
+  iplCam3: {
+    url: "./Domains/IPLfinal (3).png",
     type: AssetType.Texture,
     priority: "critical",
   },
-  mivCam4: {
-    url: "./CameraViews_HDRI/CamPos (4).png",
+  iplCam4: {
+    url: "./Domains/IPLfinal (4).png",
     type: AssetType.Texture,
     priority: "critical",
   },
+  iplCam5: {
+    url: "./Domains/IPLfinal (5).png",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
+  iplCam6: {
+    url: "./Domains/IPLfinal (6).png",
+    type: AssetType.Texture,
+    priority: "critical",
+  },
+  // RCB Player Cards (IPL 2026 Final) — full squad
+  rcbKohli:       { url: "./RCBCards/RCB_Name_VIRAT KOHLI.jpeg",        type: AssetType.Texture, priority: "background" },
+  rcbPatidar:     { url: "./RCBCards/RCB_Name_RAJAT PATIDAR.jpeg",      type: AssetType.Texture, priority: "background" },
+  rcbSalt:        { url: "./RCBCards/RCB_Name_PHIL SALT.jpeg",          type: AssetType.Texture, priority: "background" },
+  rcbTimDavid:    { url: "./RCBCards/RCB_Name_TIM DAVID.jpeg",          type: AssetType.Texture, priority: "background" },
+  rcbJitesh:      { url: "./RCBCards/RCB_Name_JITESH SHARMA.jpeg",      type: AssetType.Texture, priority: "background" },
+  rcbKrunal:      { url: "./RCBCards/RCB_Name_KRUNAL PANDYA.jpeg",      type: AssetType.Texture, priority: "background" },
+  rcbBhuvi:       { url: "./RCBCards/RCB_Name_BHUVNESHWAR KUMAR.jpeg",  type: AssetType.Texture, priority: "background" },
+  rcbDevdutt:     { url: "./RCBCards/RCB_Name_DEVDUTT PADIKKAL.jpeg",   type: AssetType.Texture, priority: "background" },
+  rcbJordanCox:   { url: "./RCBCards/RCB_Name_JORDAN COX.jpeg",         type: AssetType.Texture, priority: "background" },
+  rcbBethell:     { url: "./RCBCards/RCB_Name_JACOB BETHELL.jpeg",      type: AssetType.Texture, priority: "background" },
+  rcbDuffy:       { url: "./RCBCards/RCB_Name_JACOB DUFFY.jpeg",        type: AssetType.Texture, priority: "background" },
+  rcbHazlewood:   { url: "./RCBCards/RCB_Name_JOSH HAZELWOOD.jpeg",     type: AssetType.Texture, priority: "background" },
+  rcbShepherd:    { url: "./RCBCards/RCB_Name_ROMARIO SHEPHERD.jpeg",   type: AssetType.Texture, priority: "background" },
+  rcbSatvik:      { url: "./RCBCards/RCB_Name_SATVIK DESWAL.jpeg",      type: AssetType.Texture, priority: "background" },
+  rcbSuyash:      { url: "./RCBCards/RCB_Name_SUYASH SHARMA.jpeg",      type: AssetType.Texture, priority: "background" },
+  rcbSwapnil:     { url: "./RCBCards/RCB_Name_SWAPNIL SINGH.jpeg",      type: AssetType.Texture, priority: "background" },
+  rcbVenkatesh:   { url: "./RCBCards/RCB_Name_VENKATESH IYER.jpeg",     type: AssetType.Texture, priority: "background" },
 };
 
 World.create(document.getElementById("scene-container") as HTMLDivElement, {
@@ -122,6 +164,29 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       renderer.toneMapping = ACESFilmicToneMapping;
       renderer.outputColorSpace = SRGBColorSpace;
   }
+
+  // Set premium B2B dark slate-navy scene background
+  world.scene.background = new Color(0x020617);
+
+  // Overhaul desktop fallback environment: Create a premium Holographic Holodeck Grid
+  const holodeckGrid = new GridHelper(30, 60, 0x00ffff, 0x0f172a);
+  holodeckGrid.position.y = 0.01;
+  if (holodeckGrid.material instanceof Material) {
+      holodeckGrid.material.transparent = true;
+      holodeckGrid.material.opacity = 0.22;
+  }
+  world.scene.add(holodeckGrid);
+
+  // Premium High-Fidelity Spatial Lighting Setup
+  const ambientLight = new AmbientLight(0x0f172a, 0.5); // Cool blue-slate shadow fill
+  world.createTransformEntity(ambientLight);
+
+  const hemiLight = new HemisphereLight(0xffffff, 0x3b3f46, 1.6); // Sky/ground natural ambient light
+  world.createTransformEntity(hemiLight);
+
+  const dirLight = new DirectionalLight(0xfffbf4, 2.4); // Warm key sunlight
+  dirLight.position.set(4, 10, 3);
+  world.createTransformEntity(dirLight);
 
   camera.position.set(-4, 1.5, -6);
   camera.rotateY(-Math.PI * 0.75);

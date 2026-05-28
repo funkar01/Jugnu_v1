@@ -668,6 +668,20 @@ export class JugnuSystem extends createSystem({
 
     this.queries.jugnu.entities.forEach((entity) => {
       instructionStep = entity.getValue(Jugnu, "instructionStep") as number;
+
+      // Detect index fingers touching together for step 1 -> step 2 transition
+      if (instructionStep === 1) {
+          const leftSource = this.input.getPrimaryInputSource('left');
+          const rightSource = this.input.getPrimaryInputSource('right');
+          if (leftSource && leftSource.hand && rightSource && rightSource.hand) {
+              const dist = this.leftPinchTip.distanceTo(this.rightPinchTip);
+              if (dist < 0.03) { // 3cm threshold
+                  entity.setValue(Jugnu, "instructionStep", 2);
+                  console.log("[JugnuSystem] Step 1 complete: index fingers touched! Advancing to Step 2.");
+              }
+          }
+      }
+
       const obj = entity.object3D;
       const jugModel = obj as JugnuV3Model;
       if (!obj || !jugModel || typeof jugModel.update !== 'function') return;
@@ -690,7 +704,7 @@ export class JugnuSystem extends createSystem({
       if (!this.basePositions.has(entity)) {
         this.basePositions.set(entity, obj.position.clone());
         this.baseQuats.set(entity, obj.quaternion.clone());
-        obj.scale.setScalar(0.25);
+        obj.scale.setScalar(0.03); // Initial compact baseline scale (tiny)
         this.baseScales.set(entity, obj.scale.clone());
       }
       const basePos = this.basePositions.get(entity)!;
@@ -698,8 +712,18 @@ export class JugnuSystem extends createSystem({
       
       this.player.head.getWorldPosition(this.headPos);
       const distToPlayer = obj.position.distanceTo(this.headPos);
-      const targetScale = this.interactionState === 'Attached' || this.interactionState === 'LerpingToHand' 
-          ? 0.12 : THREE.MathUtils.clamp(distToPlayer * 0.25, 0.15, 0.5);
+      
+      // Baseline scale is 0.03 (tiny). When pinched (Attached or LerpingToHand), stay at 0.03.
+      // When released close to us (within 1m), stay at 0.03.
+      // When thrown away, increase in size up to a max of 0.25.
+      let targetScale = 0.03;
+      if (this.interactionState === 'Attached' || this.interactionState === 'LerpingToHand') {
+          targetScale = 0.03;
+      } else {
+          if (distToPlayer > 1.0) {
+              targetScale = THREE.MathUtils.clamp(0.03 + (distToPlayer - 1.0) * 0.11, 0.03, 0.25);
+          }
+      }
       
       this.tempScale.setScalar(targetScale);
       baseScale.lerp(this.tempScale, 4.0 * safeDt);
@@ -832,7 +856,19 @@ export class JugnuSystem extends createSystem({
 
     // Update Instruction Board Position & Text
     if (activeJugnuModel && this.instructionBoard) {
-        this.instructionBoard.visible = false;
+        if (instructionStep < 3) {
+            this.instructionBoard.visible = true;
+            this.instructionBoard.setStep(instructionStep);
+            
+            // Position it nicely 22cm above Jugnu and face the player
+            this.instructionBoard.position.copy(activeJugnuPos);
+            this.instructionBoard.position.y += 0.22;
+            
+            this.player.head.getWorldPosition(this.headPos);
+            this.instructionBoard.lookAt(this.headPos);
+        } else {
+            this.instructionBoard.visible = false;
+        }
     }
     
     if (activeJugnuPos.lengthSq() > 0) {

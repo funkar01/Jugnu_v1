@@ -1,6 +1,69 @@
 import { createSystem, AssetManager } from "@iwsdk/core";
 import * as THREE from "three";
 
+const applyStadiumMaterial = (mat: THREE.Material | undefined, name: string, parentName: string): THREE.Material => {
+    const newMat = new THREE.MeshStandardMaterial();
+    if (mat) {
+        if (typeof (mat as any).copy === 'function') {
+            try {
+                newMat.copy(mat as any);
+            } catch (e) {
+                if ((mat as any).color) newMat.color.copy((mat as any).color);
+                if ((mat as any).map) newMat.map = (mat as any).map;
+            }
+        } else {
+            if ((mat as any).color) newMat.color.copy((mat as any).color);
+            if ((mat as any).map) newMat.map = (mat as any).map;
+        }
+    }
+    
+    const isMatch = (str: string) => name.includes(str) || parentName.includes(str);
+    
+    if (isMatch('field') || isMatch('grass')) {
+        newMat.color.setHex(0x113e19);
+        newMat.roughness = 0.85;
+        newMat.metalness = 0.05;
+    } else if (isMatch('pitch') || isMatch('wicket')) {
+        newMat.color.setHex(0xc2a679);
+        newMat.roughness = 0.9;
+        newMat.metalness = 0.0;
+    } else if (isMatch('stands') || isMatch('seating') || isMatch('seats')) {
+        if (name.includes('.001') || name.includes('1')) {
+            newMat.color.setHex(0xaa2222); // RCB Red stands
+        } else if (name.includes('.002') || name.includes('2')) {
+            newMat.color.setHex(0xcc9900); // RCB Gold stands
+        } else if (name.includes('.003') || name.includes('3')) {
+            newMat.color.setHex(0xe0115f); // RR Pink stands
+        } else {
+            newMat.color.setHex(0x0a1e3f); // Corporate stadium blue
+        }
+        newMat.roughness = 0.6;
+        newMat.metalness = 0.2;
+    } else if (isMatch('boundary') || isMatch('rope')) {
+        newMat.color.setHex(0x00ffff);
+        newMat.emissive.setHex(0x008888);
+        newMat.roughness = 0.2;
+        newMat.metalness = 0.5;
+    } else if (isMatch('floodlight') || isMatch('light')) {
+        newMat.color.setHex(0x334155);
+        newMat.roughness = 0.15;
+        newMat.metalness = 0.9;
+        newMat.emissive.setHex(0xffffff);
+    } else if (isMatch('roof') || isMatch('top') || isMatch('canopy')) {
+        newMat.color.setHex(0xe2e8f0);
+        newMat.roughness = 0.3;
+        newMat.metalness = 0.75;
+        newMat.transparent = true;
+        newMat.opacity = 0.92;
+    } else {
+        newMat.color.setHex(0x0f172a);
+        newMat.roughness = 0.45;
+        newMat.metalness = 0.55;
+    }
+    
+    return newMat;
+};
+
 export class CityMapSystem extends createSystem() {
     private mapRoot!: THREE.Group;
     private mapContent!: THREE.Group; // Group for panning content
@@ -115,6 +178,23 @@ export class CityMapSystem extends createSystem() {
         if (stadiumAsset) {
             this.stadiumMesh = stadiumAsset.scene.clone();
             
+            // Traverse child meshes to apply realistic PBR stadium materials
+            this.stadiumMesh.traverse((child: any) => {
+                if (child instanceof THREE.Mesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    
+                    const name = child.name.toLowerCase();
+                    const parentName = child.parent ? child.parent.name.toLowerCase() : "";
+                    
+                    if (Array.isArray(child.material)) {
+                        child.material = child.material.map((m: any) => applyStadiumMaterial(m, name, parentName));
+                    } else {
+                        child.material = applyStadiumMaterial(child.material, name, parentName);
+                    }
+                }
+            });
+
             // Measure bounding box to scale it correctly to fit the map
             const box = new THREE.Box3().setFromObject(this.stadiumMesh);
             const size = new THREE.Vector3();
@@ -124,7 +204,7 @@ export class CityMapSystem extends createSystem() {
             const maxDim = Math.max(size.x, size.z);
             this.stadiumBaseScale = 0.20 / (maxDim || 1.0);
             this.stadiumMesh.scale.setScalar(this.stadiumBaseScale);
-            this.stadiumMesh.position.set(0, 0.008, 0);
+            this.stadiumMesh.position.set(0, -0.002, 0);
             this.mapContent.add(this.stadiumMesh);
         } else {
             // Fallback circular procedural stadium
@@ -135,7 +215,7 @@ export class CityMapSystem extends createSystem() {
             );
             fallbackGroup.add(outerWall);
             this.stadiumMesh = fallbackGroup as any;
-            this.stadiumMesh.position.set(0, 0.008, 0);
+            this.stadiumMesh.position.set(0, -0.002, 0);
             this.stadiumBaseScale = 1.0;
             this.mapContent.add(this.stadiumMesh);
         }
@@ -493,7 +573,7 @@ export class CityMapSystem extends createSystem() {
                 const distToCenter = Math.sqrt(px*px + pz*pz);
                 
                 if (distToCenter < mapRadius) {
-                    this.stadiumMesh.position.set(px, 0.008, pz);
+                    this.stadiumMesh.position.set(px, -0.002, pz);
                     this.stadiumMesh.visible = true;
                     
                     // Smoothly scale down as it reaches the edge

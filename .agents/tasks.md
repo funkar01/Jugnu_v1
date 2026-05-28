@@ -1,0 +1,57 @@
+# Task List - Minimap & Gesture Refinements
+
+- `[x]` Step 1 -> 2 Tutorial progression in `src/jugnu.ts`
+- `[x]` Raising Stadium Mesh vertically by 1cm (`-0.012` to `-0.002`)
+  - `[x]` In `src/cityMapSystem.ts`
+  - `[x]` In `src/domainExpansion.ts`
+- `[x]` Left Wrist Button minimap toggle implementation in `src/domainExpansion.ts`
+  - `[x]` Initialize wrist button mesh in `init()`
+  - `[x]` Track wrist joint position and update button position in `update()`
+  - `[x]` Index pointer proximity/tap detection to toggle `isTableSpawned`
+  - `[x]` Tutorial Step 2 -> 3 transition on tap
+- `[x]` Transition Minimap controls to Middle Finger Pinch
+  - `[x]` Create `getMiddleData()` helper in `src/domainExpansion.ts`
+  - `[x]` Refactor map rotation, two-handed scaling, selection bubbles, and outfield buttons pinch handlers to use middle finger pinch
+- `[x]` Integrate 360° Video for IPL Final View 1
+  - `[x]` Copy `view1.mp4` from `C:\Users\SSD\Pictures\Jugnu\360Videos\` to `public/360Videos/`
+  - `[x]` Update domainKeys array to use `"mivVideo"` at index 0 (IPL Final View 1)
+  - `[x]` Change the video element source to point to `"./360Videos/view1.mp4"`
+  - `[x]` Verify clean TypeScript compilation (`npx tsc --noEmit`)
+- `[x]` Jugnu Scale Refinements
+  - `[x]` Set Jugnu's base scale to stay tiny (0.03 scale) when close (<= 1m mark)
+  - `[x]` Keep scale at exactly 0.03 when pinched (Attached or LerpingToHand) to fit snugly in hand
+  - `[x]` Ensure Jugnu stays tiny (0.03) when released close to the user with no sudden scaling/jumping
+  - `[x]` Make Jugnu scale up dynamically when thrown away (distToPlayer > 1m) up to a max of 0.25 to maintain visibility
+- `[x]` Realistic IPL Stadium & AR TV Billboard
+  - `[x]` Implement recursive PBR realistic stadium material traversal inside `src/domainExpansion.ts`
+  - `[x]` Implement matching recursive material traversal inside `src/cityMapSystem.ts`
+  - `[x]` Add pitch volumetric SpotLight inside `src/domainExpansion.ts`
+  - `[x]` Construct floating glassmorphic AR matchup billboard with dynamic canvas texture inside `src/domainExpansion.ts`
+  - `[x]` Implement billboarding and float animation for the AR matchup banner inside `src/domainExpansion.ts` update loop
+  - `[x]` Smooth scale-dependent `fadeFactor` (range 1.8 to 3.0 scale) for both AR Billboard and Location Pin to fade out together beautifully in unison as the stadium is scaled/zoomed up
+  - `[x]` **[B2B Broadcast Showcase]** Floating analytics query buttons underneath the AR scoreboard with glowing canvas labels (`ANALYZE: SIX`, `ANALYZE: WKT`, `ANALYZE: DOT`)
+  - `[x]` **[B2B Broadcast Showcase]** Proximity index finger poke checks, hover scale feedback (`1.18x`), haptic micro-vibrations, and tap scenario visualizations
+  - `[x]` **[B2B Broadcast Showcase]** High-end telemetry graphics dashboard displaying live compute status, vector calculation countdowns, and detailed ball-by-ball summaries (exit velocity, launch angle, spin rates, defensive control indexes) upon trajectory completion
+  - `[x]` **[B2B Showcase]** Real-time Hawk-Eye ball tracking spline curve (`THREE.CatmullRomCurve3`) flying over the mini Wankhede wicket pitch
+  - `[x]` **[B2B Showcase]** Trailing ball neon glow ribbon, horizontal grass-landing bounce radar ripple, and stumps flashing red red to signal dismissals
+  - `[x]` **[B2B Showcase]** B2B passive telemetry loop streaming random spline curves every 7-12 seconds when the user is idle to keep the field alive
+- `[x]` Premium Spatial UI/UX Enhancements
+  - `[x]` Upgrade selection bubbles to glossy reflective `MeshStandardMaterial` with emissive cyan neon edge glow for volumetric glass bubble look
+  - `[x]` Implement physical compression and high-frequency vibration during bubble charge to give strong visual energy feedback
+  - `[x]` Push hovered player cards $+1.6\text{cm}$ closer to player's eyes along the view vector (Z depth offset) for clean focus-directed hierarchy
+- `[x]` Verification and validation
+  - `[x]` Run typescript check `npx tsc --noEmit`
+  - `[x]` Verify clean production build `npm run build`
+- `[x]` B2B Holographic Virtual Studio Rehaul
+  - `[x]` Spin Concentric Telemetry Rings in `src/domainExpansion.ts`
+  - `[x]` Overhaul Player Stats Cards with obsidian backing, neon frames, and golden corner brackets in `src/domainExpansion.ts`
+  - `[x]` Sync opacities and apply 3D depth parallax hover shifts in `src/domainExpansion.ts`
+  - `[x]` Implement Holographic Holodeck Grid fallback environment in `src/index.ts`
+- `[x]` Dynamic 3D Player Models & Ring Stabilization Rehaul
+  - `[x]` Overhaul Player meshes to dynamic stylized 3D figures in `src/domainExpansion.ts`
+  - `[x]` Implement active running limb cycle and reset logic in `src/domainExpansion.ts`
+  - `[x]` Disable player underfoot ring rotation and adjust height to fix clipping in `src/domainExpansion.ts`
+- `[x]` Verification and validation
+  - `[x]` Run typescript check `npx tsc --noEmit`
+  - `[x]` Verify clean production build `npm run build`
+
