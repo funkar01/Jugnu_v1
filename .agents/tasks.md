@@ -54,4 +54,19 @@
 - `[x]` Verification and validation
   - `[x]` Run typescript check `npx tsc --noEmit`
   - `[x]` Verify clean production build `npm run build`
+- `[x]` WebXR Onboarding Experience Architecture & Design Draft
+  - `[x]` Create detailed architecture overview for the 4-phase onboarding experience
+  - `[x]` Implement math & equations for hand-tracking gestures (wrist tap, pinch distance) and gaze tracking lock-on
+  - `[x]` Provide vertex displacement noise shader code structure for fluid energy deformations
+- `[x]` WebXR Onboarding Experience Code Implementation
+  - `[x]` Programmed full-screen dimming overlay shader and parented to player head
+  - `[x]` Coded wrist-tap joint tracking check with optional keyboard/pointer fallback
+  - `[x]` Implemented Phase 1 elastic-out spawn easing scaling Jugnu from 0.0 to 0.2
+  - `[x]` Designed Phase 2 squash-and-stretch mesh deformation and glassmorphic UI buttons
+  - `[x]` Overhauled Phase 3 hand joint pinch checking and golden glowing shader preset
+  - `[x]` Spatially anchored a procedural 3D cricket wicket and implemented 2s gaze lock trigger
+  - `[x]` Cast flowing 3D Catmull-Rom floor spline curves during Phase 4 navigation hand-off
+  - `[x]` Verified typecheck (tsc) and successful production build (npm run build)
+
+
 

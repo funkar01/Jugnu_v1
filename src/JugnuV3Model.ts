@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type Mood = 'bored' | 'calm' | 'happy' | 'sad' | 'bright' | 'blushing' | 'winking';
+export type Mood = 'bored' | 'calm' | 'happy' | 'sad' | 'bright' | 'blushing' | 'winking' | 'gold';
 
 export const MoodColors: Record<Mood, THREE.Color> = {
     'bored': new THREE.Color(0xa1c4fd),
@@ -9,7 +9,8 @@ export const MoodColors: Record<Mood, THREE.Color> = {
     'sad': new THREE.Color(0xc1a1fd),
     'bright': new THREE.Color(0xffff66),
     'blushing': new THREE.Color(0xffb6c1),
-    'winking': new THREE.Color(0x90ee90)
+    'winking': new THREE.Color(0x90ee90),
+    'gold': new THREE.Color(0xffaa44) // Golden glow
 };
 
 export const MoodCompColors: Record<Mood, THREE.Color> = {
@@ -19,7 +20,8 @@ export const MoodCompColors: Record<Mood, THREE.Color> = {
     'sad': new THREE.Color(0xfdfaa1), // Yellow-ish
     'bright': new THREE.Color(0x6666ff), // Blue-ish
     'blushing': new THREE.Color(0xb6ffc1), // Mint
-    'winking': new THREE.Color(0xff90ee) // Pink-ish
+    'winking': new THREE.Color(0xff90ee), // Pink-ish
+    'gold': new THREE.Color(0xffd700) // Deep gold edge
 };
 
 const ExpressionPaths: Record<Mood, string> = {
@@ -29,7 +31,8 @@ const ExpressionPaths: Record<Mood, string> = {
     'sad': '/Expressions_V1/Sad Violet.png',
     'bright': '/Expressions_V1/Bright Yellow.png',
     'blushing': '/Expressions_V1/Blushing Pink.png',
-    'winking': '/Expressions_V1/Winking Green.png'
+    'winking': '/Expressions_V1/Winking Green.png',
+    'gold': '/Expressions_V1/Bright Yellow.png' // Reuses bright expression
 };
 
 export class JugnuV3Model extends THREE.Group {

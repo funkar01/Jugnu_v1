@@ -86,7 +86,7 @@ export class JugnuInstructionBoard extends THREE.Group {
         if (step === 0) {
             instructionText = "Pinch me with your index & thumb!";
         } else if (step === 1) {
-            instructionText = "Touch your index fingers together!";
+            instructionText = "Lock eyes (gaze) on me for 2 seconds to find me!";
         } else if (step === 2) {
             instructionText = "Tap the glowing button on your left wrist!";
         }

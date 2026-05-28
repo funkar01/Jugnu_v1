@@ -1,4 +1,4 @@
-import { createComponent, createSystem, Pressed, Vector3, PhysicsBody, PhysicsState, PhysicsManipulation, PhysicsShape, PhysicsShapeType } from "@iwsdk/core";
+import { createComponent, createSystem, Pressed, Vector3, PhysicsBody, PhysicsState, PhysicsManipulation, PhysicsShape, PhysicsShapeType, Interactable } from "@iwsdk/core";
 import { MoodColors } from "./JugnuV3Model.js";
 import type { JugnuV3Model, Mood } from "./JugnuV3Model.js";
 import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
@@ -9,7 +9,10 @@ const BACKEND_URL = ((import.meta as any).env.VITE_BACKEND_URL as string) || "/a
 
 import { JugnuInstructionBoard } from "./JugnuInstructionBoard.js";
 
-export const Jugnu = createComponent("Jugnu", { instructionStep: { type: "Int8", default: 0 } });
+export const Jugnu = createComponent("Jugnu", { 
+  instructionStep: { type: "Int8", default: 0 },
+  onboardingPhase: { type: "Int8", default: 0 }
+});
 export const TranscriptUI = createComponent("TranscriptUI", {});
 
 export class JugnuSystem extends createSystem({
@@ -45,7 +48,7 @@ export class JugnuSystem extends createSystem({
   private headPos!: THREE.Vector3;
 
   // Interaction & Room State
-  private interactionState: 'WaitingForRoom' | 'Idle' | 'Following' | 'LerpingToHand' | 'Attached' | 'Anchored' = 'WaitingForRoom';
+  private interactionState: 'WaitingForRoom' | 'OnboardingWakeUp' | 'OnboardingIntro' | 'OnboardingTutorial' | 'OnboardingNavigation' | 'Idle' | 'Following' | 'LerpingToHand' | 'Attached' | 'Anchored' = 'WaitingForRoom';
   private roomPromptTimer = 0;
   private sceneCaptureRequested = false;
   private roomWaitTimer = 1.0;
@@ -63,6 +66,30 @@ export class JugnuSystem extends createSystem({
   private attractionRadius = 0.3;
   private alwaysAttractOnPinch = true;
 
+  // Onboarding specific state variables
+  private onboardingPhase: number = 0; // 0: Wake-Up, 1: Intro UI, 2: Tutorial, 3: Navigation, 4: Complete
+  private dimOverlayMat!: THREE.ShaderMaterial;
+  private dimOverlayMesh!: THREE.Mesh;
+  private dimIntensity: number = 0.8;
+  private isSpawning: boolean = false;
+  private spawnTimer: number = 0.0;
+  private desktopWristTapTriggered: boolean = false;
+  private wakeUpTimer: number = 0.0;
+  private uiPanelBg!: THREE.Mesh;
+  private btnPlay!: THREE.Mesh;
+  private btnSkip!: THREE.Mesh;
+  private uiPanelGroup!: THREE.Group;
+  private panelBgEntity!: any;
+  private btnPlayEntity!: any;
+  private btnSkipEntity!: any;
+  private wicketGroup!: THREE.Group;
+  private gazeTimer: number = 0.0;
+  private celebrationActive: boolean = false;
+  private celebrationTimer: number = 0.0;
+  private spinTimer: number = 0.0;
+  private splineMesh!: THREE.Mesh;
+  private wristTapTimer: number = 0.0;
+
   // Spring & Movement Constants
   private velocity = new THREE.Vector3();
   private springStiffness = 150.0;
@@ -76,7 +103,7 @@ export class JugnuSystem extends createSystem({
   // Particle Trail System
   private particleMesh!: THREE.InstancedMesh;
   private maxParticles = 2000;
-  private particleData: { active: boolean, pos: THREE.Vector3, life: number, maxLife: number }[] = [];
+  private particleData: { active: boolean, pos: THREE.Vector3, vel: THREE.Vector3, life: number, maxLife: number }[] = [];
   private nextParticleIdx = 0;
   private lastJugnuPos = new THREE.Vector3();
 
@@ -111,14 +138,53 @@ export class JugnuSystem extends createSystem({
         dummy.updateMatrix();
         this.particleMesh.setMatrixAt(i, dummy.matrix);
         this.particleMesh.setColorAt(i, initialColor);
-        this.particleData.push({ active: false, pos: new THREE.Vector3(), life: 0, maxLife: 1.0 });
+        this.particleData.push({ active: false, pos: new THREE.Vector3(), vel: new THREE.Vector3(), life: 0, maxLife: 1.0 });
     }
     if (this.particleMesh.instanceColor) this.particleMesh.instanceColor.needsUpdate = true;
     this.world.createTransformEntity(this.particleMesh);
 
+    // Initialize Pass-Through Dimming Overlay Shader Mesh
+    this.dimOverlayMat = new THREE.ShaderMaterial({
+      uniforms: {
+        u_dimIntensity: { value: 0.8 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position.xy, 0.0, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float u_dimIntensity;
+        varying vec2 vUv;
+        void main() {
+          gl_FragColor = vec4(0.0, 0.0, 0.0, u_dimIntensity);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+    });
+    this.dimOverlayMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.dimOverlayMat);
+    this.dimOverlayMesh.renderOrder = -100; // Draw as early as possible
+    this.dimOverlayMesh.visible = false;
+    this.player.head.add(this.dimOverlayMesh);
+    this.dimOverlayMesh.position.set(0, 0, -0.1);
+
     // Initialize UI and Keys
     this.createExpressionUI();
-    window.addEventListener('keydown', (e) => this.handleKeyDown(e));
+    window.addEventListener('keydown', (e) => {
+        this.handleKeyDown(e);
+        if (e.key.toLowerCase() === 't') {
+            this.desktopWristTapTriggered = true;
+        }
+    });
+    window.addEventListener('click', () => {
+        if (this.onboardingPhase === 0 && this.interactionState === 'OnboardingWakeUp') {
+            this.desktopWristTapTriggered = true;
+        }
+    });
 
     // Handle Click
     this.queries.jugnuClicked.subscribe("qualify", async (entity) => {
@@ -357,24 +423,39 @@ export class JugnuSystem extends createSystem({
   }
 
   activateJugnu() {
-      this.interactionState = 'Following';
-      
-      this.player.head.getWorldPosition(this.headPos);
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
-      forward.y = 0; 
-      forward.normalize();
-      
-      const spawnPos = this.headPos.clone().add(forward.multiplyScalar(0.8));
-      spawnPos.y = this.headPos.y - 0.2; 
-
-      this.centerPos.copy(spawnPos); 
-
-      this.queries.jugnu.entities.forEach(e => { 
-          if (e.object3D) {
-              e.object3D.position.copy(spawnPos);
-              e.object3D.visible = true; 
+      if (this.onboardingPhase === 0) {
+          this.interactionState = 'OnboardingWakeUp';
+          this.queries.jugnu.entities.forEach(e => {
+              if (e.object3D) {
+                  e.object3D.visible = false; // Hide until wrist tap
+              }
+          });
+          if (this.dimOverlayMesh) {
+              this.dimOverlayMesh.visible = true;
           }
-      });
+          if (this.dimOverlayMat) {
+              this.dimOverlayMat.uniforms.u_dimIntensity.value = 0.8;
+          }
+      } else {
+          this.interactionState = 'Following';
+          
+          this.player.head.getWorldPosition(this.headPos);
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+          forward.y = 0; 
+          forward.normalize();
+          
+          const spawnPos = this.headPos.clone().add(forward.multiplyScalar(0.8));
+          spawnPos.y = this.headPos.y - 0.2; 
+
+          this.centerPos.copy(spawnPos); 
+
+          this.queries.jugnu.entities.forEach(e => { 
+              if (e.object3D) {
+                  e.object3D.position.copy(spawnPos);
+                  e.object3D.visible = true; 
+              }
+          });
+      }
   }
 
   private noise(t: number, seed: number): number {
@@ -411,7 +492,6 @@ export class JugnuSystem extends createSystem({
        const tx = thumbPose.transform.position.x;
        const ty = thumbPose.transform.position.y;
        const tz = thumbPose.transform.position.z;
-       
        const distSq = (ix - tx)**2 + (iy - ty)**2 + (iz - tz)**2;
        const isPinching = distSq < 0.02 * 0.02;
 
@@ -421,6 +501,299 @@ export class JugnuSystem extends createSystem({
        return isPinching;
     }
     return false;
+  }
+
+  private checkWristTap(frame: XRFrame, refSpace: XRReferenceSpace): boolean {
+    const leftHand = this.input.getPrimaryInputSource('left');
+    const rightHand = this.input.getPrimaryInputSource('right');
+    if (!leftHand || !leftHand.hand || !rightHand || !rightHand.hand || typeof frame.getJointPose !== 'function') return false;
+
+    const leftWristJoint = leftHand.hand.get('wrist');
+    const rightIndexTipJoint = rightHand.hand.get('index-finger-tip');
+    if (!leftWristJoint || !rightIndexTipJoint) return false;
+
+    const leftWristPose = frame.getJointPose(leftWristJoint, refSpace);
+    const rightIndexPose = frame.getJointPose(rightIndexTipJoint, refSpace);
+    if (!leftWristPose || !rightIndexPose) return false;
+
+    const lx = leftWristPose.transform.position.x;
+    const ly = leftWristPose.transform.position.y;
+    const lz = leftWristPose.transform.position.z;
+    const rx = rightIndexPose.transform.position.x;
+    const ry = rightIndexPose.transform.position.y;
+    const rz = rightIndexPose.transform.position.z;
+
+    const distSq = (lx - rx) ** 2 + (ly - ry) ** 2 + (lz - rz) ** 2;
+    return distSq < 0.05 * 0.05; // 5cm threshold
+  }
+
+  private createCricketWicket(): THREE.Group {
+      const group = new THREE.Group();
+      const stumpMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.5 }); // Wooden brown
+      const bailMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.5 });
+      
+      // 3 stumps
+      for (let i = 0; i < 3; i++) {
+          const stump = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.7, 8), stumpMat);
+          stump.position.set((i - 1) * 0.15, 0.35, 0);
+          group.add(stump);
+      }
+      
+      // 2 bails
+      const bail1 = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.14, 8), bailMat);
+      bail1.rotation.z = Math.PI / 2;
+      bail1.position.set(-0.075, 0.705, 0);
+      group.add(bail1);
+
+      const bail2 = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.14, 8), bailMat);
+      bail2.rotation.z = Math.PI / 2;
+      bail2.position.set(0.075, 0.705, 0);
+      group.add(bail2);
+
+      return group;
+  }
+
+  private spawnWicketAndHide() {
+      if (!this.wicketGroup) {
+          this.wicketGroup = this.createCricketWicket();
+          this.world.scene.add(this.wicketGroup);
+      }
+
+      const playerPos = new THREE.Vector3();
+      this.player.head.getWorldPosition(playerPos);
+      const playerForward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+      playerForward.y = 0;
+      playerForward.normalize();
+
+      const side = new THREE.Vector3(-playerForward.z, 0, playerForward.x);
+      const wicketPos = playerPos.clone().add(playerForward.multiplyScalar(2.0)).add(side.multiplyScalar(0.4));
+      wicketPos.y = -0.002; // Position on floor
+
+      this.wicketGroup.position.copy(wicketPos);
+      this.wicketGroup.visible = true;
+
+      const toWicket = new THREE.Vector3().subVectors(wicketPos, playerPos).normalize();
+      const hidePos = wicketPos.clone().add(toWicket.multiplyScalar(0.35));
+      hidePos.y = 0.45; // float height
+
+      this.interactionState = 'OnboardingTutorial';
+      this.attachedHand = null;
+
+      this.queries.jugnu.entities.forEach(e => {
+          if (e.object3D) {
+              e.object3D.position.copy(hidePos);
+              const model = e.object3D as JugnuV3Model;
+              if (model && typeof model.setMood === 'function') {
+                  model.setMood('winking');
+              }
+              const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
+              if (currentState !== PhysicsState.Kinematic) {
+                  if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
+                  e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+              }
+          }
+      });
+  }
+
+  private createSplinePathway() {
+      let jugnuPos = new THREE.Vector3();
+      this.queries.jugnu.entities.forEach(e => { if (e.object3D) jugnuPos.copy(e.object3D.position); });
+
+      const points = [
+          new THREE.Vector3(jugnuPos.x, 0.01, jugnuPos.z),
+          new THREE.Vector3(jugnuPos.x, 0.01, jugnuPos.z - 1.0),
+          new THREE.Vector3(jugnuPos.x + 0.5, 0.01, jugnuPos.z - 2.5),
+          new THREE.Vector3(jugnuPos.x, 0.01, jugnuPos.z - 5.0)
+      ];
+      
+      const curve = new THREE.CatmullRomCurve3(points);
+      const tubeGeom = new THREE.TubeGeometry(curve, 64, 0.015, 8, false);
+      const splineMat = new THREE.ShaderMaterial({
+          uniforms: {
+              u_time: { value: 0.0 },
+              u_color: { value: new THREE.Color(0x00ffff) }
+          },
+          vertexShader: `
+              varying vec2 vUv;
+              void main() {
+                  vUv = uv;
+                  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+              }
+          `,
+          fragmentShader: `
+              uniform float u_time;
+              uniform vec3 u_color;
+              varying vec2 vUv;
+              void main() {
+                  float flow = sin(vUv.x * 20.0 - u_time * 10.0) * 0.5 + 0.5;
+                  float alpha = smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.85, vUv.y);
+                  gl_FragColor = vec4(u_color * (0.3 + flow * 0.7), alpha * 0.85);
+              }
+          `,
+          transparent: true,
+          depthWrite: false
+      });
+      
+      this.splineMesh = new THREE.Mesh(tubeGeom, splineMat);
+      this.world.scene.add(this.splineMesh);
+  }
+
+  private triggerOnboardingCelebration() {
+      let jugnuPos = new THREE.Vector3();
+      this.queries.jugnu.entities.forEach(e => { if (e.object3D) jugnuPos.copy(e.object3D.position); });
+
+      const colors = [new THREE.Color(0xffd700), new THREE.Color(0x00ffff), new THREE.Color(0xff66cc)];
+      
+      const numToSpawn = 120;
+      for (let j = 0; j < numToSpawn; j++) {
+          const pIdx = this.nextParticleIdx;
+          const p = this.particleData[pIdx];
+          p.active = true;
+          p.pos.copy(jugnuPos);
+          
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos((Math.random() * 2) - 1);
+          const speed = 1.0 + Math.random() * 2.0;
+          (p as any).vel = new THREE.Vector3(
+              Math.sin(phi) * Math.cos(theta) * speed,
+              Math.sin(phi) * Math.sin(theta) * speed,
+              Math.cos(phi) * speed
+          );
+          
+          p.life = p.maxLife = 1.0 + Math.random() * 0.5;
+          
+          const col = colors[Math.floor(Math.random() * colors.length)];
+          this.particleMesh.setColorAt(pIdx, col);
+          
+          this.nextParticleIdx = (this.nextParticleIdx + 1) % this.maxParticles;
+      }
+      if (this.particleMesh.instanceColor) this.particleMesh.instanceColor.needsUpdate = true;
+  }
+
+  private createOnboardingUI() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)'; // Dark slate background
+      ctx.strokeStyle = '#00ffff'; // Cyan border
+      ctx.lineWidth = 4;
+      
+      // Draw rounded rect manually or using roundRect if available
+      if (typeof ctx.roundRect === 'function') {
+          ctx.beginPath();
+          ctx.roundRect(10, 10, 492, 236, 15);
+          ctx.fill();
+          ctx.stroke();
+      } else {
+          ctx.fillRect(10, 10, 492, 236);
+          ctx.strokeRect(10, 10, 492, 236);
+      }
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText("Hey! I'm Jugnu,", 256, 80);
+      ctx.fillText("your Antigravity companion.", 256, 120);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+      const geom = new THREE.PlaneGeometry(0.8, 0.4);
+      this.uiPanelBg = new THREE.Mesh(geom, material);
+
+      const btn1Canvas = document.createElement('canvas');
+      btn1Canvas.width = 256;
+      btn1Canvas.height = 64;
+      const btn1Ctx = btn1Canvas.getContext('2d')!;
+      btn1Ctx.fillStyle = '#10b981'; // Green
+      if (typeof btn1Ctx.roundRect === 'function') {
+          btn1Ctx.beginPath();
+          btn1Ctx.roundRect(5, 5, 246, 54, 8);
+          btn1Ctx.fill();
+      } else {
+          btn1Ctx.fillRect(5, 5, 246, 54);
+      }
+      btn1Ctx.fillStyle = '#ffffff';
+      btn1Ctx.font = 'bold 18px sans-serif';
+      btn1Ctx.textAlign = 'center';
+      btn1Ctx.fillText("Play Tutorial (Fun)", 128, 36);
+
+      const btn1Tex = new THREE.CanvasTexture(btn1Canvas);
+      btn1Tex.colorSpace = THREE.SRGBColorSpace;
+      const btn1Mat = new THREE.MeshBasicMaterial({ map: btn1Tex });
+      const btn1Geom = new THREE.PlaneGeometry(0.35, 0.1);
+      this.btnPlay = new THREE.Mesh(btn1Geom, btn1Mat);
+      this.btnPlay.position.set(-0.2, -0.1, 0.01);
+      this.uiPanelBg.add(this.btnPlay);
+
+      const btn2Canvas = document.createElement('canvas');
+      btn2Canvas.width = 256;
+      btn2Canvas.height = 64;
+      const btn2Ctx = btn2Canvas.getContext('2d')!;
+      btn2Ctx.fillStyle = '#ef4444'; // Red
+      if (typeof btn2Ctx.roundRect === 'function') {
+          btn2Ctx.beginPath();
+          btn2Ctx.roundRect(5, 5, 246, 54, 8);
+          btn2Ctx.fill();
+      } else {
+          btn2Ctx.fillRect(5, 5, 246, 54);
+      }
+      btn2Ctx.fillStyle = '#ffffff';
+      btn2Ctx.font = 'bold 18px sans-serif';
+      btn2Ctx.textAlign = 'center';
+      btn2Ctx.fillText("Skip to Stadium", 128, 36);
+
+      const btn2Tex = new THREE.CanvasTexture(btn2Canvas);
+      btn2Tex.colorSpace = THREE.SRGBColorSpace;
+      const btn2Mat = new THREE.MeshBasicMaterial({ map: btn2Tex });
+      const btn2Geom = new THREE.PlaneGeometry(0.35, 0.1);
+      this.btnSkip = new THREE.Mesh(btn2Geom, btn2Mat);
+      this.btnSkip.position.set(0.2, -0.1, 0.01);
+      this.uiPanelBg.add(this.btnSkip);
+
+      this.uiPanelBg.visible = false;
+      this.world.scene.add(this.uiPanelBg);
+
+      // Create entities
+      this.panelBgEntity = this.world.createTransformEntity(this.uiPanelBg);
+      this.btnPlayEntity = this.world.createTransformEntity(this.btnPlay, { parent: this.panelBgEntity });
+      this.btnSkipEntity = this.world.createTransformEntity(this.btnSkip, { parent: this.panelBgEntity });
+  }
+
+  private showOnboardingUI() {
+      if (!this.uiPanelBg) {
+          this.createOnboardingUI();
+      }
+      this.uiPanelBg.visible = true;
+      this.btnPlay.visible = true;
+      this.btnSkip.visible = true;
+
+      if (this.btnPlayEntity && !this.btnPlayEntity.hasComponent(Interactable)) {
+          this.btnPlayEntity.addComponent(Interactable);
+      }
+      if (this.btnSkipEntity && !this.btnSkipEntity.hasComponent(Interactable)) {
+          this.btnSkipEntity.addComponent(Interactable);
+      }
+  }
+
+  private hideOnboardingUI() {
+      if (this.uiPanelBg) {
+          this.uiPanelBg.visible = false;
+      }
+      if (this.btnPlay) {
+          this.btnPlay.visible = false;
+      }
+      if (this.btnSkip) {
+          this.btnSkip.visible = false;
+      }
+
+      if (this.btnPlayEntity && this.btnPlayEntity.hasComponent(Interactable)) {
+          this.btnPlayEntity.removeComponent(Interactable);
+      }
+      if (this.btnSkipEntity && this.btnSkipEntity.hasComponent(Interactable)) {
+          this.btnSkipEntity.removeComponent(Interactable);
+      }
   }
 
   update(dt: number) {
@@ -668,9 +1041,10 @@ export class JugnuSystem extends createSystem({
 
     this.queries.jugnu.entities.forEach((entity) => {
       instructionStep = entity.getValue(Jugnu, "instructionStep") as number;
+      this.onboardingPhase = entity.getValue(Jugnu, "onboardingPhase") as number;
 
       // Detect index fingers touching together for step 1 -> step 2 transition
-      if (instructionStep === 1) {
+      if (this.onboardingPhase === 4 && instructionStep === 1) {
           const leftSource = this.input.getPrimaryInputSource('left');
           const rightSource = this.input.getPrimaryInputSource('right');
           if (leftSource && leftSource.hand && rightSource && rightSource.hand) {
@@ -713,15 +1087,16 @@ export class JugnuSystem extends createSystem({
       this.player.head.getWorldPosition(this.headPos);
       const distToPlayer = obj.position.distanceTo(this.headPos);
       
-      // Baseline scale is 0.03 (tiny). When pinched (Attached or LerpingToHand), stay at 0.03.
-      // When released close to us (within 1m), stay at 0.03.
-      // When thrown away, increase in size up to a max of 0.25.
-      let targetScale = 0.03;
-      if (this.interactionState === 'Attached' || this.interactionState === 'LerpingToHand') {
+      // Baseline scale is 0.2 during onboarding, and shrinks dynamically only post-onboarding
+      let targetScale = 0.2;
+      if (this.onboardingPhase === 4) {
           targetScale = 0.03;
-      } else {
-          if (distToPlayer > 1.0) {
-              targetScale = THREE.MathUtils.clamp(0.03 + (distToPlayer - 1.0) * 0.11, 0.03, 0.25);
+          if (this.interactionState === 'Attached' || this.interactionState === 'LerpingToHand') {
+              targetScale = 0.03;
+          } else {
+              if (distToPlayer > 1.0) {
+                  targetScale = THREE.MathUtils.clamp(0.03 + (distToPlayer - 1.0) * 0.11, 0.03, 0.25);
+              }
           }
       }
       
@@ -732,47 +1107,220 @@ export class JugnuSystem extends createSystem({
       const targetPinchProgress = isPinched ? 1.0 : 0.0;
       jugModel.pinchProgress = THREE.MathUtils.lerp(jugModel.pinchProgress || 0, targetPinchProgress, 5.0 * safeDt);
       
-      if (this.interactionState === 'Idle') {
-          if (this.throwTimer > 0) {
-              this.throwTimer -= safeDt;
-          } else {
-              this.interactionState = 'Anchored';
-              this.centerPos.copy(obj.position);
-              const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
-              if (currentState !== PhysicsState.Kinematic) {
-                  if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
-                  entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+      const isOnboardingActive = this.onboardingPhase < 4;
+      
+      if (isOnboardingActive) {
+          if (this.interactionState === 'OnboardingWakeUp') {
+              let wristTapped = false;
+              if (this.xrFrame && this.renderer.xr.isPresenting) {
+                  const refSpace = this.renderer.xr.getReferenceSpace();
+                  if (refSpace) {
+                      wristTapped = this.checkWristTap(this.xrFrame, refSpace);
+                  }
+              }
+              if (this.desktopWristTapTriggered) {
+                  wristTapped = true;
+                  this.desktopWristTapTriggered = false;
+              }
+
+              if (wristTapped && !this.isSpawning && this.spawnTimer === 0.0) {
+                  this.isSpawning = true;
+                  const camPos = new THREE.Vector3();
+                  this.player.head.getWorldPosition(camPos);
+                  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+                  forward.y = 0;
+                  forward.normalize();
+                  const targetSpawnPos = camPos.clone().add(forward.multiplyScalar(0.5));
+                  targetSpawnPos.y = camPos.y - 0.15;
+
+                  obj.position.copy(targetSpawnPos);
+                  obj.scale.setScalar(0);
+                  obj.visible = true;
+              }
+
+              if (this.isSpawning) {
+                  this.spawnTimer += safeDt;
+                  const progress = Math.min(this.spawnTimer / 2.5, 1.0);
+                  
+                  // Bouncy elastic out
+                  const p = 0.4;
+                  const ease = Math.pow(2, -10 * progress) * Math.sin((progress - p / 4) * (2 * Math.PI) / p) + 1;
+                  obj.scale.setScalar(ease * 0.2);
+
+                  this.dimIntensity = 0.8 * (1.0 - progress);
+                  if (this.dimOverlayMat) {
+                      this.dimOverlayMat.uniforms.u_dimIntensity.value = this.dimIntensity;
+                  }
+
+                  if (progress >= 1.0) {
+                      this.isSpawning = false;
+                      if (this.dimOverlayMesh) this.dimOverlayMesh.visible = false;
+                      
+                      this.interactionState = 'OnboardingIntro';
+                      this.onboardingPhase = 1;
+                      entity.setValue(Jugnu, "onboardingPhase", 1);
+                      this.wakeUpTimer = 0.0;
+                      this.showOnboardingUI();
+                  }
+              }
+          } 
+          else if (this.interactionState === 'OnboardingIntro') {
+              this.wakeUpTimer += safeDt;
+              if (this.wakeUpTimer < 3.0) {
+                  const amplitude = 0.45;
+                  const decay = 1.6;
+                  const scaleY = 1.0 + amplitude * Math.sin(this.wakeUpTimer * 15.0) * Math.exp(-decay * this.wakeUpTimer);
+                  const scaleXZ = 1.0 / Math.sqrt(scaleY);
+                  obj.scale.set(0.2 * scaleXZ, 0.2 * scaleY, 0.2 * scaleXZ);
+              } else {
+                  obj.scale.setScalar(0.2);
+              }
+
+              // Position panel to the right of Jugnu and make it look at user
+              const rightOffset = new THREE.Vector3(0.5, 0.15, -0.1).applyQuaternion(this.player.head.quaternion);
+              const targetPanelPos = obj.position.clone().add(rightOffset);
+              
+              if (this.uiPanelBg) {
+                  this.uiPanelBg.position.lerp(targetPanelPos, 5.0 * safeDt);
+                  this.uiPanelBg.lookAt(this.headPos);
+              }
+
+              // Check buttons
+              if (this.btnPlayEntity && this.btnPlayEntity.hasComponent(Pressed)) {
+                  this.btnPlayEntity.removeComponent(Pressed);
+                  this.hideOnboardingUI();
+                  
+                  this.interactionState = 'OnboardingTutorial';
+                  this.onboardingPhase = 2;
+                  entity.setValue(Jugnu, "onboardingPhase", 2);
+                  entity.setValue(Jugnu, "instructionStep", 0); // Start tutorial step 0 (pinch)
+                  this.gazeTimer = 0.0;
+                  this.celebrationActive = false;
+              } else if (this.btnSkipEntity && this.btnSkipEntity.hasComponent(Pressed)) {
+                  this.btnSkipEntity.removeComponent(Pressed);
+                  this.hideOnboardingUI();
+                  
+                  this.interactionState = 'OnboardingNavigation';
+                  this.onboardingPhase = 3;
+                  entity.setValue(Jugnu, "onboardingPhase", 3);
+                  this.spinTimer = 0.0;
+              }
+          } 
+          else if (this.onboardingPhase === 2) {
+              if (instructionStep === 0) {
+                  const isPinchedNow = (this.interactionState as string) === 'Attached' || (this.interactionState as string) === 'LerpingToHand';
+                  if (isPinchedNow) {
+                      jugModel.setMood('gold');
+                      
+                      this.wristTapTimer += safeDt;
+                      if (this.wristTapTimer >= 1.5) {
+                          this.wristTapTimer = 0.0;
+                          this.spawnWicketAndHide();
+                          entity.setValue(Jugnu, "instructionStep", 1);
+                      }
+                  } else {
+                      this.wristTapTimer = 0.0;
+                  }
+              } 
+              else if (instructionStep === 1) {
+                  if (this.celebrationActive) {
+                      this.celebrationTimer += safeDt;
+                      if (this.celebrationTimer >= 2.0) {
+                          this.celebrationActive = false;
+                          
+                          this.interactionState = 'OnboardingNavigation';
+                          this.onboardingPhase = 3;
+                          entity.setValue(Jugnu, "onboardingPhase", 3);
+                          this.spinTimer = 0.0;
+                          if (this.wicketGroup) this.wicketGroup.visible = false;
+                      }
+                  } else {
+                      const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+                      const toJugnu = new THREE.Vector3().subVectors(obj.position, this.headPos).normalize();
+                      const dot = camDir.dot(toJugnu);
+                      const gazeCone = Math.cos(THREE.MathUtils.degToRad(8.0)); // 8 degree cone
+                      
+                      if (dot > gazeCone) {
+                          this.gazeTimer += safeDt;
+                          jugModel.setMood('blushing');
+                          if (this.gazeTimer >= 2.0) {
+                              this.celebrationActive = true;
+                              this.celebrationTimer = 0.0;
+                              this.triggerOnboardingCelebration();
+                          }
+                      } else {
+                          this.gazeTimer = 0.0;
+                          jugModel.setMood('winking');
+                      }
+                  }
+              }
+          } 
+          else if (this.interactionState === 'OnboardingNavigation') {
+              this.spinTimer += safeDt;
+              if (this.spinTimer < 1.5) {
+                  obj.rotation.y += safeDt * 25.0; // Fast spin
+                  const pulse = 1.0 + Math.sin(this.spinTimer * 20.0) * 0.15;
+                  obj.scale.setScalar(0.2 * pulse);
+              } else {
+                  if (!this.splineMesh) {
+                      this.createSplinePathway();
+                  }
+                  
+                  if (this.splineMesh && this.splineMesh.material instanceof THREE.ShaderMaterial) {
+                      this.splineMesh.material.uniforms.u_time.value += safeDt;
+                  }
+
+                  if (this.spinTimer >= 4.5) {
+                      this.onboardingPhase = 4;
+                      this.interactionState = 'Following';
+                      entity.setValue(Jugnu, "onboardingPhase", 4);
+                      entity.setValue(Jugnu, "instructionStep", 3);
+                  }
               }
           }
-      } else if (this.interactionState === 'Following' || this.interactionState === 'Anchored') {
-          if (this.interactionState === 'Following') {
-              const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
-              forward.y = 0; 
-              forward.normalize();
+      } else {
+          if (this.interactionState === 'Idle') {
+              if (this.throwTimer > 0) {
+                  this.throwTimer -= safeDt;
+              } else {
+                  this.interactionState = 'Anchored';
+                  this.centerPos.copy(obj.position);
+                  const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
+                  if (currentState !== PhysicsState.Kinematic) {
+                      if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
+                      entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+                  }
+              }
+          } else if (this.interactionState === 'Following' || this.interactionState === 'Anchored') {
+              if (this.interactionState === 'Following') {
+                  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+                  forward.y = 0; 
+                  forward.normalize();
+                  
+                  const targetCenter = this.headPos.clone().add(forward.multiplyScalar(1.25)); 
+                  targetCenter.y -= 0.22; 
+                  
+                  this.centerPos.lerp(targetCenter, 0.7 * safeDt);
+              }
+
+              const floatX = this.noise(this.floatTime * 0.18, 0) * this.floatRadius;
+              const floatY = this.noise(this.floatTime * 0.18, 1) * this.floatRadius * 0.5;
+              const floatZ = this.noise(this.floatTime * 0.18, 2) * this.floatRadius;
+              const hoverTarget = this.centerPos.clone().add(new THREE.Vector3(floatX, floatY, floatZ));
+
+              const displacement = new THREE.Vector3().subVectors(obj.position, hoverTarget);
+              const force = displacement.multiplyScalar(-this.springStiffness * 0.5); 
+              force.sub(this.velocity.clone().multiplyScalar(this.springDamping));
+
+              this.velocity.add(force.multiplyScalar(safeDt));
+              obj.position.add(this.velocity.clone().multiplyScalar(safeDt));
               
-              // Calmed down: float farther away (1.25m instead of 0.95m) and lower to stay out of directly blocking user face
-              const targetCenter = this.headPos.clone().add(forward.multiplyScalar(1.25)); 
-              targetCenter.y -= 0.22; 
-              
-              // Calmed down: slower following transition (0.7x instead of 1.0x) so it floats lazily
-              this.centerPos.lerp(targetCenter, 0.7 * safeDt);
+              entity.addComponent(PhysicsManipulation, { linearVelocity: [this.velocity.x, this.velocity.y, this.velocity.z] });
           }
+      }
 
-          const floatX = this.noise(this.floatTime * 0.18, 0) * this.floatRadius;
-          const floatY = this.noise(this.floatTime * 0.18, 1) * this.floatRadius * 0.5;
-          const floatZ = this.noise(this.floatTime * 0.18, 2) * this.floatRadius;
-          const hoverTarget = this.centerPos.clone().add(new THREE.Vector3(floatX, floatY, floatZ));
-
-          const displacement = new THREE.Vector3().subVectors(obj.position, hoverTarget);
-          const force = displacement.multiplyScalar(-this.springStiffness * 0.5); 
-          force.sub(this.velocity.clone().multiplyScalar(this.springDamping));
-
-          this.velocity.add(force.multiplyScalar(safeDt));
-          obj.position.add(this.velocity.clone().multiplyScalar(safeDt));
-          
-          entity.addComponent(PhysicsManipulation, { linearVelocity: [this.velocity.x, this.velocity.y, this.velocity.z] });
-
-      } else if (this.interactionState === 'LerpingToHand') {
+      // Pinch following and lerp physics when user is holding Jugnu (even during onboarding!)
+      if (this.interactionState === 'LerpingToHand') {
           const t = Math.min(this.lerpTime / this.lerpDuration, 1.0);
           const smoothT = t * t * (3 - 2 * t);
           const oldPos = obj.position.clone();
@@ -784,8 +1332,6 @@ export class JugnuSystem extends createSystem({
           }
       } else if (this.interactionState === 'Attached') {
           const hoverTarget = this.targetPos.clone();
-          // hoverTarget.y += 0.08; 
-
           const displacement = new THREE.Vector3().subVectors(obj.position, hoverTarget);
           const force = displacement.multiplyScalar(-this.springStiffness);
           force.sub(this.velocity.clone().multiplyScalar(this.springDamping));
@@ -884,6 +1430,9 @@ export class JugnuSystem extends createSystem({
                 p.active = false;
                 dummy.scale.setScalar(0);
             } else {
+                if ((p as any).vel) {
+                    p.pos.addScaledVector((p as any).vel, safeDt);
+                }
                 const t = p.life / p.maxLife;
                 const scale = t * t * t;
                 dummy.position.copy(p.pos);
