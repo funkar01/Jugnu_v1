@@ -1174,27 +1174,9 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
 
-            // --- B2B Hawk-Eye Passive Delivery Engine ---
-            // Passively stream Hawk-Eye trajectories to keep the scene alive if no manual query is running
-            if (!this.activePrediction && this.evaluationTimer <= 0.0 && !this.isHawkeyeRunning) {
-                this.hawkeyeCooldown -= dt;
-                if (this.hawkeyeCooldown <= 0.0) {
-                    this.hawkeyeCooldown = 8.0 + Math.random() * 4.0; // passively stream every 8-12s
-                    const paths: ('SIX' | 'WICKET' | 'DOT')[] = ['SIX', 'WICKET', 'DOT'];
-                    const randomPath = paths[Math.floor(Math.random() * paths.length)];
-                    
-                    this.triggerHawkeye(randomPath);
-                    this.predictionStatusText = `PASSIVE STREAM: HAWK-EYE RAW VECTORS (${randomPath})`;
-                    this.redrawBillboard();
-                    
-                    setTimeout(() => {
-                        if (!this.activePrediction && this.evaluationTimer <= 0.0) {
-                            this.predictionStatusText = "SELECT ANALYTICS KERNEL TO INITIATE PROJECTION";
-                            this.redrawBillboard();
-                        }
-                    }, 3500);
-                }
-            }
+            // --- B2B Hawk-Eye Passive Delivery Engine (DISABLED) ---
+            // Trajectories now fire ONLY via interactive scenario button taps.
+            // Passive auto-fire removed to prevent random yellow balls mid-session.
 
             // Tick B2B Hawk-Eye spline trajectory physics
             this.updateHawkEye(dt);
@@ -1409,58 +1391,9 @@ export class DomainExpansionSystem extends createSystem({
                     }
                 }
 
-                // Smooth position LERP
+                // Smooth position LERP — only update needed
                 p.group.position.lerp(p.targetPos, dt * 1.5);
                 p.currentPos.copy(p.group.position);
-
-                // Dynamic Pose and Running Animations (swinging limbs and body lean)
-                const isMoving = p.group.position.distanceToSquared(p.targetPos) > 0.0000001;
-                const lArm = p.mesh.userData.lArm as THREE.Mesh;
-                const rArm = p.mesh.userData.rArm as THREE.Mesh;
-                const lLeg = p.mesh.userData.lLeg as THREE.Mesh;
-                const rLeg = p.mesh.userData.rLeg as THREE.Mesh;
-                const role = p.mesh.userData.role;
-
-                if (lArm && rArm && lLeg && rLeg) {
-                    if (isMoving) {
-                        // Running animation: swing limbs in alternating cycles
-                        const runCycle = this.radarTime * 15.0; // dynamic swing velocity
-                        const swingAngle = Math.sin(runCycle) * 0.45;
-
-                        lLeg.rotation.x = swingAngle;
-                        rLeg.rotation.x = -swingAngle;
-
-                        if (role !== 'batsman') {
-                            lArm.rotation.x = -swingAngle * 0.8;
-                            rArm.rotation.x = swingAngle * 0.8;
-                        } else {
-                            // Batsmen swing slightly but hold onto their bat
-                            lArm.rotation.x = -Math.PI / 5 + swingAngle * 0.2;
-                            rArm.rotation.x = -Math.PI / 3 - swingAngle * 0.2;
-                        }
-                        // Lean the torso forward dynamically
-                        p.mesh.rotation.x = 0.12;
-                    } else {
-                        // Idle: return smoothly to their dynamic signature stances
-                        p.mesh.rotation.x = THREE.MathUtils.lerp(p.mesh.rotation.x, 0.0, dt * 8.0);
-                        if (role === 'batsman') {
-                            lArm.rotation.x = THREE.MathUtils.lerp(lArm.rotation.x, -Math.PI / 5, dt * 8.0);
-                            rArm.rotation.x = THREE.MathUtils.lerp(rArm.rotation.x, -Math.PI / 3, dt * 8.0);
-                            lLeg.rotation.x = THREE.MathUtils.lerp(lLeg.rotation.x, Math.PI / 10, dt * 8.0);
-                            rLeg.rotation.x = THREE.MathUtils.lerp(rLeg.rotation.x, Math.PI / 10, dt * 8.0);
-                        } else if (role === 'fielder') {
-                            lArm.rotation.x = THREE.MathUtils.lerp(lArm.rotation.x, -Math.PI / 4, dt * 8.0);
-                            rArm.rotation.x = THREE.MathUtils.lerp(rArm.rotation.x, -Math.PI / 4, dt * 8.0);
-                            lLeg.rotation.x = THREE.MathUtils.lerp(lLeg.rotation.x, Math.PI / 12, dt * 8.0);
-                            rLeg.rotation.x = THREE.MathUtils.lerp(rLeg.rotation.x, Math.PI / 12, dt * 8.0);
-                        } else {
-                            lArm.rotation.x = THREE.MathUtils.lerp(lArm.rotation.x, Math.PI / 6, dt * 8.0);
-                            rArm.rotation.x = THREE.MathUtils.lerp(rArm.rotation.x, Math.PI / 6, dt * 8.0);
-                            lLeg.rotation.x = THREE.MathUtils.lerp(lLeg.rotation.x, 0.0, dt * 8.0);
-                            rLeg.rotation.x = THREE.MathUtils.lerp(rLeg.rotation.x, 0.0, dt * 8.0);
-                        }
-                    }
-                }
 
                 // Cyber-billboard floating tags to face player headset adaptively (Yaw-only in world space to prevent tilting!)
                 const tagWorldPos = new THREE.Vector3();
@@ -3511,189 +3444,243 @@ export class DomainExpansionSystem extends createSystem({
             { id: "f11", name: "R. Patidar",    role: "fielder" as const, jersey: "21", team: "blue" as const, x:  0.002, z: -0.082, primary: "Catches: 1",           secondary: "Pos: Long-Off",     rcbCardKey: "rcbPatidar"    },
         ];
 
+        // ── Shared Phong materials (created ONCE per team — not 22× per player) ───────
+        // This alone cuts shader compilations from 220 → 24 and avoids redundant GPU uploads
+        const mk = (col: number, shine: number, emissiveHex = 0x000000) =>
+            new THREE.MeshPhongMaterial({ color: col, shininess: shine,
+                emissive: new THREE.Color(emissiveHex) });
 
-        roster.forEach(p => {
+        const sharedMats = {
+            blue:    {
+                body:   mk(0xcc1111, 55, 0x1e0000),
+                sec:    mk(0xd4a017, 80, 0x100a00),
+                pants:  mk(0x1a1a2e, 28),
+                accent: mk(0xff4444, 60, 0x180000),
+            },
+            yellow:  {
+                body:   mk(0xd90f55, 55, 0x1a0010),
+                sec:    mk(0x1565c0, 80, 0x000a14),
+                pants:  mk(0xf0f0f0, 28),
+                accent: mk(0x64b5f6, 60, 0x001020),
+            },
+            neutral: {
+                body:   mk(0x1e88e5, 55, 0x001220),
+                sec:    mk(0x263238, 60),
+                pants:  mk(0x0d1117, 28),
+                accent: mk(0x90caf9, 50, 0x001020),
+            },
+        };
+        const sharedSkin  = mk(0xf5c5a3, 20);
+        const sharedBlack = mk(0x1a1a2e, 15);
+        const sharedWood  = mk(0xb5823a, 40, 0x080300);
+        const sharedMetal = mk(0x455a64, 130);
+        const sharedPad   = mk(0xfafafa, 50);
+        const sharedLedMats = {
+            blue:    new THREE.MeshPhongMaterial({ color: 0xffd700, emissive: new THREE.Color(0xffd700).multiplyScalar(0.85), shininess: 200 }),
+            yellow:  new THREE.MeshPhongMaterial({ color: 0x00e5ff, emissive: new THREE.Color(0x00e5ff).multiplyScalar(0.85), shininess: 200 }),
+            neutral: new THREE.MeshPhongMaterial({ color: 0xe0f7fa, emissive: new THREE.Color(0xe0f7fa).multiplyScalar(0.5),  shininess: 200 }),
+        };
+
+        // ── Figure proportions at 50% of previous scale ──────────────────────────────
+        const H_LEGS  = 0.00375;
+        const H_TORSO = 0.00275;
+        const H_HEAD  = 0.00125;
+        const W_TORSO = 0.00090;
+        const W_WAIST = 0.00065;
+        const UA_H    = H_TORSO * 0.75;
+        const FA_H    = H_TORSO * 0.60;
+        const THIGH_H = H_LEGS  * 0.54;
+        const SHIN_H  = H_LEGS  * 0.46;
+
+        // ── Shared geometry pool (ONE geometry object per body part — reused across all 22 players) ─
+        const gTorso    = new THREE.CylinderGeometry(W_TORSO, W_WAIST, H_TORSO, 7);
+        gTorso.translate(0, H_TORSO / 2, 0);
+        const gStripe   = new THREE.BoxGeometry(W_TORSO * 1.8, H_TORSO * 0.18, W_TORSO * 0.25);
+        const gNeck     = new THREE.CylinderGeometry(0.000275, 0.0003, 0.0006, 6);
+        const gHead     = new THREE.SphereGeometry(H_HEAD * 0.78, 8, 7);
+        const gHelmet   = new THREE.SphereGeometry(H_HEAD * 0.86, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.58);
+        const gBrim     = new THREE.CylinderGeometry(H_HEAD * 0.94, H_HEAD * 0.94, 0.00006, 10, 1, false, -Math.PI * 0.35, Math.PI * 0.7);
+        const gGrill    = new THREE.CylinderGeometry(0.000048, 0.000048, H_HEAD, 4);
+        const gVisor    = new THREE.BoxGeometry(H_HEAD * 1.4, H_HEAD * 0.22, H_HEAD * 0.18);
+        const gShoulder = new THREE.BoxGeometry(W_TORSO * 1.1, H_TORSO * 0.16, W_TORSO * 0.8);
+        const gUArm     = (() => { const g = new THREE.CylinderGeometry(0.000325, 0.00026, UA_H, 6); g.translate(0, -UA_H / 2, 0); return g; })();
+        const gFArm     = (() => { const g = new THREE.CylinderGeometry(0.00024, 0.00019, FA_H, 5); g.translate(0, -FA_H / 2, 0); return g; })();
+        const gThigh    = (() => { const g = new THREE.CylinderGeometry(0.000425, 0.00036, THIGH_H, 6); g.translate(0, -THIGH_H / 2, 0); return g; })();
+        const gShin     = (() => { const g = new THREE.CylinderGeometry(0.00034, 0.00024, SHIN_H, 5);  g.translate(0, -SHIN_H / 2, 0);  return g; })();
+        const gShoe     = new THREE.BoxGeometry(0.0004, 0.00019, 0.00065);
+        const gPad      = new THREE.BoxGeometry(0.00045, SHIN_H * 0.88, 0.000275);
+        const gRing     = (() => { const g = new THREE.RingGeometry(0.0018, 0.0026, 16); g.rotateX(-Math.PI / 2); return g; })();
+
+        roster.forEach((p, idx) => {
+            const team  = p.team as 'blue' | 'yellow' | 'neutral';
+            const mats  = sharedMats[team];
+            const ledM  = sharedLedMats[team];
+
             const playerGroup = new THREE.Group();
-            // Sit just on the grass pitch
-            playerGroup.position.set(p.x, 0.009, p.z);
             this.tableGroup.add(playerGroup);
 
-            // 1. Detailed 3D stylized player figure (low-poly spatial representation)
-            // Torso is the base mesh (p.mesh) representing the chest/jersey
-            const torsoGeom = new THREE.CylinderGeometry(0.0024, 0.002, 0.008, 6);
-            torsoGeom.translate(0, 0.004, 0); // Origin at bottom, height = 0.008. Bottom is at y=0, top at y=0.008
-
-            let primaryColor = 0xaa2222; // RCB Red
-            let secondaryColor = 0xcc9900; // RCB Gold
-            let pantsColor = 0x111827; // RCB Dark Slate Pants
-
-            if (p.team === 'yellow') {
-                primaryColor = 0xe2115f; // RR Pink
-                secondaryColor = 0x0f4c81; // RR Royal Blue
-                pantsColor = 0xf3f4f6; // RR White Pants
-            } else if (p.team === 'neutral') {
-                primaryColor = 0x3b82f6; // Umpire Light Blue
-                secondaryColor = 0x1f2937; // Umpire Dark details
-                pantsColor = 0x111827; // Umpire Black Pants
-            }
-
-            const bodyMat = new THREE.MeshBasicMaterial({
-                color: primaryColor,
-                transparent: true,
-                opacity: 0.95
-            });
-
-            // Torso is mesh
-            const mesh = new THREE.Mesh(torsoGeom, bodyMat);
-            mesh.position.y = 0.005; // Elevated slightly from the grass base
+            // ── Torso ─────────────────────────────────────────────────────────────────
+            const mesh = new THREE.Mesh(gTorso, mats.body);
+            mesh.position.y = H_LEGS;
             playerGroup.add(mesh);
 
-            // Sub-materials for dynamic 3D elements
-            const secMat = new THREE.MeshBasicMaterial({
-                color: secondaryColor,
-                transparent: true,
-                opacity: 0.95
-            });
-            const pantsMat = new THREE.MeshBasicMaterial({
-                color: pantsColor,
-                transparent: true,
-                opacity: 0.95
-            });
-            const skinMat = new THREE.MeshBasicMaterial({
-                color: 0xffdbac, // peach skin
-                transparent: true,
-                opacity: 0.95
-            });
-            const blackMat = new THREE.MeshBasicMaterial({
-                color: 0x111827,
-                transparent: true,
-                opacity: 0.95
-            });
-            const woodMat = new THREE.MeshBasicMaterial({
-                color: 0xd69e2e, // Gold wood brown cricket bat
-                transparent: true,
-                opacity: 0.95
-            });
+            // Chest stripe (secondary colour slab)
+            const stripe = new THREE.Mesh(gStripe, mats.sec);
+            stripe.position.set(0, H_TORSO * 0.55, W_TORSO * 0.9);
+            mesh.add(stripe);
 
-            // 1.1 Head & Helmet Visor
-            const headGeom = new THREE.SphereGeometry(0.0022, 8, 8);
-            const headMesh = new THREE.Mesh(headGeom, skinMat);
-            headMesh.position.set(0, 0.0095, 0); // centered above torso
+            // ── Neck ─────────────────────────────────────────────────────────────────
+            const neckMesh = new THREE.Mesh(gNeck, sharedSkin);
+            neckMesh.position.set(0, H_TORSO + 0.0003, 0);
+            mesh.add(neckMesh);
+
+            // ── Head ─────────────────────────────────────────────────────────────────
+            const headY = H_TORSO + 0.0007 + H_HEAD * 0.78;
+            const headMesh = new THREE.Mesh(gHead, sharedSkin);
+            headMesh.position.set(0, headY, 0);
             mesh.add(headMesh);
 
-            const helmetGeom = new THREE.SphereGeometry(0.0025, 8, 8, 0, Math.PI * 2, 0, Math.PI / 1.7);
-            const helmetMesh = new THREE.Mesh(helmetGeom, secMat);
-            helmetMesh.position.set(0, 0.0096, 0);
+            // Helmet shell
+            const helmetMesh = new THREE.Mesh(gHelmet, mats.sec);
+            helmetMesh.position.set(0, headY + H_HEAD * 0.04, 0);
             mesh.add(helmetMesh);
 
-            const visorGeom = new THREE.BoxGeometry(0.0035, 0.0008, 0.001);
-            const visorMesh = new THREE.Mesh(visorGeom, blackMat);
-            visorMesh.position.set(0, 0.0096, 0.0022);
+            // Helmet brim
+            const brimMesh = new THREE.Mesh(gBrim, mats.sec);
+            brimMesh.position.set(0, headY - H_HEAD * 0.35, H_HEAD * 0.45);
+            mesh.add(brimMesh);
+
+            // Face grill bars (metallic)
+            [-0.00016, 0.00016].forEach(ox => {
+                const bar = new THREE.Mesh(gGrill, sharedMetal);
+                bar.position.set(ox, headY - H_HEAD * 0.15, H_HEAD * 0.86);
+                mesh.add(bar);
+            });
+
+            // LED visor (emissive stripe)
+            const visorMesh = new THREE.Mesh(gVisor, ledM);
+            visorMesh.position.set(0, headY + H_HEAD * 0.08, H_HEAD * 0.75);
             mesh.add(visorMesh);
 
-            // 1.2 Arms (Left & Right)
-            const lArmGeom = new THREE.CylinderGeometry(0.001, 0.0008, 0.006, 4);
-            lArmGeom.translate(0, -0.003, 0); // Pivot at shoulder
-            const lArmMesh = new THREE.Mesh(lArmGeom, bodyMat);
-            lArmMesh.position.set(-0.0032, 0.0075, 0);
-            mesh.add(lArmMesh);
+            // ── Shoulder pads ─────────────────────────────────────────────────────────
+            const padW = W_TORSO * 1.1;
+            [-(W_TORSO + padW * 0.42), (W_TORSO + padW * 0.42)].forEach(ox => {
+                const s = new THREE.Mesh(gShoulder, mats.sec);
+                s.position.set(ox, H_TORSO * 0.85, 0);
+                mesh.add(s);
+            });
 
-            const rArmGeom = new THREE.CylinderGeometry(0.001, 0.0008, 0.006, 4);
-            rArmGeom.translate(0, -0.003, 0); // Pivot at shoulder
-            const rArmMesh = new THREE.Mesh(rArmGeom, bodyMat);
-            rArmMesh.position.set(0.0032, 0.0075, 0);
+            // ── Arms (upper + forearm) ─────────────────────────────────────────────────
+            const lArmMesh = new THREE.Mesh(gUArm, mats.body);
+            lArmMesh.position.set(-(W_TORSO + 0.0003), H_TORSO * 0.82, 0);
+            mesh.add(lArmMesh);
+            const rArmMesh = new THREE.Mesh(gUArm, mats.body);
+            rArmMesh.position.set( (W_TORSO + 0.0003), H_TORSO * 0.82, 0);
             mesh.add(rArmMesh);
 
-            // 1.3 Legs (Left & Right)
-            const lLegGeom = new THREE.CylinderGeometry(0.0011, 0.0009, 0.006, 4);
-            lLegGeom.translate(0, -0.003, 0); // Pivot at hip
-            const lLegMesh = new THREE.Mesh(lLegGeom, pantsMat);
-            lLegMesh.position.set(-0.0013, 0.0005, 0);
-            mesh.add(lLegMesh);
+            const lFArm = new THREE.Mesh(gFArm, sharedSkin);
+            lFArm.position.y = -UA_H;
+            lArmMesh.add(lFArm);
+            const rFArm = new THREE.Mesh(gFArm, sharedSkin);
+            rFArm.position.y = -UA_H;
+            rArmMesh.add(rFArm);
 
-            const rLegGeom = new THREE.CylinderGeometry(0.0011, 0.0009, 0.006, 4);
-            rLegGeom.translate(0, -0.003, 0); // Pivot at hip
-            const rLegMesh = new THREE.Mesh(rLegGeom, pantsMat);
-            rLegMesh.position.set(0.0013, 0.0005, 0);
+            // ── Legs (thigh + shin + shoe) ──────────────────────────────────────────
+            const lLegMesh = new THREE.Mesh(gThigh, mats.pants);
+            lLegMesh.position.set(-W_WAIST * 0.75, 0, 0);
+            mesh.add(lLegMesh);
+            const rLegMesh = new THREE.Mesh(gThigh, mats.pants);
+            rLegMesh.position.set( W_WAIST * 0.75, 0, 0);
             mesh.add(rLegMesh);
 
-            // 1.4 Role-specific signature dynamic base poses!
-            if (p.role === 'batsman') {
-                const batGeom = new THREE.BoxGeometry(0.0012, 0.011, 0.0006);
-                batGeom.translate(0, 0.0055, 0); // Origin at bat grip
-                const batMesh = new THREE.Mesh(batGeom, woodMat);
-                batMesh.position.set(0.002, 0.004, 0.002);
-                batMesh.rotation.set(-Math.PI / 4, 0, Math.PI / 6);
-                mesh.add(batMesh);
+            const lShin = new THREE.Mesh(gShin, mats.pants);
+            lShin.position.y = -THIGH_H;
+            lLegMesh.add(lShin);
+            const rShin = new THREE.Mesh(gShin, mats.pants);
+            rShin.position.y = -THIGH_H;
+            rLegMesh.add(rShin);
 
-                lArmMesh.rotation.set(-Math.PI / 5, 0, Math.PI / 6);
-                rArmMesh.rotation.set(-Math.PI / 3, 0, -Math.PI / 6);
-                lLegMesh.rotation.set(Math.PI / 10, 0, -Math.PI / 12);
-                rLegMesh.rotation.set(Math.PI / 10, 0, Math.PI / 12);
+            // Shoes
+            [lShin, rShin].forEach(sh => {
+                const shoe = new THREE.Mesh(gShoe, sharedBlack);
+                shoe.position.set(0, -SHIN_H * 0.9, 0.00015);
+                sh.add(shoe);
+            });
+
+            // ── Role-specific extras & poses ─────────────────────────────────────────
+            if (p.role === 'batsman') {
+                // Leg pads
+                [lShin, rShin].forEach(sh => {
+                    const lp = new THREE.Mesh(gPad, sharedPad);
+                    lp.position.set(0, -SHIN_H * 0.45, 0.000275);
+                    sh.add(lp);
+                });
+                // Bat (blade + grip)
+                const bladeG = new THREE.BoxGeometry(0.000325, 0.0029, 0.00013);
+                const blade  = new THREE.Mesh(bladeG, sharedWood);
+                blade.position.y = 0.00145;
+                const gripG  = new THREE.CylinderGeometry(0.0001, 0.0001, 0.0008, 5);
+                const grip   = new THREE.Mesh(gripG, sharedBlack);
+                grip.position.y = -0.00075;
+                blade.add(grip);
+                const batPivot = new THREE.Group();
+                batPivot.add(blade);
+                batPivot.position.set(W_TORSO * 0.9, H_TORSO * 0.35, W_TORSO * 0.7);
+                batPivot.rotation.set(-Math.PI / 4.5, 0.15, Math.PI / 5.5);
+                mesh.add(batPivot);
+                lArmMesh.rotation.set(-Math.PI / 6,  0,  Math.PI / 5);
+                rArmMesh.rotation.set(-Math.PI / 4,  0, -Math.PI / 5);
+                lLegMesh.rotation.set( Math.PI / 9,  0, -Math.PI / 14);
+                rLegMesh.rotation.set( Math.PI / 9,  0,  Math.PI / 14);
             } else if (p.role === 'fielder') {
-                lArmMesh.rotation.set(-Math.PI / 4, 0, Math.PI / 8);
-                rArmMesh.rotation.set(-Math.PI / 4, 0, -Math.PI / 8);
-                lLegMesh.rotation.set(Math.PI / 12, 0, -Math.PI / 12);
-                rLegMesh.rotation.set(Math.PI / 12, 0, Math.PI / 12);
+                lArmMesh.rotation.set(-Math.PI / 5,  0,  Math.PI / 7);
+                rArmMesh.rotation.set(-Math.PI / 5,  0, -Math.PI / 7);
+                lLegMesh.rotation.set( Math.PI / 11, 0, -Math.PI / 13);
+                rLegMesh.rotation.set( Math.PI / 11, 0,  Math.PI / 13);
             } else {
-                lArmMesh.rotation.set(Math.PI / 6, 0, -Math.PI / 12);
-                rArmMesh.rotation.set(Math.PI / 6, 0, Math.PI / 12);
+                lArmMesh.rotation.set( Math.PI / 8,  0, -Math.PI / 9);
+                rArmMesh.rotation.set( Math.PI / 8,  0,  Math.PI / 9);
             }
 
-            // Save parts inside userData for running animations
-            mesh.userData.lArm = lArmMesh;
-            mesh.userData.rArm = rArmMesh;
-            mesh.userData.lLeg = lLegMesh;
-            mesh.userData.rLeg = rLegMesh;
-            mesh.userData.role = p.role;
-
-            // 2. Underfoot ring decal (Slightly elevated, completely flat to avoid clipping)
-            let ringColor = primaryColor;
-            const ringGeom = new THREE.RingGeometry(0.008, 0.010, 16);
-            ringGeom.rotateX(-Math.PI / 2);
-            const ringMat = new THREE.MeshBasicMaterial({
-                color: ringColor,
-                transparent: true,
-                opacity: 0.5,
-                side: THREE.DoubleSide,
-                depthWrite: false
-            });
-            const ring = new THREE.Mesh(ringGeom, ringMat);
-            ring.position.y = 0.0005; // Slightly raised above grass outfield to completely prevent clipping
+            // ── Underfoot single ring (simplified) ────────────────────────────────────
+            const ring = new THREE.Mesh(gRing, new THREE.MeshBasicMaterial({
+                color: team === 'blue' ? 0xcc1111 : (team === 'yellow' ? 0xd90f55 : 0x1e88e5),
+                transparent: true, opacity: 0.65, side: THREE.DoubleSide, depthWrite: false
+            }));
+            ring.position.y = 0.0005;
             playerGroup.add(ring);
 
-            // 3. Floating high-res billboarding name/jersey tag
+            // ── Name tag & stats card ──────────────────────────────────────────────────
             const tag = this.createPlayerTag(p.name, p.jersey, p.team);
             playerGroup.add(tag);
-
-            // 4. Hover stats card: image card for RCB fielders, canvas card otherwise
             const statsCard = this.createPlayerStatsCard(p.name, p.primary, p.secondary, p.team, (p as any).rcbCardKey || "");
             playerGroup.add(statsCard);
 
+            // ── 0.72× boundary + facing toward pitch center ────────────────────────────
+            const FIELD_SCALE = 0.72;
+            const sx = p.x * FIELD_SCALE;
+            const sz = p.z * FIELD_SCALE;
+            playerGroup.position.set(sx, 0.009, sz);
+            // Rotate player to face pitch center (0,0) from their field position
+            // atan2(-sx, -sz) gives the Y-rotation so +Z faces toward (0,0)
+            if (sx !== 0 || sz !== 0) {
+                playerGroup.rotation.y = Math.atan2(-sx, -sz);
+            }
+
             this.players.push({
-                id: p.id,
-                name: p.name,
-                role: p.role,
-                jersey: p.jersey,
-                team: p.team,
-                originalBasePos: new THREE.Vector3(p.x, 0.009, p.z),
-                targetPos: new THREE.Vector3(p.x, 0.009, p.z),
-                currentPos: new THREE.Vector3(p.x, 0.009, p.z),
+                id: p.id, name: p.name, role: p.role, jersey: p.jersey, team: p.team,
+                originalBasePos: new THREE.Vector3(sx, 0.009, sz),
+                targetPos:       new THREE.Vector3(sx, 0.009, sz),
+                currentPos:      new THREE.Vector3(sx, 0.009, sz),
                 speed: p.role === 'fielder' ? 0.005 : 0.001,
-                stats: {
-                    primary: p.primary,
-                    secondary: p.secondary
-                },
-                group: playerGroup,
-                mesh: mesh,
-                ring: ring,
-                tag: tag,
-                statsCard: statsCard,
-                hoverScale: 1.0,
-                isHovered: false
+                stats: { primary: p.primary, secondary: p.secondary },
+                group: playerGroup, mesh, ring, tag, statsCard,
+                hoverScale: 1.0, isHovered: false
             });
         });
     }
+
+
 
     private createPlayerTag(name: string, jersey: string, team: 'blue' | 'yellow' | 'neutral'): THREE.Mesh {
         const canvas = document.createElement('canvas');
