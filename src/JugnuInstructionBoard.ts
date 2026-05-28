@@ -81,7 +81,7 @@ export class JugnuInstructionBoard extends THREE.Group {
         ctx.textAlign = 'center';
         ctx.fillText("TUTORIAL", this.canvas.width / 2, 45);
 
-        // Instruction Text
+        // Instruction Text:
         let instructionText = "";
         if (step === 0) {
             instructionText = "Pinch me with your index & thumb!";
