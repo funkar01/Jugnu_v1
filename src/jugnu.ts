@@ -429,6 +429,11 @@ export class JugnuSystem extends createSystem({
               if (e.object3D) {
                   e.object3D.visible = false; // Hide until wrist tap
               }
+              const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
+              if (currentState !== PhysicsState.Kinematic) {
+                  if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
+                  e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+              }
           });
           if (this.dimOverlayMesh) {
               this.dimOverlayMesh.visible = true;
@@ -1275,6 +1280,14 @@ export class JugnuSystem extends createSystem({
                       this.interactionState = 'Following';
                       entity.setValue(Jugnu, "onboardingPhase", 4);
                       entity.setValue(Jugnu, "instructionStep", 3);
+                      
+                      if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
+                      entity.addComponent(PhysicsBody, { 
+                          state: PhysicsState.Dynamic, 
+                          gravityFactor: 1.0, 
+                          linearDamping: 0.1, 
+                          angularDamping: 0.1 
+                      });
                   }
               }
           }
