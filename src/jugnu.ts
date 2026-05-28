@@ -152,7 +152,7 @@ export class JugnuSystem extends createSystem({
         varying vec2 vUv;
         void main() {
           vUv = uv;
-          gl_Position = vec4(position.xy, 0.0, 1.0);
+          gl_Position = vec4(position.xy, 0.999, 1.0);
         }
       `,
       fragmentShader: `
@@ -164,10 +164,10 @@ export class JugnuSystem extends createSystem({
       `,
       transparent: true,
       depthWrite: false,
-      depthTest: false,
+      depthTest: true,
     });
     this.dimOverlayMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.dimOverlayMat);
-    this.dimOverlayMesh.renderOrder = -100; // Draw as early as possible
+    this.dimOverlayMesh.renderOrder = 10000; // Draw at the very end to overlay background only
     this.dimOverlayMesh.visible = false;
     this.player.head.add(this.dimOverlayMesh);
     this.dimOverlayMesh.position.set(0, 0, -0.1);
