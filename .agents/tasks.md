@@ -61,3 +61,14 @@
   - `[x]` Scaled down `cardGroup` meshes by 50% in `src/domainExpansion.ts`
   - `[x]` Added match stats UI billboard ring above the Wankhede Stadium roof rim
   - `[x]` Implemented pinch/poke scaling tap-to-activate interaction for full-frame banners
+- `[x]` Object Detection Feasibility Analysis for Quest 3 / IWSDK
+  - `[x]` Investigated WebXR camera-access spec support on Meta Quest Browser
+  - `[x]` Reviewed standard Web API `getUserMedia` constraints on passthrough feeds
+  - `[x]` Analyzed IWSDK Scene Understanding and `semanticLabel` capabilities
+  - `[x]` Documented findings and alternative system-level architectures
+- `[x]` Gesture-Triggered Spatial Object Detection Scanner
+  - `[x]` Created custom joint-distance peace sign gesture tracking for both hands
+  - `[x]` Built holographic neon box highlighters and billboarding text HUD labels
+  - `[x]` Configured audio chime and speech synthesis voice output on scanner toggle
+  - `[x]` Registered system in `src/index.ts` and successfully verified production builds
+

@@ -51,6 +51,7 @@ import { JugnuDebugBoard } from "./JugnuDebugBoard.js";
 import { RoomVisualizerSystem } from "./roomVisualizer.js";
 import { DomainExpansionSystem } from "./domainExpansion.js";
 import { CityMapSystem } from "./cityMapSystem.js";
+import { ObjectDetectionSystem } from "./objectDetectionSystem.js";
 import { ACESFilmicToneMapping, Color, GridHelper, Material } from "three";
 
 export const IS_DEV = ((import.meta as any).env.VITE_DEBUG_MODE === "true") || (import.meta as any).env.DEV;
@@ -304,5 +305,5 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   logoBanner.rotateY(Math.PI);
   */
 
-  world.registerSystem(PanelSystem).registerSystem(JugnuSystem).registerSystem(RoomVisualizerSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem);
+  world.registerSystem(PanelSystem).registerSystem(JugnuSystem).registerSystem(RoomVisualizerSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem).registerSystem(ObjectDetectionSystem);
 });
