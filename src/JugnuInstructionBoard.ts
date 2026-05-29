@@ -37,7 +37,7 @@ export class JugnuInstructionBoard extends THREE.Group {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // Hand-drawn aesthetic Background
+        // Hand-drawn aesthetic Background.
         ctx.fillStyle = 'rgba(5, 5, 26, 0.85)'; // Dark blue background
         ctx.strokeStyle = '#ffd700'; // Yellow hand-drawn border
         
