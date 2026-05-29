@@ -1332,20 +1332,26 @@ export class JugnuSystem extends createSystem({
                       this.onboardingPhase = 1;
                       entity.setValue(Jugnu, "onboardingPhase", 1);
                       this.wakeUpTimer = 0.0;
-                      this.showOnboardingUI();
+                      this.hideOnboardingUI(); // Hide UI initially during the 5s wake-up show
                   }
               }
           } 
           else if (this.interactionState === 'OnboardingIntro') {
               this.wakeUpTimer += safeDt;
-              if (this.wakeUpTimer < 3.0) {
-                  const amplitude = 0.45;
-                  const decay = 1.6;
-                  const scaleY = 1.0 + amplitude * Math.sin(this.wakeUpTimer * 15.0) * Math.exp(-decay * this.wakeUpTimer);
+              if (this.wakeUpTimer < 5.0) {
+                  // Volume-preserving squash & stretch animation over 5s
+                  const amplitude = 0.5;
+                  const decay = 0.8;
+                  const scaleY = 1.0 + amplitude * Math.sin(this.wakeUpTimer * 12.0) * Math.exp(-decay * this.wakeUpTimer);
                   const scaleXZ = 1.0 / Math.sqrt(scaleY);
                   obj.scale.set(0.2 * scaleXZ, 0.2 * scaleY, 0.2 * scaleXZ);
+
+                  // Keep expression as happy and UI hidden
+                  jugModel.setMood('happy');
+                  this.hideOnboardingUI();
               } else {
                   obj.scale.setScalar(0.2);
+                  this.showOnboardingUI(); // Fade in buttons after 5s
               }
 
               // Position panel to the right of Jugnu and make it look at user
@@ -1357,25 +1363,27 @@ export class JugnuSystem extends createSystem({
                   this.uiPanelBg.lookAt(this.headPos);
               }
 
-              // Check buttons
-              if (this.btnPlayEntity && this.btnPlayEntity.hasComponent(Pressed)) {
-                  this.btnPlayEntity.removeComponent(Pressed);
-                  this.hideOnboardingUI();
-                  
-                  this.interactionState = 'OnboardingTutorial';
-                  this.onboardingPhase = 2;
-                  entity.setValue(Jugnu, "onboardingPhase", 2);
-                  entity.setValue(Jugnu, "instructionStep", 0); // Start tutorial step 0 (pinch)
-                  this.gazeTimer = 0.0;
-                  this.celebrationActive = false;
-              } else if (this.btnSkipEntity && this.btnSkipEntity.hasComponent(Pressed)) {
-                  this.btnSkipEntity.removeComponent(Pressed);
-                  this.hideOnboardingUI();
-                  
-                  this.interactionState = 'OnboardingNavigation';
-                  this.onboardingPhase = 3;
-                  entity.setValue(Jugnu, "onboardingPhase", 3);
-                  this.spinTimer = 0.0;
+              // Check buttons only if the 5s animation completes to prevent premature interactions
+              if (this.wakeUpTimer >= 5.0) {
+                  if (this.btnPlayEntity && this.btnPlayEntity.hasComponent(Pressed)) {
+                      this.btnPlayEntity.removeComponent(Pressed);
+                      this.hideOnboardingUI();
+                      
+                      this.interactionState = 'OnboardingTutorial';
+                      this.onboardingPhase = 2;
+                      entity.setValue(Jugnu, "onboardingPhase", 2);
+                      entity.setValue(Jugnu, "instructionStep", 0); // Start tutorial step 0 (pinch)
+                      this.gazeTimer = 0.0;
+                      this.celebrationActive = false;
+                  } else if (this.btnSkipEntity && this.btnSkipEntity.hasComponent(Pressed)) {
+                      this.btnSkipEntity.removeComponent(Pressed);
+                      this.hideOnboardingUI();
+                      
+                      this.interactionState = 'OnboardingNavigation';
+                      this.onboardingPhase = 3;
+                      entity.setValue(Jugnu, "onboardingPhase", 3);
+                      this.spinTimer = 0.0;
+                  }
               }
           } 
           else if (this.onboardingPhase === 2) {

@@ -79,6 +79,12 @@
   - [x] Implement checkWristRub relative speed gesture checking
   - [x] Map desktop trigger to W key
   - [x] Code emerging spawn translation from wrist to camera float position
+- [x] Phase 2 Onboarding Refactoring
+  - [x] Delay showing Glassmorphic UI buttons until 5s wake-up completes
+  - [x] Implement 5s volume-preserving squash-and-stretch with 0.8 decay
+  - [x] Set mood to happy during squash-and-stretch
+  - [x] Enable UI interactions only after 5s
+
 
 
 
