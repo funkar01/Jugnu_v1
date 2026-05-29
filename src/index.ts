@@ -273,6 +273,8 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   }
   */
 
+  // Removed from physical space to be embedded inside the Compass UI as tabs
+  /*
   const transcriptBoard = new JugnuTranscriptBoard();
   transcriptBoard.position.set(1.0, deskTopY + 0.5, -1.0);
   transcriptBoard.rotation.y = -Math.PI / 8; // Angled slightly towards the user
@@ -285,6 +287,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     debugBoard.rotation.y = Math.PI / 8; // Angled slightly towards the user (mirrors transcript board)
     world.createTransformEntity(debugBoard);
   }
+  */
 
 
 

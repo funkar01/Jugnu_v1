@@ -1235,9 +1235,12 @@ export class DomainExpansionSystem extends createSystem({
         }
 
         // Spawn or despawn the minimap table when wrist button is tapped or key M is pressed
-        const toggleMinimap = wristButtonTapped || this.checkMButton();
+        const toggleMinimap = wristButtonTapped || this.checkMButton() || (window as any).triggerMinimapToggle;
 
         if (toggleMinimap && this.menuToggleCooldown <= 0.0) {
+            if ((window as any).triggerMinimapToggle) {
+                (window as any).triggerMinimapToggle = false;
+            }
             this.menuToggleCooldown = 0.8;
             this.isTableSpawned = !this.isTableSpawned;
             console.log(`[DomainExpansion] Minimap table toggled! isTableSpawned: ${this.isTableSpawned}`);

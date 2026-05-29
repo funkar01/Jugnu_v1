@@ -86,7 +86,55 @@ export class JugnuSystem extends createSystem({
 
   private instructionBoard!: JugnuInstructionBoard;
 
+  // Compass UI State
+  private isCompassOpen = false;
+  private isGridLocked = false;
+  private compassGroup!: THREE.Group;
+  private compassNeedle!: THREE.Mesh;
+  private compassRing!: THREE.Mesh;
+  private compassBackingBoard!: THREE.Mesh;
+  private compassBackingCanvas!: HTMLCanvasElement;
+  private compassBackingCtx!: CanvasRenderingContext2D;
+  private compassBackingTexture!: THREE.CanvasTexture;
+  private indexPinchTimer = 0.0;
+  private pinchReleasedTimer = 0.0;
+  private hoveredCellIndex = -1;
+  private activeCompassTileIndex = -1; // -1 for none
+  private compassInfoCard!: THREE.Mesh;
+  private compassInfoMat!: THREE.MeshBasicMaterial;
+  private compassInfoTextCanvas!: HTMLCanvasElement;
+  private compassInfoTextCtx!: CanvasRenderingContext2D;
+  private compassInfoTextTexture!: THREE.CanvasTexture;
+  private buttonCooldown = 0.0;
+  private isChatOpen = false;
+  private compassChatCard!: THREE.Mesh;
+  private compassChatMat!: THREE.MeshBasicMaterial;
+  private compassChatCanvas!: HTMLCanvasElement;
+  private compassChatCtx!: CanvasRenderingContext2D;
+  private compassChatTexture!: THREE.CanvasTexture;
+  private chatHistory: { sender: string, text: string }[] = [];
+  private isDebugOpen = false;
+  private compassDebugCard!: THREE.Mesh;
+  private compassDebugMat!: THREE.MeshBasicMaterial;
+  private compassDebugCanvas!: HTMLCanvasElement;
+  private compassDebugCtx!: CanvasRenderingContext2D;
+  private compassDebugTexture!: THREE.CanvasTexture;
+  private debugHistory: { type: 'info' | 'warn' | 'error', text: string, timestamp: string }[] = [];
+  private maxDebugLogs = 12;
+  private originalLog = console.log;
+  private originalWarn = console.warn;
+  private originalError = console.error;
+  private lockedCompassPos: THREE.Vector3 | null = null;
+  private lockedCompassQuat: THREE.Quaternion | null = null;
+
   init() {
+    this.chatHistory.push({ sender: 'System', text: 'Jugnu XR Core Engine v13.4 initialized.' });
+    this.chatHistory.push({ sender: 'System', text: 'Haptic controllers online & calibrated.' });
+    this.chatHistory.push({ sender: 'System', text: 'Dual-tip magnetic true north gyro active.' });
+    this.chatHistory.push({ sender: 'System', text: 'Gemini cognitive pipeline: standby.' });
+
+    this.hookConsole();
+
     this.instructionBoard = new JugnuInstructionBoard();
     this.world.createTransformEntity(this.instructionBoard);
 
@@ -118,6 +166,7 @@ export class JugnuSystem extends createSystem({
 
     // Initialize UI and Keys
     this.createExpressionUI();
+    this.initCompassUI();
     window.addEventListener('keydown', (e) => this.handleKeyDown(e));
 
     // Handle Click
@@ -152,6 +201,18 @@ export class JugnuSystem extends createSystem({
               board.updateText(userText, jugnuReply);
           }
       });
+
+      if (userText === "Listening...") {
+          this.chatHistory.push({ sender: 'System', text: 'Microphone recording active...' });
+          this.redrawCompassChat();
+      } else if (userText === "Processing Audio...") {
+          this.chatHistory.push({ sender: 'System', text: 'Processing audio through Gemini...' });
+          this.redrawCompassChat();
+      } else {
+          this.chatHistory.push({ sender: 'You', text: userText.substring(0, 46) + (userText.length > 46 ? '...' : '') });
+          this.chatHistory.push({ sender: 'Jugnu', text: jugnuReply.substring(0, 46) + (jugnuReply.length > 46 ? '...' : '') });
+          this.redrawCompassChat();
+      }
   }
 
   createExpressionUI() {
@@ -509,7 +570,7 @@ export class JugnuSystem extends createSystem({
         }
     }
 
-    if (this.interactionState === 'Idle' || this.interactionState === 'Following' || this.interactionState === 'Anchored') {
+    if ((this.interactionState === 'Idle' || this.interactionState === 'Following' || this.interactionState === 'Anchored') && !this.isGridLocked) {
         let activeHand: 'left' | 'right' | null = null;
         let activeTip = this.leftPinchTip;
 
@@ -745,30 +806,36 @@ export class JugnuSystem extends createSystem({
               }
           }
       } else if (this.interactionState === 'Following' || this.interactionState === 'Anchored') {
-          if (this.interactionState === 'Following') {
-              const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
-              forward.y = 0; 
-              forward.normalize();
-              
-              // Calmed down: float farther away (1.25m instead of 0.95m) and lower to stay out of directly blocking user face
-              const targetCenter = this.headPos.clone().add(forward.multiplyScalar(1.25)); 
-              targetCenter.y -= 0.22; 
-              
-              // Calmed down: slower following transition (0.7x instead of 1.0x) so it floats lazily
-              this.centerPos.lerp(targetCenter, 0.7 * safeDt);
+          if (this.isGridLocked) {
+              // Rigid Lock: perfectly frozen with zero floating/noise/drift
+              obj.position.copy(this.centerPos);
+              this.velocity.set(0, 0, 0);
+          } else {
+              if (this.interactionState === 'Following') {
+                  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+                  forward.y = 0; 
+                  forward.normalize();
+                  
+                  // Calmed down: float farther away (1.25m instead of 0.95m) and lower to stay out of directly blocking user face
+                  const targetCenter = this.headPos.clone().add(forward.multiplyScalar(1.25)); 
+                  targetCenter.y -= 0.22; 
+                  
+                  // Calmed down: slower following transition (0.7x instead of 1.0x) so it floats lazily
+                  this.centerPos.lerp(targetCenter, 0.7 * safeDt);
+              }
+
+              const floatX = this.noise(this.floatTime * 0.18, 0) * this.floatRadius;
+              const floatY = this.noise(this.floatTime * 0.18, 1) * this.floatRadius * 0.5;
+              const floatZ = this.noise(this.floatTime * 0.18, 2) * this.floatRadius;
+              const hoverTarget = this.centerPos.clone().add(new THREE.Vector3(floatX, floatY, floatZ));
+
+              const displacement = new THREE.Vector3().subVectors(obj.position, hoverTarget);
+              const force = displacement.multiplyScalar(-this.springStiffness * 0.5); 
+              force.sub(this.velocity.clone().multiplyScalar(this.springDamping));
+
+              this.velocity.add(force.multiplyScalar(safeDt));
+              obj.position.add(this.velocity.clone().multiplyScalar(safeDt));
           }
-
-          const floatX = this.noise(this.floatTime * 0.18, 0) * this.floatRadius;
-          const floatY = this.noise(this.floatTime * 0.18, 1) * this.floatRadius * 0.5;
-          const floatZ = this.noise(this.floatTime * 0.18, 2) * this.floatRadius;
-          const hoverTarget = this.centerPos.clone().add(new THREE.Vector3(floatX, floatY, floatZ));
-
-          const displacement = new THREE.Vector3().subVectors(obj.position, hoverTarget);
-          const force = displacement.multiplyScalar(-this.springStiffness * 0.5); 
-          force.sub(this.velocity.clone().multiplyScalar(this.springDamping));
-
-          this.velocity.add(force.multiplyScalar(safeDt));
-          obj.position.add(this.velocity.clone().multiplyScalar(safeDt));
           
           entity.addComponent(PhysicsManipulation, { linearVelocity: [this.velocity.x, this.velocity.y, this.velocity.z] });
 
@@ -894,6 +961,931 @@ export class JugnuSystem extends createSystem({
         }
     }
     this.particleMesh.instanceMatrix.needsUpdate = true;
+
+    // ─── Compass Update Loop ───
+    if (this.buttonCooldown > 0.0) {
+        this.buttonCooldown -= safeDt;
+    }
+
+    if (activeJugnuModel) {
+        const leftTip = new THREE.Vector3();
+        const rightTip = new THREE.Vector3();
+        const isLeftPinching = this.getPinchData('left', leftTip);
+        const isRightPinching = this.getPinchData('right', rightTip);
+
+        // Activation pinch must be close to Jugnu (within 0.25m)
+        let isPinchingNearJugnu = false;
+        if (isLeftPinching && leftTip.distanceTo(activeJugnuPos) < 0.25) {
+            isPinchingNearJugnu = true;
+        } else if (isRightPinching && rightTip.distanceTo(activeJugnuPos) < 0.25) {
+            isPinchingNearJugnu = true;
+        }
+
+        // Active hold check: any index pinch held anywhere keeping it open
+        const isAnyPinchHeld = isLeftPinching || isRightPinching;
+
+        if (!this.isCompassOpen) {
+            if (isPinchingNearJugnu) {
+                this.indexPinchTimer += safeDt;
+                if (this.indexPinchTimer >= 2.0) {
+                    this.isCompassOpen = true;
+                    this.indexPinchTimer = 0.0;
+                    this.buttonCooldown = 0.5;
+
+                    console.log(`[Compass] Compass toggled! Open: ${this.isCompassOpen}`);
+                    
+                    this.compassGroup.visible = true;
+                    this.activeCompassTileIndex = -1;
+                    this.hoveredCellIndex = -1;
+                    this.compassInfoMat.opacity = 0.0;
+                    this.compassInfoCard.position.set(0, 0, -0.005);
+                    this.redrawCompassGrid(-1);
+                    
+                    const jugModel = activeJugnuModel as JugnuV3Model;
+                    if (jugModel && typeof jugModel.setMood === 'function') {
+                        jugModel.setMood('happy');
+                    }
+                    if (jugModel && typeof jugModel.triggerPinchAnimation === 'function') {
+                        jugModel.triggerPinchAnimation();
+                    }
+                }
+            } else {
+                this.indexPinchTimer = 0.0;
+            }
+        } else {
+            // Compass is already open
+            if (isAnyPinchHeld) {
+                this.pinchReleasedTimer = 0.0; // Keep open as long as a pinch is held
+            } else {
+                if (!this.isGridLocked) {
+                    this.pinchReleasedTimer += safeDt;
+                    if (this.pinchReleasedTimer >= 2.0) {
+                        this.isCompassOpen = false;
+                        this.pinchReleasedTimer = 0.0;
+                        console.log("[Compass] Pinch released for 2.0s. Closing Compass UI.");
+                    }
+                } else {
+                    this.pinchReleasedTimer = 0.0;
+                }
+            }
+        }
+    }
+
+    if (this.compassGroup) {
+        if (this.isCompassOpen) {
+            this.compassGroup.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 10.0);
+        } else {
+            this.compassGroup.scale.lerp(new THREE.Vector3(0, 0, 0), safeDt * 10.0);
+            if (this.compassGroup.scale.x < 0.01 && this.compassGroup.visible) {
+                this.compassGroup.visible = false;
+            }
+        }
+
+        if (this.compassGroup.visible && activeJugnuPos.lengthSq() > 0) {
+            if (this.isGridLocked) {
+                if (!this.lockedCompassPos) {
+                    this.lockedCompassPos = new THREE.Vector3().copy(activeJugnuPos);
+                    this.lockedCompassPos.y += 1.5 * activeJugnuModel!.scale.y + 0.041; // 5 cm closer to Jugnu (0.041 offset)
+                    this.player.head.getWorldPosition(this.headPos);
+                    
+                    const tempObj = new THREE.Object3D();
+                    tempObj.position.copy(this.lockedCompassPos);
+                    tempObj.lookAt(this.headPos);
+                    this.lockedCompassQuat = new THREE.Quaternion().copy(tempObj.quaternion);
+                }
+                this.compassGroup.position.copy(this.lockedCompassPos);
+                this.compassGroup.quaternion.copy(this.lockedCompassQuat!);
+            } else {
+                this.lockedCompassPos = null;
+                this.lockedCompassQuat = null;
+                this.compassGroup.position.copy(activeJugnuPos);
+                // Spawns very close to Jugnu almost touching the top edge (5 cm closer, using 0.041 instead of 0.091):
+                this.compassGroup.position.y += 1.5 * activeJugnuModel!.scale.y + 0.041;
+
+                this.player.head.getWorldPosition(this.headPos);
+                this.compassGroup.lookAt(this.headPos);
+            }
+
+            if (this.compassNeedle) {
+                const worldNorth = new THREE.Vector3(0, 0, -1);
+                const localNorth = worldNorth.clone().applyQuaternion(this.compassGroup.quaternion.clone().invert());
+                const angle = Math.atan2(localNorth.x, localNorth.y);
+                this.compassNeedle.rotation.z = -angle;
+            }
+
+            if (this.compassRing) {
+                this.compassRing.rotation.z += safeDt * 0.5; // Slow diagnostic spin
+            }
+
+            if (this.activeCompassTileIndex !== -1) {
+                this.compassInfoMat.opacity = THREE.MathUtils.lerp(this.compassInfoMat.opacity, 0.95, safeDt * 8.0);
+                this.compassInfoCard.position.z = THREE.MathUtils.lerp(this.compassInfoCard.position.z, -0.012, safeDt * 8.0);
+            }
+
+            // Multi-tab side-by-side slide math
+            let targetTranscriptX = 0.0;
+            let targetDebugX = 0.0;
+            if (this.isChatOpen && this.isDebugOpen) {
+                targetTranscriptX = -0.135;
+                targetDebugX = 0.135;
+            }
+
+            // Smooth scaling & sliding transition for the Transcript card (slides vertically ABOVE the board)
+            if (this.compassChatCard) {
+                if (this.isChatOpen) {
+                    this.compassChatMat.opacity = THREE.MathUtils.lerp(this.compassChatMat.opacity, 0.95, safeDt * 8.0);
+                    this.compassChatCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 8.0);
+                    this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, targetTranscriptX, safeDt * 8.0);
+                    this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, 0.15, safeDt * 8.0); // Vertically on top
+                    this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 8.0);
+                } else {
+                    this.compassChatMat.opacity = THREE.MathUtils.lerp(this.compassChatMat.opacity, 0.0, safeDt * 8.0);
+                    this.compassChatCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 8.0);
+                    this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, 0.0, safeDt * 8.0);
+                    this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, -0.02, safeDt * 8.0);
+                    this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 8.0);
+                }
+            }
+
+            // Smooth scaling & sliding transition for the Debug Console card (slides vertically ABOVE the board)
+            if (this.compassDebugCard) {
+                if (this.isDebugOpen) {
+                    this.compassDebugMat.opacity = THREE.MathUtils.lerp(this.compassDebugMat.opacity, 0.95, safeDt * 8.0);
+                    this.compassDebugCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 8.0);
+                    this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, targetDebugX, safeDt * 8.0);
+                    this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, 0.15, safeDt * 8.0); // Vertically on top
+                    this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 8.0);
+                } else {
+                    this.compassDebugMat.opacity = THREE.MathUtils.lerp(this.compassDebugMat.opacity, 0.0, safeDt * 8.0);
+                    this.compassDebugCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 8.0);
+                    this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, 0.0, safeDt * 8.0);
+                    this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, -0.02, safeDt * 8.0);
+                    this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 8.0);
+                }
+            }
+
+            const leftIndexTip = new THREE.Vector3();
+            const rightIndexTip = new THREE.Vector3();
+            const hasLeft = this.getIndexData('left', leftIndexTip);
+            const hasRight = this.getIndexData('right', rightIndexTip);
+
+            let activeTip: THREE.Vector3 | null = null;
+            if (hasLeft && hasRight) {
+                const boardWorldPos = new THREE.Vector3();
+                this.compassBackingBoard.getWorldPosition(boardWorldPos);
+                activeTip = leftIndexTip.distanceTo(boardWorldPos) < rightIndexTip.distanceTo(boardWorldPos) ? leftIndexTip : rightIndexTip;
+            } else if (hasLeft) {
+                activeTip = leftIndexTip;
+            } else if (hasRight) {
+                activeTip = rightIndexTip;
+            }
+
+            let currentHoverIdx = -1;
+
+            if (activeTip) {
+                const localTip = activeTip.clone().applyMatrix4(this.compassGroup.matrixWorld.clone().invert());
+                const isWithinHoverZ = Math.abs(localTip.z) < 0.025;
+                const isWithinBoundsX = localTip.x > -0.075 && localTip.x < 0.075;
+                const isWithinBoundsY = localTip.y > -0.0564 && localTip.y < 0.0564;
+
+                if (isWithinHoverZ && isWithinBoundsX && isWithinBoundsY) {
+                    let col = 1;
+                    if (localTip.x < -0.025) col = 0;
+                    else if (localTip.x > 0.025) col = 2;
+
+                    let row = 1;
+                    if (localTip.y > 0.0188) row = 0;
+                    else if (localTip.y < -0.0188) row = 2;
+
+                    currentHoverIdx = row * 3 + col;
+                    const isPressed = Math.abs(localTip.z) < 0.014;
+
+                    if (isPressed && currentHoverIdx !== 4 && this.buttonCooldown <= 0.0) {
+                        this.buttonCooldown = 0.8;
+                        const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
+                        const source = this.input.getPrimaryInputSource(activeHand);
+                        if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
+                            source.gamepad.hapticActuators[0].pulse(0.8, 50);
+                        }
+                        this.activeCompassTileIndex = currentHoverIdx;
+                        this.handleCompassTileClick(currentHoverIdx);
+                    }
+                }
+            }
+
+            if (currentHoverIdx !== this.hoveredCellIndex) {
+                this.hoveredCellIndex = currentHoverIdx;
+                this.redrawCompassGrid(currentHoverIdx);
+            }
+        }
+    }
+  }
+
+  private getIndexData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
+      const source = this.input.getPrimaryInputSource(handedness);
+      const frame = this.xrFrame;
+      if (!source || !source.hand || !frame) return false;
+
+      const indexTip = source.hand.get('index-finger-tip');
+      if (!indexTip) return false;
+
+      const refSpace = this.renderer.xr.getReferenceSpace();
+      if (!refSpace || typeof frame.getJointPose !== 'function') return false;
+
+      const indexPose = frame.getJointPose(indexTip, refSpace);
+
+      if (indexPose) {
+          const ix = indexPose.transform.position.x;
+          const iy = indexPose.transform.position.y;
+          const iz = indexPose.transform.position.z;
+          tipPosOut.set(ix, iy, iz);
+          tipPosOut.applyMatrix4(this.player.matrixWorld);
+          return true;
+      }
+      return false;
+  }
+
+  private redrawCompassGrid(hoveredIdx: number) {
+      const ctx = this.compassBackingCtx;
+      const w = 256;
+      const h = 192;
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.fillStyle = '#05050f';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 12);
+      ctx.fill();
+
+      const cellW = w / 3;
+      const cellH = h / 3;
+
+      if (hoveredIdx >= 0 && hoveredIdx <= 8 && hoveredIdx !== 4) {
+          const col = hoveredIdx % 3;
+          const row = Math.floor(hoveredIdx / 3);
+          ctx.fillStyle = 'rgba(249, 115, 22, 0.2)';
+          ctx.beginPath();
+          ctx.roundRect(col * cellW + 4, row * cellH + 4, cellW - 8, cellH - 8, 8);
+          ctx.fill();
+      }
+
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cellW, 6); ctx.lineTo(cellW, h - 6);
+      ctx.moveTo(cellW * 2, 6); ctx.lineTo(cellW * 2, h - 6);
+      ctx.moveTo(6, cellH); ctx.lineTo(w - 6, cellH);
+      ctx.moveTo(6, cellH * 2); ctx.lineTo(w - 6, cellH * 2);
+      ctx.stroke();
+
+      const icons = [
+          { label: this.isChatOpen ? "CLOSE CHAT" : "CHAT", type: "CHAT" },
+          { label: "STADIUM",  type: "STADIUM" },
+          { label: "GUIDE",    type: "GUIDE" },
+          { label: "VOICE",    type: "VOICE" },
+          { label: "COMPASS",  type: "COMPASS" },
+          { label: this.isDebugOpen ? "CLOSE DEBUG" : "DEBUG", type: "DEBUG" },
+          { label: "EFFECTS",  type: "PARTICLES" },
+          { label: "RESET",    type: "RESET" },
+          { label: this.isGridLocked ? "UNLOCK" : "LOCK GRID", type: "LOCK" }
+      ];
+
+      icons.forEach((icon, idx) => {
+          if (idx === 4) {
+              const cx = cellW * 1.5;
+              const cy = cellH * 1.5;
+              ctx.strokeStyle = 'rgba(249, 115, 22, 0.4)';
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.arc(cx, cy, 20, 0, 2 * Math.PI);
+              ctx.stroke();
+              ctx.fillStyle = '#f97316';
+              ctx.font = 'bold 11px monospace';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText('N', cx, cy - 12);
+              ctx.fillText('S', cx, cy + 12);
+              ctx.fillText('E', cx + 12, cy);
+              ctx.fillText('W', cx - 12, cy);
+              return;
+          }
+
+          const col = idx % 3;
+          const row = Math.floor(idx / 3);
+          const cx = col * cellW + cellW / 2;
+          const cy = row * cellH + cellH / 2;
+          const iconY = cy - 8;
+          
+          if (icon.type === 'LOCK') {
+              const isLocked = this.isGridLocked;
+              ctx.strokeStyle = isLocked ? '#22c55e' : '#f97316';
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              ctx.arc(cx, iconY - 4, 6, Math.PI, 0);
+              ctx.lineTo(cx + 6, iconY + 2);
+              ctx.moveTo(cx - 6, iconY - 4);
+              ctx.lineTo(cx - 6, iconY + 2);
+              ctx.stroke();
+              ctx.fillStyle = ctx.strokeStyle;
+              ctx.beginPath();
+              ctx.roundRect(cx - 9, iconY, 18, 12, 3);
+              ctx.fill();
+              ctx.fillStyle = '#05050f';
+              ctx.beginPath();
+              ctx.arc(cx, iconY + 5, 2, 0, 2 * Math.PI);
+              ctx.fill();
+          } else {
+              ctx.fillStyle = '#ffffff';
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 3;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+
+              if (icon.type === 'CHAT') {
+                  ctx.fillStyle = this.isChatOpen ? '#22d3ee' : '#ffffff';
+                  ctx.strokeStyle = ctx.fillStyle;
+                  ctx.lineWidth = 3;
+                  ctx.beginPath();
+                  ctx.roundRect(cx - 12, iconY - 8, 24, 16, 4);
+                  ctx.stroke();
+                  ctx.beginPath();
+                  ctx.moveTo(cx - 4, iconY + 8);
+                  ctx.lineTo(cx - 8, iconY + 13);
+                  ctx.lineTo(cx - 8, iconY + 8);
+                  ctx.closePath();
+                  ctx.fill();
+                  ctx.stroke();
+                  
+                  ctx.fillStyle = this.isChatOpen ? '#05050f' : '#ffffff';
+                  ctx.beginPath();
+                  ctx.arc(cx - 5, iconY, 1.5, 0, 2 * Math.PI);
+                  ctx.arc(cx, iconY, 1.5, 0, 2 * Math.PI);
+                  ctx.arc(cx + 5, iconY, 1.5, 0, 2 * Math.PI);
+                  ctx.fill();
+              } else if (icon.type === 'STADIUM') {
+                  ctx.beginPath();
+                  ctx.ellipse(cx, iconY, 14, 7, 0, 0, 2 * Math.PI);
+                  ctx.stroke();
+                  ctx.beginPath();
+                  ctx.moveTo(cx - 14, iconY); ctx.lineTo(cx - 14, iconY + 8);
+                  ctx.moveTo(cx + 14, iconY); ctx.lineTo(cx + 14, iconY + 8);
+                  ctx.stroke();
+              } else if (icon.type === 'GUIDE') {
+                  ctx.beginPath();
+                  ctx.arc(cx - 3, iconY - 3, 7, 0, 2 * Math.PI);
+                  ctx.moveTo(cx + 2, iconY + 2);
+                  ctx.lineTo(cx + 10, iconY + 10);
+                  ctx.stroke();
+              } else if (icon.type === 'VOICE') {
+                  ctx.beginPath();
+                  ctx.roundRect(cx - 4, iconY - 10, 8, 16, 4);
+                  ctx.stroke();
+                  ctx.beginPath();
+                  ctx.arc(cx, iconY - 2, 8, 0, Math.PI);
+                  ctx.moveTo(cx, iconY + 6); ctx.lineTo(cx, iconY + 10);
+                  ctx.stroke();
+              } else if (icon.type === 'DEBUG') {
+                  ctx.fillStyle = this.isDebugOpen ? '#22d3ee' : '#ffffff';
+                  ctx.strokeStyle = ctx.fillStyle;
+                  ctx.lineWidth = 3;
+                  // Screen outline
+                  ctx.beginPath();
+                  ctx.roundRect(cx - 13, iconY - 9, 26, 18, 4);
+                  ctx.stroke();
+                  // Draw ">" prompt
+                  ctx.beginPath();
+                  ctx.moveTo(cx - 8, iconY - 4);
+                  ctx.lineTo(cx - 4, iconY);
+                  ctx.lineTo(cx - 8, iconY + 4);
+                  ctx.stroke();
+                  // Draw "_" cursor
+                  ctx.fillStyle = ctx.strokeStyle;
+                  ctx.fillRect(cx - 1, iconY + 2, 6, 3);
+              } else if (icon.type === 'PARTICLES') {
+                  ctx.beginPath();
+                  ctx.arc(cx - 6, iconY - 6, 2, 0, 2 * Math.PI);
+                  ctx.arc(cx + 6, iconY + 6, 2, 0, 2 * Math.PI);
+                  ctx.arc(cx + 4, iconY - 4, 1.5, 0, 2 * Math.PI);
+                  ctx.arc(cx - 4, iconY + 4, 3, 0, 2 * Math.PI);
+                  ctx.fill();
+              } else if (icon.type === 'RESET') {
+                  ctx.beginPath();
+                  ctx.arc(cx, iconY, 10, 0.15 * Math.PI, 1.85 * Math.PI);
+                  ctx.stroke();
+                  ctx.fillStyle = ctx.strokeStyle;
+                  ctx.beginPath();
+                  ctx.moveTo(cx + 14, iconY + 3);
+                  ctx.lineTo(cx + 8, iconY - 3);
+                  ctx.lineTo(cx + 20, iconY - 3);
+                  ctx.closePath();
+                  ctx.fill();
+              }
+          }
+
+          ctx.fillStyle = icon.type === 'LOCK' ? (this.isGridLocked ? '#22c55e' : '#f97316') : '#ffffff';
+          ctx.font = 'bold 8px monospace';
+          ctx.fillText(icon.label, cx, cy + 18);
+      });
+
+      this.compassBackingTexture.needsUpdate = true;
+  }
+
+  private initCompassUI() {
+      this.compassGroup = new THREE.Group();
+      this.compassGroup.position.set(0, 0.07, 0); 
+      this.compassGroup.scale.setScalar(0.001);
+      this.compassGroup.visible = false;
+
+      const backingGeom = new THREE.PlaneGeometry(0.15, 0.1128); 
+
+      this.compassBackingCanvas = document.createElement('canvas');
+      this.compassBackingCanvas.width = 256;
+      this.compassBackingCanvas.height = 192;
+      this.compassBackingCtx = this.compassBackingCanvas.getContext('2d')!;
+      
+      this.compassBackingTexture = new THREE.CanvasTexture(this.compassBackingCanvas);
+      this.compassBackingTexture.colorSpace = THREE.SRGBColorSpace;
+
+      const backingMat = new THREE.MeshBasicMaterial({
+          map: this.compassBackingTexture,
+          transparent: true,
+          opacity: 1.0,
+          depthWrite: false
+      });
+      this.compassBackingBoard = new THREE.Mesh(backingGeom, backingMat);
+      this.compassGroup.add(this.compassBackingBoard);
+
+      this.compassNeedle = new THREE.Mesh();
+      this.compassNeedle.position.set(0, 0, 0.002);
+      this.compassGroup.add(this.compassNeedle);
+
+      // Create a 3D ring at an angle that clips through the UI to look 3D
+      const ringGeom = new THREE.TorusGeometry(0.024, 0.002, 16, 100);
+      const ringMat = new THREE.MeshBasicMaterial({
+          color: 0xf97316,
+          transparent: true,
+          opacity: 0.85,
+          side: THREE.DoubleSide
+      });
+      this.compassRing = new THREE.Mesh(ringGeom, ringMat);
+      // Tilt it so it clips beautifully through the UI plane (45° X-tilt, 15° Y-tilt)
+      this.compassRing.rotation.set(Math.PI / 4, Math.PI / 12, 0);
+      this.compassRing.position.set(0, 0, 0.0);
+      this.compassGroup.add(this.compassRing);
+
+      const northCone = new THREE.Mesh(
+          new THREE.ConeGeometry(0.003, 0.012, 4),
+          new THREE.MeshBasicMaterial({ color: 0xff1e1e })
+      );
+      northCone.rotation.x = Math.PI / 2;
+      northCone.rotation.z = Math.PI;
+      northCone.position.y = 0.006;
+      this.compassNeedle.add(northCone);
+
+      const southCone = new THREE.Mesh(
+          new THREE.ConeGeometry(0.003, 0.012, 4),
+          new THREE.MeshBasicMaterial({ color: 0xcccccc })
+      );
+      southCone.rotation.x = Math.PI / 2;
+      southCone.position.y = -0.006;
+      this.compassNeedle.add(southCone);
+
+      const pivot = new THREE.Mesh(
+          new THREE.SphereGeometry(0.0016, 16, 16),
+          new THREE.MeshBasicMaterial({ color: 0xf97316 })
+      );
+      pivot.position.z = 0.0015;
+      this.compassNeedle.add(pivot);
+
+      this.compassInfoCard = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.15, 0.0744), 
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0, depthWrite: false })
+      );
+      this.compassInfoCard.position.set(0, 0, -0.005);
+      this.compassGroup.add(this.compassInfoCard);
+
+      this.compassInfoTextCanvas = document.createElement('canvas');
+      this.compassInfoTextCanvas.width = 256;
+      this.compassInfoTextCanvas.height = 128;
+      this.compassInfoTextCtx = this.compassInfoTextCanvas.getContext('2d')!;
+      this.compassInfoTextTexture = new THREE.CanvasTexture(this.compassInfoTextCanvas);
+      this.compassInfoTextTexture.colorSpace = THREE.SRGBColorSpace;
+
+      this.compassInfoMat = new THREE.MeshBasicMaterial({
+          map: this.compassInfoTextTexture,
+          transparent: true,
+          opacity: 0.0,
+          depthWrite: false
+      });
+      this.compassInfoCard.material = this.compassInfoMat;
+
+      // Initialize Chat Tab UI
+      this.compassChatCanvas = document.createElement('canvas');
+      this.compassChatCanvas.width = 512;
+      this.compassChatCanvas.height = 384;
+      this.compassChatCtx = this.compassChatCanvas.getContext('2d')!;
+
+      this.compassChatTexture = new THREE.CanvasTexture(this.compassChatCanvas);
+      this.compassChatTexture.colorSpace = THREE.SRGBColorSpace;
+
+      this.compassChatMat = new THREE.MeshBasicMaterial({
+          map: this.compassChatTexture,
+          transparent: true,
+          opacity: 0.0,
+          depthWrite: false
+      });
+
+      this.compassChatCard = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.24, 0.18),
+          this.compassChatMat
+      );
+      // Sits behind Jugnu and the compass layer on a medium sized screen
+      this.compassChatCard.position.set(0, -0.02, 0.0); // Z slides to -0.04 when open
+      this.compassChatCard.scale.setScalar(0.001); // Shrink initially
+      this.compassGroup.add(this.compassChatCard);
+
+      // Draw initial chat screen
+      this.redrawCompassChat();
+
+      // Initialize Debug Console UI
+      this.compassDebugCanvas = document.createElement('canvas');
+      this.compassDebugCanvas.width = 512;
+      this.compassDebugCanvas.height = 384;
+      this.compassDebugCtx = this.compassDebugCanvas.getContext('2d')!;
+
+      this.compassDebugTexture = new THREE.CanvasTexture(this.compassDebugCanvas);
+      this.compassDebugTexture.colorSpace = THREE.SRGBColorSpace;
+
+      this.compassDebugMat = new THREE.MeshBasicMaterial({
+          map: this.compassDebugTexture,
+          transparent: true,
+          opacity: 0.0,
+          depthWrite: false
+      });
+
+      this.compassDebugCard = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.24, 0.18),
+          this.compassDebugMat
+      );
+      this.compassDebugCard.position.set(0, -0.02, 0.0); // Z slides to -0.04 when open
+      this.compassDebugCard.scale.setScalar(0.001); // Shrink initially
+      this.compassGroup.add(this.compassDebugCard);
+
+      // Draw initial debug screen
+      this.redrawCompassDebug();
+
+      // Draw initial grid
+      this.redrawCompassGrid(-1);
+
+      this.world.createTransformEntity(this.compassGroup);
+  }
+
+  private redrawCompassInfoCard(title: string, detailText: string) {
+      const ctx = this.compassInfoTextCtx;
+      const w = 256;
+      const h = 128;
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.fillStyle = '#05050f';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 8);
+      ctx.fill();
+
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 8);
+      ctx.stroke();
+
+      ctx.fillStyle = '#f97316';
+      ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(title.toUpperCase(), w / 2, 20);
+
+      ctx.strokeStyle = 'rgba(249, 115, 22, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(16, 28); ctx.lineTo(w - 16, 28);
+      ctx.stroke();
+
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'left';
+      
+      const lines = detailText.split('\n');
+      let y = 42;
+      lines.forEach((line) => {
+          ctx.fillText(line, 12, y);
+          y += 12;
+      });
+
+      this.compassInfoTextTexture.needsUpdate = true;
+  }
+
+  private handleCompassTileClick(tileIndex: number) {
+      console.log(`[Compass] Clicked cell index: ${tileIndex}`);
+
+      const icons = [
+          { label: "CHAT",     type: "CHAT" },
+          { label: "STADIUM",  type: "STADIUM" },
+          { label: "GUIDE",    type: "GUIDE" },
+          { label: "VOICE",    type: "VOICE" },
+          { label: "COMPASS",  type: "COMPASS" },
+          { label: "DEBUG",    type: "DEBUG" },
+          { label: "EFFECTS",  type: "PARTICLES" },
+          { label: "RESET",    type: "RESET" },
+          { label: "LOCK",     type: "LOCK" }
+      ];
+
+      const tileType = icons[tileIndex]?.type || "";
+      let title = "";
+      let detail = "";
+
+      if (tileType === 'CHAT') {
+          this.isChatOpen = !this.isChatOpen;
+          title = this.isChatOpen ? "Transcript & Chat" : "Transcript & Chat";
+          if (this.isChatOpen) {
+              this.redrawCompassChat();
+              detail = "Dynamic Chat Panel slides behind Jugnu.\n\nStatus: ACTIVE VIEW.\nDisplays recent conversational transcripts and active debug telemetry log lines.";
+          } else {
+              detail = "Dynamic Chat Panel retracted.\n\nStatus: STANDBY.\nRedraw compass board grid.";
+          }
+          this.redrawCompassGrid(this.hoveredCellIndex);
+      } else if (tileType === 'STADIUM') {
+          title = "Tactical Minimap";
+          (window as any).triggerMinimapToggle = true;
+          detail = "Minimap Stadium Table toggled.\n\nStatus: Toggled successfully!\nCheck for the 3D desk in front of you.";
+      } else if (tileType === 'GUIDE') {
+          title = "Minimap Guide";
+          detail = "Holographic Gestures:\n- Use MIDDLE finger pinch to rotate deck.\n- Use TWO-HAND index pinch to scale.\n- Proximity index poke outline buttons.";
+      } else if (tileType === 'VOICE') {
+          title = "Gemini AI Voice";
+          detail = "Voice pipeline: ACTIVE.\n\nMicrophone bounds: Calibrating...\nSay any prompt after poking Jugnu's head.";
+      } else if (tileType === 'DEBUG') {
+          this.isDebugOpen = !this.isDebugOpen;
+          title = this.isDebugOpen ? "Debug Console" : "Debug Console";
+          if (this.isDebugOpen) {
+              this.redrawCompassDebug();
+              detail = "Blue Cyberpunk Debug Console active behind Jugnu.\n\nStatus: ACTIVE VIEW.\nHooks to console log streams and shows realtime engine diagnostics.";
+          } else {
+              detail = "Debug Console retracted.\n\nStatus: STANDBY.\nGrid view updated.";
+          }
+          this.redrawCompassGrid(this.hoveredCellIndex);
+      } else if (tileType === 'PARTICLES') {
+          title = "Ambient FX Engine";
+          if (this.particleMesh) {
+              this.particleMesh.visible = !this.particleMesh.visible;
+          }
+          const particleStatus = this.particleMesh && this.particleMesh.visible ? "ENABLED" : "DISABLED";
+          detail = `Concentric Spline FX Status: ${particleStatus}\n\nRunning 2000 instanced micro-spheres.`;
+      } else if (tileType === 'RESET') {
+          title = "Reset Position";
+          this.activateJugnu();
+          detail = "Companion Avatar Reset.\n\nPosition recalibrated to 80cm in front of headset view vector.";
+      } else if (tileType === 'LOCK') {
+          this.isGridLocked = !this.isGridLocked;
+          title = this.isGridLocked ? "Grid Locked" : "Grid Unlocked";
+          
+          if (this.isGridLocked) {
+              this.interactionState = 'Anchored';
+              this.queries.jugnu.entities.forEach(entity => {
+                  if (entity.object3D) {
+                      this.centerPos.copy(entity.object3D.position);
+                      entity.object3D.position.copy(this.centerPos);
+                      this.velocity.set(0, 0, 0);
+                      this.setExpression(6); // Play winking look
+                  }
+              });
+              this.chatHistory.push({ sender: 'System', text: 'Rigid Spatial Anchor: LOCKED.' });
+              this.redrawCompassChat();
+              detail = "Compass Grid & Companion locked.\n\nStatus: RIGIDLY ANCHORED.\nJugnu will stay at this exact point.\nRelease pinch to let companion stay here.";
+          } else {
+              this.interactionState = 'Following';
+              this.lockedCompassPos = null;
+              this.lockedCompassQuat = null;
+              this.chatHistory.push({ sender: 'System', text: 'Rigid Spatial Anchor: RELEASED.' });
+              this.redrawCompassChat();
+              detail = "Compass Grid Unlocked.\n\nStatus: FREE FLOATING.\nClosing delay of 2.0s restored upon pinch release.";
+          }
+          
+          this.redrawCompassGrid(this.hoveredCellIndex);
+      }
+
+      this.redrawCompassInfoCard(title, detail);
+  }
+
+  private redrawCompassChat() {
+      const ctx = this.compassChatCtx;
+      const w = 512;
+      const h = 384;
+      ctx.clearRect(0, 0, w, h);
+
+      // Backing board
+      ctx.fillStyle = '#05050f';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 16);
+      ctx.fill();
+
+      // Border
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 16);
+      ctx.stroke();
+
+      // Header Text
+      ctx.fillStyle = '#f97316';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('JUGNU TRANSCRIPT & DEBUG CHAT', w / 2, 34);
+
+      // Header Divider
+      ctx.strokeStyle = 'rgba(249, 115, 22, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(24, 48); ctx.lineTo(w - 24, 48);
+      ctx.stroke();
+
+      // Chat text rendering
+      ctx.textAlign = 'left';
+      ctx.font = '13px monospace';
+      
+      let y = 78;
+      const startIdx = Math.max(0, this.chatHistory.length - 12);
+      const visibleLines = this.chatHistory.slice(startIdx);
+
+      visibleLines.forEach((line) => {
+          if (line.sender === 'You') {
+              ctx.fillStyle = '#38bdf8'; // Sky blue
+              ctx.fillText('YOU: ', 24, y);
+              ctx.fillStyle = '#ffffff';
+              ctx.fillText(line.text, 64, y);
+          } else if (line.sender === 'Jugnu') {
+              ctx.fillStyle = '#f97316'; // Orange
+              ctx.fillText('JUGNU: ', 24, y);
+              ctx.fillStyle = '#e2e8f0';
+              ctx.fillText(line.text, 78, y);
+          } else {
+              ctx.fillStyle = '#22c55e'; // Green for system
+              ctx.fillText('SYS: ', 24, y);
+              ctx.fillStyle = '#a7f3d0';
+              ctx.fillText(line.text, 64, y);
+          }
+          y += 24;
+      });
+
+      this.compassChatTexture.needsUpdate = true;
+  }
+
+  private hookConsole() {
+      const self = this;
+      console.log = function(...args: any[]) {
+          self.originalLog.apply(console, args);
+          const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          self.addDebugLog('info', msg);
+      };
+
+      console.warn = function(...args: any[]) {
+          self.originalWarn.apply(console, args);
+          const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          self.addDebugLog('warn', msg);
+      };
+
+      console.error = function(...args: any[]) {
+          self.originalError.apply(console, args);
+          const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          self.addDebugLog('error', msg);
+      };
+  }
+
+  private addDebugLog(type: 'info' | 'warn' | 'error', text: string) {
+      if (text.includes('[IWER]') || text.includes('requestAnimationFrame') || text.includes('Render frame')) {
+          return;
+      }
+
+      const now = new Date();
+      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+      
+      const maxCharPerLine = 48;
+      if (text.length > maxCharPerLine) {
+          const lines = [];
+          for (let i = 0; i < text.length; i += maxCharPerLine) {
+              lines.push(text.substring(i, i + maxCharPerLine));
+          }
+          lines.forEach((line, idx) => {
+              this.debugHistory.push({
+                  type,
+                  text: idx === 0 ? line : `  ${line}`,
+                  timestamp: idx === 0 ? timeStr : '        '
+              });
+          });
+      } else {
+          this.debugHistory.push({ type, text, timestamp: timeStr });
+      }
+
+      while (this.debugHistory.length > this.maxDebugLogs) {
+          this.debugHistory.shift();
+      }
+
+      if (this.compassDebugCard) {
+          this.redrawCompassDebug();
+      }
+  }
+
+  private redrawCompassDebug() {
+      const ctx = this.compassDebugCtx;
+      const w = 512;
+      const h = 384;
+      ctx.clearRect(0, 0, w, h);
+
+      // Dark blue backing
+      ctx.fillStyle = 'rgba(5, 5, 20, 0.95)';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 16);
+      ctx.fill();
+
+      // Cyberpunk style neon border (Electric Cyan)
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 16);
+      ctx.stroke();
+
+      // Secondary border (Magenta)
+      ctx.strokeStyle = 'rgba(255, 0, 128, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(10, 10, w - 20, h - 20, 12);
+      ctx.stroke();
+
+      // Corner accents
+      ctx.fillStyle = '#00ffff';
+      const accentSize = 16;
+      // Top Left
+      ctx.fillRect(0, 0, accentSize, 4);
+      ctx.fillRect(0, 0, 4, accentSize);
+      // Top Right
+      ctx.fillRect(w - accentSize, 0, accentSize, 4);
+      ctx.fillRect(w - 4, 0, 4, accentSize);
+      // Bottom Left
+      ctx.fillRect(0, h - 4, accentSize, 4);
+      ctx.fillRect(0, h - accentSize, 4, accentSize);
+      // Bottom Right
+      ctx.fillRect(w - accentSize, h - 4, accentSize, 4);
+      ctx.fillRect(w - 4, h - accentSize, 4, accentSize);
+
+      // Console Header text
+      ctx.fillStyle = '#00ffff';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText("SYSTEM DEBUG CONSOLE", w / 2, 34);
+
+      // Header Divider
+      ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(24, 48); ctx.lineTo(w - 24, 48);
+      ctx.stroke();
+
+      // Print logs
+      ctx.textAlign = 'left';
+      ctx.font = '12px monospace';
+
+      let y = 78;
+      this.debugHistory.forEach((log) => {
+          // Time tag
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+          ctx.fillText(`[${log.timestamp}]`, 24, y);
+
+          // Log prefix & content depending on level
+          let prefix = '';
+          if (log.type === 'info') {
+              ctx.fillStyle = '#00e5ff'; // Neon Cyan
+              prefix = '[INFO] ';
+          } else if (log.type === 'warn') {
+              ctx.fillStyle = '#ffd600'; // Amber/Yellow
+              prefix = '[WARN] ';
+          } else if (log.type === 'error') {
+              ctx.fillStyle = '#ff1744'; // Red
+              prefix = '[FAIL] ';
+          }
+
+          ctx.fillText(prefix, 100, y);
+
+          // Log body
+          ctx.fillStyle = log.type === 'error' ? '#ff8a80' : 'rgba(255, 255, 255, 0.9)';
+          ctx.fillText(log.text, 150, y);
+
+          y += 24;
+      });
+
+      // Blinking Caret
+      const now = Date.now();
+      if (Math.floor(now / 500) % 2 === 0) {
+          ctx.fillStyle = '#00ffff';
+          ctx.fillRect(24, y - 10, 8, 12);
+      }
+
+      this.compassDebugTexture.needsUpdate = true;
   }
 }
 
