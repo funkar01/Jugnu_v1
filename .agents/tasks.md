@@ -71,4 +71,14 @@
   - `[x]` Built holographic neon box highlighters and billboarding text HUD labels
   - `[x]` Configured audio chime and speech synthesis voice output on scanner toggle
   - `[x]` Registered system in `src/index.ts` and successfully verified production builds
+- `[x]` Volumetric Bounding Box & Telemetry HUD Screen Revisions
+  - `[x]` Refined gesture heuristics to wrist-relative queries to improve Quest 3 tracking
+  - `[x]` Upgraded 1px lines to glowing volumetric bounding box meshes (solid + wireframe)
+  - `[x]` Implemented a real-time floating sci-fi Scanner HUD panel with scanline sweeper and live targets checklist
+- `[x]` Failsafe Audio Playback & AR Text legibility Fixes
+  - `[x]` Configured absolute dynamic URL path resolution to force audio playbacks on Quest 3
+  - `[x]` Implemented double-pass text outlining (dark stroke backing + color fills) to prevent bright washouts in MR
+  - `[x]` Expanded HUD layout dimensions to 42x42cm and optimized center-left viewing offset
+
+
 
