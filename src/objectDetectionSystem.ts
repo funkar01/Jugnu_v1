@@ -4,6 +4,7 @@ import {
   XRPlane,
   Transform,
   Interactable,
+  AudioUtils,
 } from "@iwsdk/core";
 import { Jugnu, TranscriptUI } from "./jugnu.js";
 import * as THREE from "three";
@@ -38,12 +39,19 @@ export class ObjectDetectionSystem extends createSystem({
   // Bounding boxes cache: using Meshes (solid translucent + wireframe child)
   private activeHighlighters = new Map<
     string,
-    { box: THREE.Mesh; label: THREE.Mesh; colorHex: number }
+    {
+      box: THREE.Mesh;
+      label: THREE.Mesh;
+      colorHex: number;
+      boxEntity: any;
+      labelEntity: any;
+    }
   >();
   private unitBoxGeometry!: THREE.BoxGeometry;
 
   // Scanner HUD Screen assets
   private hudMesh: THREE.Mesh | null = null;
+  private hudEntity: any = null;
   private hudCanvas!: HTMLCanvasElement;
   private hudCtx!: CanvasRenderingContext2D;
   private hudTexture!: THREE.CanvasTexture;
@@ -113,12 +121,16 @@ export class ObjectDetectionSystem extends createSystem({
       return false;
     }
 
-    // Extended fingers (index & middle) should be far from the wrist (> 8.5cm)
-    // Curled fingers (ring & pinky) should be close to the wrist (< 8.0cm / 7.5cm)
-    const isIndexExtended = dIndex > 0.085;
-    const isMiddleExtended = dMiddle > 0.085;
-    const isRingCurled = dRing < 0.080;
-    const isPinkyCurled = dPinky < 0.075;
+    // Heuristics:
+    // 1. Extended fingers (index & middle) should be far from the wrist (> 7.5cm)
+    // 2. Curled fingers (ring & pinky) should be closer to the wrist (< 11cm for ring, < 10cm for pinky)
+    // 3. To handle all hand sizes robustly, use relative checks:
+    //    The index tip should be at least 2.5cm further from the wrist than the curled ring finger tip.
+    //    The middle tip should be at least 2.5cm further from the wrist than the curled pinky finger tip.
+    const isIndexExtended = dIndex > 0.075 && dIndex > dRing + 0.025;
+    const isMiddleExtended = dMiddle > 0.075 && dMiddle > dPinky + 0.025;
+    const isRingCurled = dRing < 0.11;
+    const isPinkyCurled = dPinky < 0.10;
 
     return isIndexExtended && isMiddleExtended && isRingCurled && isPinkyCurled;
   }
@@ -127,14 +139,19 @@ export class ObjectDetectionSystem extends createSystem({
     this.isScanning = !this.isScanning;
     this.gestureCooldown = 1.5; // Cooldown to prevent instant bouncing
 
-    // 1. Play spatial sound effect with absolute path resolution
+    // 1. Play spatial sound effect via AudioUtils (SDK standard) with HTML5 fallback
     try {
-      const audioUrl = new URL("audio/chime.mp3", window.location.href).href;
-      const audio = new Audio(audioUrl);
-      audio.volume = 0.45;
-      audio.play().catch((e) => console.warn("Audio play failed:", e));
+      AudioUtils.createOneShot(this.world, "./audio/chime.mp3", { volume: 0.45 });
     } catch (e) {
-      console.warn("Audio context suspended or failed:", e);
+      console.warn("Audio play failed via AudioUtils:", e);
+      try {
+        const audioUrl = new URL("audio/chime.mp3", window.location.href).href;
+        const audio = new Audio(audioUrl);
+        audio.volume = 0.45;
+        audio.play().catch((err) => console.warn("Fallback audio play failed:", err));
+      } catch (err) {
+        console.warn("Audio context suspended or failed:", err);
+      }
     }
 
     // 2. Jugnu voice synthesis readout
@@ -169,7 +186,17 @@ export class ObjectDetectionSystem extends createSystem({
 
   private clearAllHighlighters() {
     this.activeHighlighters.forEach((h) => {
-      // Clean volumetric box resources
+      // Dispose entities via ECS engine to safely clean up Three.js scene parentings
+      if (h.boxEntity) {
+        if (typeof h.boxEntity.dispose === "function") h.boxEntity.dispose();
+        else h.boxEntity.destroy();
+      }
+      if (h.labelEntity) {
+        if (typeof h.labelEntity.dispose === "function") h.labelEntity.dispose();
+        else h.labelEntity.destroy();
+      }
+
+      // Dispose underlying geometries and materials to avoid GPU memory leaks
       h.box.geometry.dispose();
       const wire = h.box.getObjectByName("scanner_wireframe") as THREE.Mesh;
       if (wire) {
@@ -178,14 +205,11 @@ export class ObjectDetectionSystem extends createSystem({
       }
       const mat = h.box.material as THREE.Material;
       mat.dispose();
-      this.world.scene.remove(h.box);
 
-      // Clean label resources
       h.label.geometry.dispose();
       const lblMat = h.label.material as THREE.MeshBasicMaterial;
       lblMat.map?.dispose();
       lblMat.dispose();
-      this.world.scene.remove(h.label);
     });
     this.activeHighlighters.clear();
 
@@ -413,18 +437,18 @@ export class ObjectDetectionSystem extends createSystem({
       const geom = new THREE.PlaneGeometry(0.42, 0.42); // Stately 42x42 cm HUD Panel
       this.hudMesh = new THREE.Mesh(geom, mat);
       this.hudMesh.name = "scanner_hud";
-      this.world.scene.add(this.hudMesh);
+      
+      // Register with the ECS engine to make it visible in WebXR
+      this.hudEntity = this.world.createTransformEntity(this.hudMesh);
     }
     return this.hudMesh;
   }
 
   private destroyHUD() {
-    if (this.hudMesh) {
-      this.hudMesh.geometry.dispose();
-      const mat = this.hudMesh.material as THREE.MeshBasicMaterial;
-      mat.map?.dispose();
-      mat.dispose();
-      this.world.scene.remove(this.hudMesh);
+    if (this.hudEntity) {
+      if (typeof this.hudEntity.dispose === "function") this.hudEntity.dispose();
+      else this.hudEntity.destroy();
+      this.hudEntity = null;
       this.hudMesh = null;
     }
   }
@@ -437,13 +461,38 @@ export class ObjectDetectionSystem extends createSystem({
       this.gestureCooldown -= dt;
     }
 
-    // 2. Headset hand gesture verification
-    const refSpace = this.renderer.xr.getReferenceSpace();
-    if (refSpace && this.gestureCooldown <= 0) {
-      const leftPeace = this.isPeaceSign("left", refSpace);
-      const rightPeace = this.isPeaceSign("right", refSpace);
+    // 2. Headset hand gesture & controller squeeze verification
+    if (this.gestureCooldown <= 0) {
+      let inputTriggered = false;
 
-      if (leftPeace || rightPeace) {
+      // 2a. Check hand tracking peace sign
+      const refSpace = this.renderer.xr.getReferenceSpace();
+      if (refSpace) {
+        const leftPeace = this.isPeaceSign("left", refSpace);
+        const rightPeace = this.isPeaceSign("right", refSpace);
+        if (leftPeace || rightPeace) {
+          inputTriggered = true;
+        }
+      }
+
+      // 2b. Check controller squeeze button fallback (if hand tracking is not active)
+      if (!inputTriggered) {
+        const leftSource = this.input.getPrimaryInputSource("left");
+        const rightSource = this.input.getPrimaryInputSource("right");
+
+        const isControllerSqueezed = (source: any) => {
+          if (!source || !source.gamepad) return false;
+          // Squeeze/Grip button is index 1
+          const gripButton = source.gamepad.buttons[1];
+          return gripButton && gripButton.pressed;
+        };
+
+        if (isControllerSqueezed(leftSource) || isControllerSqueezed(rightSource)) {
+          inputTriggered = true;
+        }
+      }
+
+      if (inputTriggered) {
         this.peaceGestureTimer += dt;
         if (this.peaceGestureTimer >= 0.4) {
           this.toggleScanning();
@@ -481,6 +530,7 @@ export class ObjectDetectionSystem extends createSystem({
     // Smooth lazy-following lag for comfortable VR visibility
     hud.position.lerp(targetHudPos, 4.0 * dt);
     hud.lookAt(this.headPos);
+    hud.rotateY(Math.PI); // Rotate 180 degrees so the front face faces the player!
 
     // 4. Bounding highlight rendering
     const seenKeys = new Set<string>();
@@ -492,7 +542,22 @@ export class ObjectDetectionSystem extends createSystem({
       if (!obj) return;
 
       const _plane = entity.getValue(XRPlane, "_plane") as any;
-      const rawLabel = _plane?.semanticLabel || "plane";
+      let rawLabel = "plane";
+      if (_plane) {
+        if (_plane.orientation === "vertical") {
+          rawLabel = "wall";
+        } else if (_plane.orientation === "horizontal") {
+          // Heuristic classification based on height
+          const y = obj.position.y;
+          if (y < 0.2) {
+            rawLabel = "floor";
+          } else if (y > 2.0) {
+            rawLabel = "ceiling";
+          } else {
+            rawLabel = "table/surface";
+          }
+        }
+      }
       const displayLabel = `[ PHYSICAL: ${rawLabel.toUpperCase()} ]`;
       const color = 0x00ffff; // Cyan
       const key = `plane_${entity.index}`;
@@ -563,6 +628,17 @@ export class ObjectDetectionSystem extends createSystem({
     // 5. Sweep inactive highlights
     this.activeHighlighters.forEach((h, key) => {
       if (!seenKeys.has(key)) {
+        // Dispose of entities first
+        if (h.boxEntity) {
+          if (typeof h.boxEntity.dispose === "function") h.boxEntity.dispose();
+          else h.boxEntity.destroy();
+        }
+        if (h.labelEntity) {
+          if (typeof h.labelEntity.dispose === "function") h.labelEntity.dispose();
+          else h.labelEntity.destroy();
+        }
+
+        // Clean materials/geometries
         h.box.geometry.dispose();
         const wire = h.box.getObjectByName("scanner_wireframe") as THREE.Mesh;
         if (wire) {
@@ -571,13 +647,11 @@ export class ObjectDetectionSystem extends createSystem({
         }
         const mat = h.box.material as THREE.Material;
         mat.dispose();
-        this.world.scene.remove(h.box);
 
         h.label.geometry.dispose();
         const lblMat = h.label.material as THREE.MeshBasicMaterial;
         lblMat.map?.dispose();
         lblMat.dispose();
-        this.world.scene.remove(h.label);
 
         this.activeHighlighters.delete(key);
       }
@@ -590,9 +664,35 @@ export class ObjectDetectionSystem extends createSystem({
     label: string,
     colorHex: number
   ) {
+    // Temporarily force visibility to true so Box3.setFromObject can compute the correct bounds
+    const originalVisible = obj.visible;
+    obj.visible = true;
+
+    const hiddenChildren: THREE.Object3D[] = [];
+    obj.traverse((child) => {
+      if (!child.visible) {
+        child.visible = true;
+        hiddenChildren.push(child);
+      }
+    });
+
     this.tempBox3.setFromObject(obj);
+
+    // Restore original visibility states
+    obj.visible = originalVisible;
+    hiddenChildren.forEach((child) => {
+      child.visible = false;
+    });
+
     this.tempBox3.getSize(this.boxSize);
     this.tempBox3.getCenter(this.boxCenter);
+
+    // Fallback: If calculations returned NaN or invalid sizes, center on the object's position
+    if (isNaN(this.boxCenter.x) || isNaN(this.boxCenter.y) || isNaN(this.boxCenter.z) ||
+        this.boxSize.x <= 0 || this.boxSize.y <= 0 || this.boxSize.z <= 0) {
+      obj.getWorldPosition(this.boxCenter);
+      this.boxSize.set(0.4, 0.4, 0.4); // Stately default size
+    }
 
     if (this.boxSize.x < 0.02) this.boxSize.x = 0.05;
     if (this.boxSize.y < 0.02) this.boxSize.y = 0.05;
@@ -625,10 +725,11 @@ export class ObjectDetectionSystem extends createSystem({
       // 3. Floating billboard label
       const labelMesh = this.createScannerLabel(label, colorHex);
 
-      this.world.scene.add(solidBox);
-      this.world.scene.add(labelMesh);
+      // Register both with the ECS engine so they appear in WebXR
+      const boxEntity = this.world.createTransformEntity(solidBox);
+      const labelEntity = this.world.createTransformEntity(labelMesh);
 
-      item = { box: solidBox, label: labelMesh, colorHex };
+      item = { box: solidBox, label: labelMesh, colorHex, boxEntity, labelEntity };
       this.activeHighlighters.set(key, item);
     }
 
@@ -651,5 +752,6 @@ export class ObjectDetectionSystem extends createSystem({
     this.labelPos.y += this.boxSize.y / 2 + 0.12;
     item.label.position.copy(this.labelPos);
     item.label.lookAt(this.headPos);
+    item.label.rotateY(Math.PI); // Rotate 180 degrees so the front face faces the player!
   }
 }
