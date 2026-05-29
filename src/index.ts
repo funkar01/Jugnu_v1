@@ -23,6 +23,13 @@ if (stencilMaterial) {
   stencilMaterial.transparent = false;
   stencilMaterial.depthWrite = true;
   stencilMaterial.depthTest = true;
+  stencilMaterial.alphaTest = 0.0;
+  stencilMaterial.stencilWrite = true;
+  stencilMaterial.stencilRef = 1;
+  stencilMaterial.stencilFunc = AlwaysStencilFunc;
+  stencilMaterial.stencilFail = KeepStencilOp;
+  stencilMaterial.stencilZFail = KeepStencilOp;
+  stencilMaterial.stencilZPass = ReplaceStencilOp;
   stencilMaterial.needsUpdate = true;
 }
 
@@ -51,7 +58,7 @@ import { JugnuDebugBoard } from "./JugnuDebugBoard.js";
 import { RoomVisualizerSystem } from "./roomVisualizer.js";
 import { DomainExpansionSystem } from "./domainExpansion.js";
 import { CityMapSystem } from "./cityMapSystem.js";
-import { ACESFilmicToneMapping, Color, GridHelper, Material } from "three";
+import { ACESFilmicToneMapping, Color, GridHelper, Material, AlwaysStencilFunc, KeepStencilOp, ReplaceStencilOp } from "three";
 
 export const IS_DEV = ((import.meta as any).env.VITE_DEBUG_MODE === "true") || (import.meta as any).env.DEV;
 

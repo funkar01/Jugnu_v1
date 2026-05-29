@@ -67,6 +67,20 @@
   - `[x]` Spatially anchored a procedural 3D cricket wicket and implemented 2s gaze lock trigger
   - `[x]` Cast flowing 3D Catmull-Rom floor spline curves during Phase 4 navigation hand-off
   - `[x]` Verified typecheck (tsc) and successful production build (npm run build)
+- [x] WebXR Onboarding Hands & Object Visibility Fix
+  - [x] Configured stencilMaterial to disable alphaTest and write stencil ref = 1
+  - [x] Configured dimOverlayMat to reject rendering on stencil ref = 1 pixels
+  - [x] Synchronized player head with active camera in flat mode on every update frame
+  - [x] Resolved Havok Physics "Table index is out of bounds" WASM crash by safely recreating body + shape together in setPhysicsState helper
+  - [x] Implemented URL parameters query and keyboard R key triggers to reset onboarding states and bypass DB persistence
+  - [x] Verified compilation and production build (npm run build)
+- [x] Phase 1 Ambient Wake-Up Refactoring
+  - [x] Add step 99 to JugnuInstructionBoard for wrist rubbing instruction
+  - [x] Implement checkWristRub relative speed gesture checking
+  - [x] Map desktop trigger to W key
+  - [x] Code emerging spawn translation from wrist to camera float position
+
+
 
 
 

@@ -89,6 +89,8 @@ export class JugnuInstructionBoard extends THREE.Group {
             instructionText = "Lock eyes (gaze) on me for 2 seconds to find me!";
         } else if (step === 2) {
             instructionText = "Tap the glowing button on your left wrist!";
+        } else if (step === 99) {
+            instructionText = "Rub your right wrist to wake up Jugnu! (Or press W on desktop)";
         }
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
