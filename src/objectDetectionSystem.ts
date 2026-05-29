@@ -153,7 +153,7 @@ export class ObjectDetectionSystem extends createSystem({
       const board = entity.object3D as any;
       if (board && typeof board.updateText === "function") {
         board.updateText(
-          "TRIGGER: Peace Gesture (Both Hands)",
+          "TRIGGER: Peace Gesture (Single Hand)",
           this.isScanning ? "Scanning: spatial objects highlighted." : "Scanner deactivated."
         );
       }
@@ -443,7 +443,7 @@ export class ObjectDetectionSystem extends createSystem({
       const leftPeace = this.isPeaceSign("left", refSpace);
       const rightPeace = this.isPeaceSign("right", refSpace);
 
-      if (leftPeace && rightPeace) {
+      if (leftPeace || rightPeace) {
         this.peaceGestureTimer += dt;
         if (this.peaceGestureTimer >= 0.4) {
           this.toggleScanning();

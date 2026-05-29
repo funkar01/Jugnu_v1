@@ -79,6 +79,10 @@
   - `[x]` Configured absolute dynamic URL path resolution to force audio playbacks on Quest 3
   - `[x]` Implemented double-pass text outlining (dark stroke backing + color fills) to prevent bright washouts in MR
   - `[x]` Expanded HUD layout dimensions to 42x42cm and optimized center-left viewing offset
+- `[x]` Gesture Trigger Shift to Single Hand (Left or Right)
+  - `[x]` Updated gesture tracking updates loop condition to trigger with (left || right) peace symbols
+  - `[x]` Modified transcript UI telemetry labels to reflect single-hand triggering support
+
 
 
 
