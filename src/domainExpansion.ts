@@ -231,6 +231,25 @@ export class DomainExpansionSystem extends createSystem({
     private readonly ROOF_Y = 0.095;      // Height of stadium roof rim
     private readonly ROOF_RADIUS = 0.096; // Radius of stadium inner roof arc
 
+    // Physics Bouncing Simulation & Stadium Selection
+    private currentStadiumType: 'default' | 'berlin' | 'inuit' = 'default';
+    private berlinMesh: THREE.Mesh | null = null;
+    private inuitMesh: THREE.Mesh | null = null;
+    private ballVelocity = new THREE.Vector3(0.04, 0.03, 0.05);
+    private lastBubbleSkinStadium: string = 'default'; // tracks which stadium the bubbles were last skinned for
+
+    // Per-stadium domain key/name tables
+    private readonly DOMAIN_KEYS_DEFAULT  = ["mivVideo","iplCam2","iplCam3","iplCam4","iplCam5","iplCam6"];
+    private readonly DOMAIN_NAMES_DEFAULT = ["Wankhede — Cam 1","Wankhede — Cam 2","Wankhede — Cam 3","Wankhede — Cam 4","Wankhede — Cam 5","Wankhede — Cam 6"];
+    private readonly DOMAIN_KEYS_BERLIN   = ["berlin360_1","berlin360_2","berlin360_3","berlin360_4","berlin360_5","berlin360_6"];
+    private readonly DOMAIN_NAMES_BERLIN  = ["Olympiastadion — 1","Olympiastadion — 2","Olympiastadion — 3","Olympiastadion — 4","Olympiastadion — 5","Olympiastadion — 6"];
+    private readonly DOMAIN_KEYS_INUIT    = ["inuit360_1","inuit360_2","inuit360_3","inuit360_4","inuit360_5","inuit360_6"];
+    private readonly DOMAIN_NAMES_INUIT   = ["Crypto.com Arena — 1","Crypto.com Arena — 2","Crypto.com Arena — 3","Crypto.com Arena — 4","Crypto.com Arena — 5","Crypto.com Arena — 6"];
+    // Thumb key suffix: appending "_thumb" to each key gives the low-res bubble texture key
+    private readonly THUMB_KEYS_DEFAULT = ["iplCam1","iplCam2","iplCam3","iplCam4","iplCam5","iplCam6"];
+    private readonly THUMB_KEYS_BERLIN  = ["berlin360_1_thumb","berlin360_2_thumb","berlin360_3_thumb","berlin360_4_thumb","berlin360_5_thumb","berlin360_6_thumb"];
+    private readonly THUMB_KEYS_INUIT   = ["inuit360_1_thumb","inuit360_2_thumb","inuit360_3_thumb","inuit360_4_thumb","inuit360_5_thumb","inuit360_6_thumb"];
+
 
     // Keyboard debug listeners
     private debugMPressed = false;
@@ -1005,6 +1024,274 @@ export class DomainExpansionSystem extends createSystem({
         return this.debugMPressed;
     }
 
+    private setStadiumType(stadiumType: 'default' | 'berlin' | 'inuit') {
+        console.log(`[StadiumSelector] Switching stadium from ${this.currentStadiumType} to ${stadiumType}`);
+        this.currentStadiumType = stadiumType;
+
+        // ── Swap domain key/name tables for the new stadium ──────────────────
+        if (stadiumType === 'berlin') {
+            this.domainKeys  = [...this.DOMAIN_KEYS_BERLIN];
+            this.domainNames = [...this.DOMAIN_NAMES_BERLIN];
+        } else if (stadiumType === 'inuit') {
+            this.domainKeys  = [...this.DOMAIN_KEYS_INUIT];
+            this.domainNames = [...this.DOMAIN_NAMES_INUIT];
+        } else {
+            this.domainKeys  = [...this.DOMAIN_KEYS_DEFAULT];
+            this.domainNames = [...this.DOMAIN_NAMES_DEFAULT];
+        }
+
+        // ── Re-skin selection bubbles with low-res thumbs ────────────────────
+        const thumbKeys = stadiumType === 'berlin' ? this.THUMB_KEYS_BERLIN
+                        : stadiumType === 'inuit'  ? this.THUMB_KEYS_INUIT
+                        : this.THUMB_KEYS_DEFAULT;
+
+        this.selectionBubbles.forEach((bubble, idx) => {
+            const tKey = thumbKeys[idx] ?? thumbKeys[0];
+            const bMat = this.bubbleMats[idx] as THREE.MeshStandardMaterial;
+            if (tKey === 'mivVideo') {
+                bMat.map = this.mivVideoTex;
+            } else {
+                const tex = AssetManager.getTexture(tKey);
+                if (tex) {
+                    tex.colorSpace = THREE.SRGBColorSpace;
+                    bMat.map = tex;
+                }
+            }
+            bMat.needsUpdate = true;
+        });
+        this.lastBubbleSkinStadium = stadiumType;
+        console.log(`[StadiumSelector] Bubble skins updated to ${stadiumType}`);
+
+        // ── Show/hide existing stadium meshes ────────────────────────────────
+        if (this.stadiumMesh) {
+            this.stadiumMesh.visible = (stadiumType === 'default');
+        }
+        if (this.berlinMesh) {
+            this.berlinMesh.visible = (stadiumType === 'berlin');
+        }
+        if (this.inuitMesh) {
+            this.inuitMesh.visible = (stadiumType === 'inuit');
+        }
+
+        // 2. Lazily create new meshes if they don't exist yet
+        if (stadiumType === 'berlin' && !this.berlinMesh) {
+            const berlinGroup = new THREE.Group();
+            
+            // Hollow Cylinder wall (openEnded: true)
+            const cylinderGeo = new THREE.CylinderGeometry(0.096, 0.096, 0.095, 64, 1, true);
+            cylinderGeo.translate(0, 0.095 / 2, 0);
+            const berlinMat = new THREE.MeshStandardMaterial({
+                color: 0x22d3ee,
+                roughness: 0.1,
+                metalness: 0.8,
+                transparent: true,
+                opacity: 0.35,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const cylinderWall = new THREE.Mesh(cylinderGeo, berlinMat);
+            berlinGroup.add(cylinderWall);
+
+            // Top neon ring
+            const topRingGeo = new THREE.TorusGeometry(0.096, 0.0012, 8, 64);
+            topRingGeo.rotateX(Math.PI / 2);
+            topRingGeo.translate(0, 0.095, 0);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.8 });
+            const topRing = new THREE.Mesh(topRingGeo, ringMat);
+            berlinGroup.add(topRing);
+
+            // Bottom neon ring
+            const bottomRingGeo = new THREE.TorusGeometry(0.096, 0.0012, 8, 64);
+            bottomRingGeo.rotateX(Math.PI / 2);
+            bottomRingGeo.translate(0, 0.002, 0);
+            const bottomRing = new THREE.Mesh(bottomRingGeo, ringMat);
+            berlinGroup.add(bottomRing);
+
+            // Grid floor
+            const floorGeo = new THREE.PlaneGeometry(0.192, 0.192);
+            floorGeo.rotateX(-Math.PI / 2);
+            const floorMat = new THREE.MeshBasicMaterial({
+                color: 0x051525,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+            floorMesh.position.y = 0.001;
+            berlinGroup.add(floorMesh);
+
+            const gridHelper = new THREE.GridHelper(0.192, 10, 0x22d3ee, 0x114466);
+            gridHelper.position.y = 0.0015;
+            berlinGroup.add(gridHelper);
+
+            this.berlinMesh = berlinGroup as any;
+            this.tableGroup.add(this.berlinMesh!);
+        }
+
+        if (stadiumType === 'inuit' && !this.inuitMesh) {
+            const inuitGroup = new THREE.Group();
+
+            // Extruded Elliptical Wall (oval cross-section tube)
+            const segments = 64;
+            const height = 0.095;
+            const a = 0.11;
+            const b = 0.07;
+            const inuitGeo = new THREE.BufferGeometry();
+            const vertices: number[] = [];
+            const indices: number[] = [];
+            const uvs: number[] = [];
+
+            for (let i = 0; i <= segments; i++) {
+                const theta = (i / segments) * 2 * Math.PI;
+                const x = a * Math.cos(theta);
+                const z = b * Math.sin(theta);
+                
+                // Bottom vertex
+                vertices.push(x, 0.002, z);
+                uvs.push(i / segments, 0);
+
+                // Top vertex
+                vertices.push(x, height, z);
+                uvs.push(i / segments, 1);
+            }
+
+            for (let i = 0; i < segments; i++) {
+                const idx = i * 2;
+                indices.push(idx, idx + 1, idx + 2);
+                indices.push(idx + 1, idx + 3, idx + 2);
+            }
+
+            inuitGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            inuitGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            inuitGeo.setIndex(indices);
+            inuitGeo.computeVertexNormals();
+
+            const inuitMat = new THREE.MeshStandardMaterial({
+                color: 0xf97316,
+                roughness: 0.15,
+                metalness: 0.9,
+                transparent: true,
+                opacity: 0.35,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const ovalWall = new THREE.Mesh(inuitGeo, inuitMat);
+            inuitGroup.add(ovalWall);
+
+            // Top neon ring
+            const ringPoints: THREE.Vector3[] = [];
+            for (let i = 0; i <= segments; i++) {
+                const theta = (i / segments) * 2 * Math.PI;
+                ringPoints.push(new THREE.Vector3(a * Math.cos(theta), height, b * Math.sin(theta)));
+            }
+            const topRingGeo = new THREE.BufferGeometry().setFromPoints(ringPoints);
+            const ringMat = new THREE.LineBasicMaterial({ color: 0xf97316, linewidth: 3 });
+            const topRing = new THREE.Line(topRingGeo, ringMat);
+            inuitGroup.add(topRing);
+
+            // Bottom neon ring
+            const bottomPoints: THREE.Vector3[] = [];
+            for (let i = 0; i <= segments; i++) {
+                const theta = (i / segments) * 2 * Math.PI;
+                bottomPoints.push(new THREE.Vector3(a * Math.cos(theta), 0.002, b * Math.sin(theta)));
+            }
+            const bottomRingGeo = new THREE.BufferGeometry().setFromPoints(bottomPoints);
+            const bottomRing = new THREE.Line(bottomRingGeo, ringMat);
+            inuitGroup.add(bottomRing);
+
+            // Grid floor
+            const floorGeo = new THREE.PlaneGeometry(0.22, 0.14);
+            floorGeo.rotateX(-Math.PI / 2);
+            const floorMat = new THREE.MeshBasicMaterial({
+                color: 0x1a0d02,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+            floorMesh.position.y = 0.001;
+            inuitGroup.add(floorMesh);
+
+            const gridHelper = new THREE.GridHelper(0.22, 10, 0xf97316, 0x663311);
+            gridHelper.position.y = 0.0015;
+            inuitGroup.add(gridHelper);
+
+            this.inuitMesh = inuitGroup as any;
+            this.tableGroup.add(this.inuitMesh!);
+        }
+
+        // 3. Reset Physics Bouncing ball & clear trail to avoid visual artifacts
+        this.isBallAnimating = true;
+        this.ballAnimT = 0.0;
+        this.trailPoints = [];
+        this.ballTrail.geometry.setFromPoints([]);
+        
+        // Reset to a safe starting location inside the new geometry
+        this.activeBall.position.set(0, 0.025, 0.0);
+        this.ballVelocity.set(0.045, 0.035, 0.055);
+        (this.activeBall.material as THREE.MeshBasicMaterial).opacity = 1.0;
+        (this.ballTrail.material as THREE.LineBasicMaterial).opacity = 0.95;
+        
+        // Assign color based on stadium
+        const colors = { default: 0xff6600, berlin: 0x22d3ee, inuit: 0xf97316 };
+        (this.activeBall.material as THREE.MeshBasicMaterial).color.setHex(colors[stadiumType]);
+        (this.ballTrail.material as THREE.LineBasicMaterial).color.setHex(colors[stadiumType]);
+
+        // 4. Update the player markers for the active sport/stadium
+        this.players.forEach(p => {
+            this.tableGroup.remove(p.group);
+        });
+        this.players = [];
+        this.initPlayerMarkers();
+
+        // 5. Update bubble name tags
+        this.nameTags.forEach((tagMesh, idx) => {
+            const newName = this.domainNames[idx] || "Unknown";
+            const newTex = this.createNameTagTexture(newName);
+            const mat = tagMesh.material as THREE.MeshBasicMaterial;
+            if (mat.map) mat.map.dispose();
+            mat.map = newTex;
+            mat.needsUpdate = true;
+        });
+
+        // 6. Update Wankhede/Berlin/Inuit Pin Label
+        if (this.locationPin && this.locationPin.children.length >= 4) {
+            const pinLabelMesh = this.locationPin.children[3] as THREE.Mesh;
+            const pinLabelMat = pinLabelMesh.material as THREE.MeshBasicMaterial;
+            const newLabel = stadiumType === 'berlin' ? 'OLYMPIASTADION' : stadiumType === 'inuit' ? 'CRYPTO.COM ARENA' : 'WANKHEDE STADIUM';
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 64;
+            const ctx = canvas.getContext('2d')!;
+            ctx.fillStyle = 'rgba(5, 5, 20, 0.88)';
+            ctx.strokeStyle = '#ff3333';
+            ctx.lineWidth = 4;
+            const r2 = 16, w2 = 246, h2 = 54, x2 = 5, y2 = 5;
+            ctx.beginPath();
+            ctx.moveTo(x2 + r2, y2); ctx.lineTo(x2 + w2 - r2, y2);
+            ctx.quadraticCurveTo(x2 + w2, y2, x2 + w2, y2 + r2);
+            ctx.lineTo(x2 + w2, y2 + h2 - r2);
+            ctx.quadraticCurveTo(x2 + w2, y2 + h2, x2 + w2 - r2, y2 + h2);
+            ctx.lineTo(x2 + r2, y2 + h2);
+            ctx.quadraticCurveTo(x2, y2 + h2, x2, y2 + h2 - r2);
+            ctx.lineTo(x2, y2 + r2);
+            ctx.quadraticCurveTo(x2, y2, x2 + r2, y2);
+            ctx.closePath();
+            ctx.fill(); ctx.stroke();
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = newLabel.length > 15 ? 'bold 18px monospace' : 'bold 22px monospace';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(newLabel, 128, 32);
+            
+            if (pinLabelMat.map) pinLabelMat.map.dispose();
+            const newTex = new THREE.CanvasTexture(canvas);
+            newTex.colorSpace = THREE.SRGBColorSpace;
+            pinLabelMat.map = newTex;
+            pinLabelMat.needsUpdate = true;
+        }
+    }
+
     update(dt: number) {
         if (this.middlePinchCooldown > 0) {
             this.middlePinchCooldown -= dt;
@@ -1013,10 +1300,16 @@ export class DomainExpansionSystem extends createSystem({
             this.menuToggleCooldown -= dt;
         }
 
+        const desiredStadium = (window as any).selectedStadiumType || 'default';
+        if (this.currentStadiumType !== desiredStadium) {
+            this.setStadiumType(desiredStadium);
+        }
+
         // Expose a global window variable so Jugnu System ignores index pinches when this table is actively rotating
         (window as any).isRotatingMap = this.tableGroup.visible && this.isRotatingMap;
         (window as any).minimapTableVisible = this.tableGroup.visible;
         (window as any).minimapTablePosition = this.tableGroup.position;
+        (window as any).minimapTableScale = this.currentTableScale;
 
         // Animate the B2B concentric tech telemetry rings in opposite directions
         if (this.tableGroup.visible && this.techRing1 && this.techRing2 && this.techRing3) {
@@ -1737,6 +2030,9 @@ export class DomainExpansionSystem extends createSystem({
                                 if (domeTex) {
                                     domeTex.colorSpace = THREE.SRGBColorSpace;
                                     domeTex.mapping = THREE.EquirectangularReflectionMapping;
+                                    domeTex.wrapS = THREE.RepeatWrapping;
+                                    domeTex.repeat.set(-1, 1);
+                                    domeTex.offset.set(1, 0);
                                     this.domainMat.map = domeTex;
                                     this.domainMat.needsUpdate = true;
                                 }
@@ -1954,6 +2250,9 @@ export class DomainExpansionSystem extends createSystem({
                     if (domeTex) {
                         domeTex.colorSpace = THREE.SRGBColorSpace;
                         domeTex.mapping = THREE.EquirectangularReflectionMapping;
+                        domeTex.wrapS = THREE.RepeatWrapping;
+                        domeTex.repeat.set(-1, 1);
+                        domeTex.offset.set(1, 0);
                         this.domainMat.map = domeTex;
                         this.domainMat.needsUpdate = true;
                     }
@@ -2260,6 +2559,9 @@ export class DomainExpansionSystem extends createSystem({
         const texture = new THREE.CanvasTexture(stitchCanvas);
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.mapping = THREE.EquirectangularReflectionMapping;
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.repeat.set(-1, 1);
+        texture.offset.set(1, 0);
         this.domainMat.map = texture;
         this.domainMat.needsUpdate = true;
         console.log(`[StreetView] Real photorealistic panorama applied for ${cityKey}!`);
@@ -2275,6 +2577,9 @@ export class DomainExpansionSystem extends createSystem({
         const texture = new THREE.CanvasTexture(canvas);
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.mapping = THREE.EquirectangularReflectionMapping;
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.repeat.set(-1, 1);
+        texture.offset.set(1, 0);
         this.domainMat.map = texture;
         this.domainMat.needsUpdate = true;
     }
@@ -3164,32 +3469,82 @@ export class DomainExpansionSystem extends createSystem({
         // Positions are in table-local metres (the table diameter is 0.24m = ~0.12m radius).
         // Cards are 0.055m wide, so fielders need at least 0.06m separation to avoid overlap.
         // Inner ring r≈0.022-0.030m (pitch/crease), outer ring r≈0.055-0.095m (outfield).
-        const roster = [
-            // ── Batting: Rajasthan Royals (Yellow) ──────────────────────────────
-            { id: "b1", name: "Y. Jaiswal",   role: "batsman" as const, jersey: "1",  team: "yellow" as const, x:  0.013, z:  0.000, primary: "Runs: 68* (42)",       secondary: "SR: 161.9",        rcbCardKey: "" },
-            { id: "b2", name: "S. Samson",    role: "batsman" as const, jersey: "13", team: "yellow" as const, x: -0.013, z:  0.000, primary: "Runs: 31 (20)",        secondary: "SR: 155.0",        rcbCardKey: "" },
+        // ── Choose roster based on active stadium type ─────────────────────
+        type PlayerEntry = {
+            id: string; name: string;
+            role: 'fielder' | 'batsman' | 'umpire';
+            jersey: string;
+            team: 'blue' | 'yellow' | 'neutral';
+            x: number; z: number;
+            primary: string; secondary: string;
+            rcbCardKey: string;
+        };
 
-            // ── Umpires (Neutral) ────────────────────────────────────────────────
-            { id: "u1", name: "M. Erasmus",   role: "umpire"  as const, jersey: "U1", team: "neutral" as const, x: -0.020, z:  0.000, primary: "Umpire (Bowler's)",   secondary: "Decisions: 100%",  rcbCardKey: "" },
-            { id: "u2", name: "N. Llong",     role: "umpire"  as const, jersey: "U2", team: "neutral" as const, x:  0.013, z:  0.020, primary: "Umpire (Square Leg)", secondary: "Decisions: 100%",  rcbCardKey: "" },
-
-            // ── Fielding: Royal Challengers Bengaluru (Blue) ────────────────────
-            // WK — behind stumps on offside
-            { id: "f1",  name: "J. Cox",        role: "fielder" as const, jersey: "60", team: "blue" as const, x:  0.018, z:  0.000, primary: "Catches: 1, St: 0",    secondary: "Wicketkeeper",      rcbCardKey: "rcbJordanCox"  },
-            // Bowler — opposite end
-            { id: "f2",  name: "B. Kumar",      role: "fielder" as const, jersey: "15", team: "blue" as const, x: -0.028, z:  0.000, primary: "Overs: 3.2-0-22-2",   secondary: "Active: Bowler",    rcbCardKey: "rcbBhuvi"      },
-            // Inner ring — spread at 60° intervals around the pitch
-            { id: "f3",  name: "K. Pandya",     role: "fielder" as const, jersey: "24", team: "blue" as const, x:  0.022, z:  0.026, primary: "Overs: 2-0-18-1",     secondary: "Pos: Point",        rcbCardKey: "rcbKrunal"     },
-            { id: "f4",  name: "V. Kohli",      role: "fielder" as const, jersey: "18", team: "blue" as const, x: -0.004, z:  0.028, primary: "4s/6s: 3/4 | SR:250", secondary: "Pos: Cover",        rcbCardKey: "rcbKohli"      },
-            { id: "f5",  name: "V. Iyer",       role: "fielder" as const, jersey: "10", team: "blue" as const, x:  0.022, z: -0.018, primary: "Runs Saved: 5",        secondary: "Pos: Gully",        rcbCardKey: "rcbVenkatesh"  },
-            // Outer ring — deep field, spread well apart
-            { id: "f6",  name: "T. David",      role: "fielder" as const, jersey: "8",  team: "blue" as const, x: -0.065, z:  0.060, primary: "Catches: 0",           secondary: "Pos: Deep Mid-On",  rcbCardKey: "rcbTimDavid"   },
-            { id: "f7",  name: "J. Bethell",    role: "fielder" as const, jersey: "34", team: "blue" as const, x:  0.065, z:  0.055, primary: "Runs Saved: 4",        secondary: "Pos: Deep Cover",   rcbCardKey: "rcbBethell"    },
-            { id: "f8",  name: "R. Shepherd",   role: "fielder" as const, jersey: "9",  team: "blue" as const, x: -0.075, z: -0.020, primary: "Overs: 2-0-14-1",     secondary: "Pos: Long-On",      rcbCardKey: "rcbShepherd"   },
-            { id: "f9",  name: "J. Hazlewood",  role: "fielder" as const, jersey: "23", team: "blue" as const, x:  0.060, z: -0.055, primary: "Overs: 3-0-20-2",     secondary: "Pos: Fine Leg",     rcbCardKey: "rcbHazlewood"  },
-            { id: "f10", name: "J. Duffy",      role: "fielder" as const, jersey: "77", team: "blue" as const, x: -0.045, z: -0.070, primary: "Overs: 2-0-16-0",     secondary: "Pos: Deep Mid-Wkt", rcbCardKey: "rcbDuffy"      },
-            { id: "f11", name: "R. Patidar",    role: "fielder" as const, jersey: "21", team: "blue" as const, x:  0.002, z: -0.082, primary: "Catches: 1",           secondary: "Pos: Long-Off",     rcbCardKey: "rcbPatidar"    },
+        const rosterCricket: PlayerEntry[] = [
+            // ── Batting: Rajasthan Royals (Yellow) ──────────────────────────
+            { id: "b1", name: "Y. Jaiswal",   role: "batsman", jersey: "1",  team: "yellow", x:  0.013, z:  0.000, primary: "Runs: 68* (42)",       secondary: "SR: 161.9",        rcbCardKey: "" },
+            { id: "b2", name: "S. Samson",    role: "batsman", jersey: "13", team: "yellow", x: -0.013, z:  0.000, primary: "Runs: 31 (20)",        secondary: "SR: 155.0",        rcbCardKey: "" },
+            // ── Umpires ─────────────────────────────────────────────────────
+            { id: "u1", name: "M. Erasmus",   role: "umpire",  jersey: "U1", team: "neutral", x: -0.020, z:  0.000, primary: "Umpire (Bowler's)",   secondary: "Decisions: 100%",  rcbCardKey: "" },
+            { id: "u2", name: "N. Llong",     role: "umpire",  jersey: "U2", team: "neutral", x:  0.013, z:  0.020, primary: "Umpire (Sq. Leg)",    secondary: "Decisions: 100%",  rcbCardKey: "" },
+            // ── Fielding: Royal Challengers Bengaluru (Blue) ────────────────
+            { id: "f1",  name: "J. Cox",        role: "fielder", jersey: "60", team: "blue", x:  0.018, z:  0.000, primary: "Catches: 1, St: 0",    secondary: "Wicketkeeper",      rcbCardKey: "rcbJordanCox"  },
+            { id: "f2",  name: "B. Kumar",      role: "fielder", jersey: "15", team: "blue", x: -0.028, z:  0.000, primary: "Overs: 3.2-0-22-2",   secondary: "Active: Bowler",    rcbCardKey: "rcbBhuvi"      },
+            { id: "f3",  name: "K. Pandya",     role: "fielder", jersey: "24", team: "blue", x:  0.022, z:  0.026, primary: "Overs: 2-0-18-1",     secondary: "Pos: Point",        rcbCardKey: "rcbKrunal"     },
+            { id: "f4",  name: "V. Kohli",      role: "fielder", jersey: "18", team: "blue", x: -0.004, z:  0.028, primary: "4s/6s: 3/4 | SR:250", secondary: "Pos: Cover",        rcbCardKey: "rcbKohli"      },
+            { id: "f5",  name: "V. Iyer",       role: "fielder", jersey: "10", team: "blue", x:  0.022, z: -0.018, primary: "Runs Saved: 5",        secondary: "Pos: Gully",        rcbCardKey: "rcbVenkatesh"  },
+            { id: "f6",  name: "T. David",      role: "fielder", jersey: "8",  team: "blue", x: -0.065, z:  0.060, primary: "Catches: 0",           secondary: "Pos: Deep Mid-On",  rcbCardKey: "rcbTimDavid"   },
+            { id: "f7",  name: "J. Bethell",    role: "fielder", jersey: "34", team: "blue", x:  0.065, z:  0.055, primary: "Runs Saved: 4",        secondary: "Pos: Deep Cover",   rcbCardKey: "rcbBethell"    },
+            { id: "f8",  name: "R. Shepherd",   role: "fielder", jersey: "9",  team: "blue", x: -0.075, z: -0.020, primary: "Overs: 2-0-14-1",     secondary: "Pos: Long-On",      rcbCardKey: "rcbShepherd"   },
+            { id: "f9",  name: "J. Hazlewood",  role: "fielder", jersey: "23", team: "blue", x:  0.060, z: -0.055, primary: "Overs: 3-0-20-2",     secondary: "Pos: Fine Leg",     rcbCardKey: "rcbHazlewood"  },
+            { id: "f10", name: "J. Duffy",      role: "fielder", jersey: "77", team: "blue", x: -0.045, z: -0.070, primary: "Overs: 2-0-16-0",     secondary: "Pos: Deep Mid-Wkt", rcbCardKey: "rcbDuffy"      },
+            { id: "f11", name: "R. Patidar",    role: "fielder", jersey: "21", team: "blue", x:  0.002, z: -0.082, primary: "Catches: 1",           secondary: "Pos: Long-Off",     rcbCardKey: "rcbPatidar"    },
         ];
+
+        const rosterFootball: PlayerEntry[] = [
+            // ── Berlin FC (Blue — home) ──────────────────────────────────────
+            // Goalkeeper
+            { id: "gk", name: "M. Neuer",      role: "fielder", jersey: "1",  team: "blue",   x:  0.000, z: -0.090, primary: "Saves: 3 / 5",        secondary: "GK — Penalty Box",  rcbCardKey: "" },
+            // Defenders
+            { id: "d1", name: "T. Alexander",  role: "fielder", jersey: "5",  team: "blue",   x: -0.040, z: -0.065, primary: "Tackles: 4",           secondary: "CB — Left",         rcbCardKey: "" },
+            { id: "d2", name: "R. Rüdiger",    role: "fielder", jersey: "22", team: "blue",   x:  0.040, z: -0.065, primary: "Interceptions: 3",     secondary: "CB — Right",        rcbCardKey: "" },
+            { id: "d3", name: "J. Kimmich",    role: "fielder", jersey: "6",  team: "blue",   x: -0.070, z: -0.045, primary: "Crosses: 5",           secondary: "RB — Wing",         rcbCardKey: "" },
+            { id: "d4", name: "A. Davies",     role: "fielder", jersey: "19", team: "blue",   x:  0.070, z: -0.045, primary: "Tackles: 2",           secondary: "LB — Wing",         rcbCardKey: "" },
+            // Midfielders
+            { id: "m1", name: "T. Müller",     role: "fielder", jersey: "25", team: "blue",   x: -0.025, z: -0.030, primary: "Key Passes: 3",        secondary: "CM — Box-to-Box",   rcbCardKey: "" },
+            { id: "m2", name: "L. Goretzka",   role: "fielder", jersey: "8",  team: "blue",   x:  0.025, z: -0.030, primary: "Passes: 42 / 48",      secondary: "CM — Defensive",    rcbCardKey: "" },
+            // Forwards
+            { id: "fw1", name: "L. Sané",      role: "fielder", jersey: "10", team: "blue",   x: -0.055, z:  0.015, primary: "Shots: 2 / 4",        secondary: "LW — Forward",      rcbCardKey: "" },
+            { id: "fw2", name: "S. Gnabry",    role: "fielder", jersey: "7",  team: "blue",   x:  0.055, z:  0.015, primary: "Dribbles: 3",          secondary: "RW — Forward",      rcbCardKey: "" },
+            { id: "fw3", name: "H. Kane",      role: "batsman", jersey: "9",  team: "blue",   x:  0.000, z:  0.020, primary: "Goals: 1  Shots: 4",   secondary: "ST — Striker",      rcbCardKey: "" },
+            // Away team
+            { id: "a1",  name: "J. Bellingham",role: "batsman", jersey: "22", team: "yellow", x:  0.013, z:  0.040, primary: "Goals: 1  Assists: 1", secondary: "AM — Attacking",    rcbCardKey: "" },
+            // Referee
+            { id: "ref", name: "S. Marciniak", role: "umpire",  jersey: "R",  team: "neutral", x:  0.000, z:  0.000, primary: "Referee",             secondary: "UEFA Pro",          rcbCardKey: "" },
+            { id: "ar1", name: "C. Kwiatkowski",role:"umpire", jersey: "A1", team: "neutral", x: -0.095, z:  0.000, primary: "Asst. Referee",        secondary: "Touchline — Left",  rcbCardKey: "" },
+        ];
+
+        const rosterBasketball: PlayerEntry[] = [
+            // ── LA Lakers (Blue — home) ──────────────────────────────────────
+            { id: "p1",  name: "L. James",     role: "batsman", jersey: "23", team: "blue",   x:  0.000, z:  0.010, primary: "Pts: 28  Reb: 7",      secondary: "SF — Paint",        rcbCardKey: "" },
+            { id: "p2",  name: "A. Davis",     role: "batsman", jersey: "3",  team: "blue",   x:  0.000, z: -0.010, primary: "Pts: 22  Blk: 3",      secondary: "C — Post",          rcbCardKey: "" },
+            { id: "p3",  name: "A. Reaves",    role: "fielder", jersey: "15", team: "blue",   x: -0.030, z:  0.025, primary: "Pts: 14  3PT: 3/6",    secondary: "PG — Perimeter",    rcbCardKey: "" },
+            { id: "p4",  name: "R. Hachimura", role: "fielder", jersey: "28", team: "blue",   x:  0.030, z:  0.025, primary: "Pts: 10  Reb: 4",      secondary: "PF — Wing",         rcbCardKey: "" },
+            { id: "p5",  name: "D. Russell",   role: "fielder", jersey: "1",  team: "blue",   x: -0.045, z:  0.000, primary: "Pts: 18  Ast: 9",      secondary: "PG — Ball Handler", rcbCardKey: "" },
+            // ── Boston Celtics (Yellow — away) ──────────────────────────────
+            { id: "a1",  name: "J. Brown",     role: "batsman", jersey: "7",  team: "yellow", x:  0.000, z:  0.035, primary: "Pts: 26  Reb: 5",      secondary: "SG — Wing",         rcbCardKey: "" },
+            { id: "a2",  name: "J. Tatum",     role: "batsman", jersey: "0",  team: "yellow", x:  0.000, z:  0.050, primary: "Pts: 31  Ast: 6",      secondary: "SF — Perimeter",    rcbCardKey: "" },
+            { id: "a3",  name: "K. Porzingis", role: "fielder", jersey: "8",  team: "yellow", x:  0.040, z:  0.045, primary: "Pts: 16  Blk: 2",      secondary: "C — Post",          rcbCardKey: "" },
+            { id: "a4",  name: "D. White",     role: "fielder", jersey: "0",  team: "yellow", x: -0.040, z:  0.045, primary: "Pts: 12  3PT: 4/7",    secondary: "SG — Shooter",      rcbCardKey: "" },
+            { id: "a5",  name: "J. Holiday",   role: "fielder", jersey: "11", team: "yellow", x: -0.055, z:  0.035, primary: "Pts: 11  Stl: 2",      secondary: "PG — Defender",     rcbCardKey: "" },
+            // Officials
+            { id: "ref", name: "M. Carettini", role: "umpire",  jersey: "R",  team: "neutral", x:  0.020, z:  0.025, primary: "NBA Referee",          secondary: "15 yrs experience", rcbCardKey: "" },
+        ];
+
+        const roster: PlayerEntry[] =
+            this.currentStadiumType === 'berlin' ? rosterFootball
+          : this.currentStadiumType === 'inuit'  ? rosterBasketball
+          : rosterCricket;
 
         // ── Shared Phong materials (created ONCE per team — not 22× per player) ───────
         // This alone cuts shader compilations from 220 → 24 and avoids redundant GPU uploads
@@ -3856,14 +4211,34 @@ export class DomainExpansionSystem extends createSystem({
         this.isBallAnimating = true;
         this.ballAnimT = 0.0;
         this.trailPoints = [];
+        this.ballTrail.geometry.setFromPoints([]);
         
         // Make visible and set colors
         (this.activeBall.material as THREE.MeshBasicMaterial).opacity = 1.0;
         (this.ballTrail.material as THREE.LineBasicMaterial).opacity = 0.95;
         
-        const colors = [0xff6600, 0xffff00, 0x00ff66];
-        (this.activeBall.material as THREE.MeshBasicMaterial).color.setHex(colors[index]);
-        (this.ballTrail.material as THREE.LineBasicMaterial).color.setHex(colors[index]);
+        const colors = { default: [0xff6600, 0xffff00, 0x00ff66], berlin: 0x22d3ee, inuit: 0xf97316 };
+        const stType = this.currentStadiumType;
+        const colorHex = (stType === 'berlin' || stType === 'inuit') ? colors[stType] : colors.default[index];
+        (this.activeBall.material as THREE.MeshBasicMaterial).color.setHex(colorHex);
+        (this.ballTrail.material as THREE.LineBasicMaterial).color.setHex(colorHex);
+
+        if (stType === 'berlin' || stType === 'inuit') {
+            // Launch the ball dynamically from different strike positions with high-speed launch vectors!
+            if (index === 0) {
+                // Strike from Kohli's spot straight ahead
+                this.activeBall.position.set(0.012, 0.009, 0.0);
+                this.ballVelocity.set(-0.15, 0.16, 0.03); // Straight launch
+            } else if (index === 1) {
+                // Strike from Sharma's spot leg-side pull
+                this.activeBall.position.set(-0.012, 0.009, 0.0);
+                this.ballVelocity.set(-0.08, 0.18, 0.14); // Pull launch
+            } else if (index === 2) {
+                // Scoop shot behind wickets
+                this.activeBall.position.set(0.012, 0.009, 0.0);
+                this.ballVelocity.set(0.12, 0.16, -0.12); // Scoop launch
+            }
+        }
 
         console.log(`[BallTracking] Six ${index + 1} animation triggered!`);
     }
@@ -3871,7 +4246,89 @@ export class DomainExpansionSystem extends createSystem({
     private updateBallTracking(dt: number) {
         if (!this.isBallAnimating || this.currentSixIndex === -1) return;
 
-        // Animate from t = 0 to 1 over 2.8 seconds for premium pace
+        const stType = this.currentStadiumType;
+
+        // ── Berlin / Inuit: Euler physics with wall bouncing ─────────────────
+        if (stType === 'berlin' || stType === 'inuit') {
+            const GRAVITY = 0.45; // m/s² at minimap scale
+            const FLOOR_Y  = 0.009;
+            const RESTITUTION = 0.58; // energy kept on bounce
+            const DAMPING = 0.994;    // air resistance per frame
+
+            // Clamp dt to prevent physics tunnelling at low frame-rates
+            const safeDt = Math.min(dt, 0.033);
+
+            // Apply gravity
+            this.ballVelocity.y -= GRAVITY * safeDt;
+
+            // Euler integration
+            this.activeBall.position.x += this.ballVelocity.x * safeDt;
+            this.activeBall.position.y += this.ballVelocity.y * safeDt;
+            this.activeBall.position.z += this.ballVelocity.z * safeDt;
+
+            // Floor bounce
+            if (this.activeBall.position.y <= FLOOR_Y) {
+                this.activeBall.position.y = FLOOR_Y;
+                this.ballVelocity.y = Math.abs(this.ballVelocity.y) * RESTITUTION;
+                this.ballVelocity.x *= RESTITUTION;
+                this.ballVelocity.z *= RESTITUTION;
+            }
+
+            // Wall bounce — Berlin: hollow cylinder (radius 0.13), Inuit: oval (rx=0.14, rz=0.11)
+            const bx = this.activeBall.position.x;
+            const bz = this.activeBall.position.z;
+
+            if (stType === 'berlin') {
+                const R = 0.13;
+                const dist = Math.sqrt(bx * bx + bz * bz);
+                if (dist >= R) {
+                    // Reflect velocity off the cylindrical wall normal
+                    const nx = bx / dist;
+                    const nz = bz / dist;
+                    const dot = this.ballVelocity.x * nx + this.ballVelocity.z * nz;
+                    this.ballVelocity.x -= 2 * dot * nx * RESTITUTION;
+                    this.ballVelocity.z -= 2 * dot * nz * RESTITUTION;
+                    // Push ball back inside
+                    this.activeBall.position.x = nx * (R - 0.001);
+                    this.activeBall.position.z = nz * (R - 0.001);
+                }
+            } else {
+                // Inuit oval: elliptical boundary check
+                const RX = 0.14, RZ = 0.11;
+                const ellipseCheck = (bx * bx) / (RX * RX) + (bz * bz) / (RZ * RZ);
+                if (ellipseCheck >= 1.0) {
+                    // Approximate normal from gradient of ellipse equation
+                    const nx = (2 * bx) / (RX * RX);
+                    const nz = (2 * bz) / (RZ * RZ);
+                    const len = Math.sqrt(nx * nx + nz * nz) || 1.0;
+                    const nnx = nx / len; const nnz = nz / len;
+                    const dot = this.ballVelocity.x * nnx + this.ballVelocity.z * nnz;
+                    this.ballVelocity.x -= 2 * dot * nnx * RESTITUTION;
+                    this.ballVelocity.z -= 2 * dot * nnz * RESTITUTION;
+                    // Pull ball back inside
+                    const s = 0.999 / Math.sqrt(ellipseCheck);
+                    this.activeBall.position.x = bx * s;
+                    this.activeBall.position.z = bz * s;
+                }
+            }
+
+            // Global velocity damping
+            this.ballVelocity.multiplyScalar(DAMPING);
+
+            // Loop: when ball nearly stops, re-launch with the same index
+            const speed = this.ballVelocity.length();
+            if (speed < 0.01) {
+                this.triggerSixAnimation(this.currentSixIndex);
+            }
+
+            // Record trail
+            this.trailPoints.push(this.activeBall.position.clone());
+            if (this.trailPoints.length > this.maxTrailPoints) this.trailPoints.shift();
+            this.ballTrail.geometry.setFromPoints(this.trailPoints);
+            return;
+        }
+
+        // ── Default stadium: original Bezier spline path ─────────────────────
         const speed = 0.36; // 1.0 / 2.8s
         this.ballAnimT += dt * speed;
 

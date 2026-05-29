@@ -100,11 +100,7 @@ export class JugnuSystem extends createSystem({
   private pinchReleasedTimer = 0.0;
   private hoveredCellIndex = -1;
   private activeCompassTileIndex = -1; // -1 for none
-  private compassInfoCard!: THREE.Mesh;
-  private compassInfoMat!: THREE.MeshBasicMaterial;
-  private compassInfoTextCanvas!: HTMLCanvasElement;
-  private compassInfoTextCtx!: CanvasRenderingContext2D;
-  private compassInfoTextTexture!: THREE.CanvasTexture;
+
   private buttonCooldown = 0.0;
   private isChatOpen = false;
   private compassChatCard!: THREE.Mesh;
@@ -132,6 +128,14 @@ export class JugnuSystem extends createSystem({
   private compassTutorialCanvas!: HTMLCanvasElement;
   private compassTutorialCtx!: CanvasRenderingContext2D;
   private compassTutorialTexture!: THREE.CanvasTexture;
+
+  private isStadiumMenuOpen = false;
+  private compassStadiumCanvas!: HTMLCanvasElement;
+  private compassStadiumCtx!: CanvasRenderingContext2D;
+  private compassStadiumTexture!: THREE.CanvasTexture;
+  private compassStadiumMat!: THREE.MeshBasicMaterial;
+  private compassStadiumCard!: THREE.Mesh;
+  private selectedStadium: 'default' | 'berlin' | 'inuit' = 'default';
 
   init() {
     this.chatHistory.push({ sender: 'System', text: 'Jugnu XR Core Engine v13.4 initialized.' });
@@ -576,6 +580,63 @@ export class JugnuSystem extends createSystem({
         }
     }
 
+    // ── LOCK ESCAPE: any fresh pinch while locked → unlock + come to fingertips ──
+    if (this.isGridLocked) {
+        let escapeHand: 'left' | 'right' | null = null;
+        let escapeTip = this.leftPinchTip;
+
+        if (isPinchingLeft && !this.wasPinchingLeft) {
+            escapeHand = 'left';
+            escapeTip = this.leftPinchTip;
+        } else if (isPinchingRight && !this.wasPinchingRight) {
+            escapeHand = 'right';
+            escapeTip = this.rightPinchTip;
+        }
+
+        if (escapeHand) {
+            console.log('[Jugnu] Lock escape pinch detected — unlocking and lerping to hand.');
+
+            // 1. Unlock
+            this.isGridLocked = false;
+            this.lockedCompassPos = null;
+            this.lockedCompassQuat = null;
+
+            // 2. Close compass UI so it respawns cleanly on next open
+            this.isCompassOpen = false;
+            this.isStadiumMenuOpen = false;
+            this.isChatOpen = false;
+            this.isTutorialOpen = false;
+            this.isDebugOpen = false;
+            this.indexPinchTimer = 0.0;
+            this.pinchReleasedTimer = 0.0;
+
+            // 3. Pull Jugnu to fingertip
+            let lockedJugnuPos = new THREE.Vector3();
+            for (const entity of this.queries.jugnu.entities) {
+                if (!entity.object3D) continue;
+                lockedJugnuPos.copy(entity.object3D.position);
+                break;
+            }
+
+            this.interactionState = 'LerpingToHand';
+            this.attachedHand = escapeHand;
+            this.startPos.copy(lockedJugnuPos);
+            this.targetPos.copy(escapeTip);
+            this.previousHandPos.copy(escapeTip);
+            this.handVelocity.set(0, 0, 0);
+            this.lerpTime = 0;
+            this.velocity.set(0, 0, 0);
+
+            this.queries.jugnu.entities.forEach(e => {
+                const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
+                if (currentState !== PhysicsState.Kinematic) {
+                    if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
+                    e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+                }
+            });
+        }
+    }
+
     if ((this.interactionState === 'Idle' || this.interactionState === 'Following' || this.interactionState === 'Anchored') && !this.isGridLocked) {
         let activeHand: 'left' | 'right' | null = null;
         let activeTip = this.leftPinchTip;
@@ -729,6 +790,8 @@ export class JugnuSystem extends createSystem({
         }
     }
 
+    const isMapScaledMax = !!((window as any).minimapTableVisible && (window as any).minimapTableScale >= 2.0);
+
     let activeJugnuModel: JugnuV3Model | null = null;
     let activeJugnuPos = new THREE.Vector3();
     let instructionStep = 0;
@@ -752,6 +815,8 @@ export class JugnuSystem extends createSystem({
       const obj = entity.object3D;
       const jugModel = obj as JugnuV3Model;
       if (!obj || !jugModel || typeof jugModel.update !== 'function') return;
+      
+      obj.visible = !isMapScaledMax;
       
       activeJugnuModel = jugModel;
       activeJugnuPos.copy(obj.position);
@@ -882,7 +947,12 @@ export class JugnuSystem extends createSystem({
           }
       }
 
-      if (this.isListening || this.isProcessingAudio) {
+      if (this.isGridLocked) {
+        this.pulseTime = 0;
+        baseScale.setScalar(0.03);
+        obj.scale.setScalar(0.03);
+        jugModel.pulseIntensity = 0;
+      } else if (this.isListening || this.isProcessingAudio) {
         this.pulseTime += safeDt;
         const speed = this.isProcessingAudio ? 10 : 5;
         const pulseAmt = this.isProcessingAudio ? 0.05 : 0.25; 
@@ -953,7 +1023,7 @@ export class JugnuSystem extends createSystem({
         const p = this.particleData[i];
         if (p.active) {
             p.life -= safeDt;
-            if (p.life <= 0) {
+            if (p.life <= 0 || isMapScaledMax) {
                 p.active = false;
                 dummy.scale.setScalar(0);
             } else {
@@ -974,64 +1044,73 @@ export class JugnuSystem extends createSystem({
     }
 
     if (activeJugnuModel) {
-        const leftTip = new THREE.Vector3();
-        const rightTip = new THREE.Vector3();
-        const isLeftPinching = this.getPinchData('left', leftTip);
-        const isRightPinching = this.getPinchData('right', rightTip);
-
-        // Activation pinch must be close to Jugnu (within 0.25m)
-        let isPinchingNearJugnu = false;
-        if (isLeftPinching && leftTip.distanceTo(activeJugnuPos) < 0.25) {
-            isPinchingNearJugnu = true;
-        } else if (isRightPinching && rightTip.distanceTo(activeJugnuPos) < 0.25) {
-            isPinchingNearJugnu = true;
-        }
-
-        // Active hold check: any index pinch held anywhere keeping it open
-        const isAnyPinchHeld = isLeftPinching || isRightPinching;
-
-        if (!this.isCompassOpen) {
-            if (isPinchingNearJugnu) {
-                this.indexPinchTimer += safeDt;
-                if (this.indexPinchTimer >= 2.0) {
-                    this.isCompassOpen = true;
-                    this.indexPinchTimer = 0.0;
-                    this.buttonCooldown = 0.5;
-
-                    console.log(`[Compass] Compass toggled! Open: ${this.isCompassOpen}`);
-                    
-                    this.compassGroup.visible = true;
-                    this.activeCompassTileIndex = -1;
-                    this.hoveredCellIndex = -1;
-                    this.compassInfoMat.opacity = 0.0;
-                    this.compassInfoCard.position.set(0, 0, -0.005);
-                    this.redrawCompassGrid(-1);
-                    
-                    const jugModel = activeJugnuModel as JugnuV3Model;
-                    if (jugModel && typeof jugModel.setMood === 'function') {
-                        jugModel.setMood('happy');
-                    }
-                    if (jugModel && typeof jugModel.triggerPinchAnimation === 'function') {
-                        jugModel.triggerPinchAnimation();
-                    }
-                }
-            } else {
-                this.indexPinchTimer = 0.0;
-            }
+        if (isMapScaledMax) {
+            this.isCompassOpen = false;
+            this.indexPinchTimer = 0.0;
+            this.pinchReleasedTimer = 0.0;
+            this.isStadiumMenuOpen = false;
+            this.isChatOpen = false;
+            this.isTutorialOpen = false;
+            this.isDebugOpen = false;
         } else {
-            // Compass is already open
-            if (isAnyPinchHeld) {
-                this.pinchReleasedTimer = 0.0; // Keep open as long as a pinch is held
-            } else {
-                if (!this.isGridLocked) {
-                    this.pinchReleasedTimer += safeDt;
-                    if (this.pinchReleasedTimer >= 2.0) {
-                        this.isCompassOpen = false;
-                        this.pinchReleasedTimer = 0.0;
-                        console.log("[Compass] Pinch released for 2.0s. Closing Compass UI.");
+            const leftTip = new THREE.Vector3();
+            const rightTip = new THREE.Vector3();
+            const isLeftPinching = this.getPinchData('left', leftTip);
+            const isRightPinching = this.getPinchData('right', rightTip);
+
+            // Activation pinch must be close to Jugnu (within 0.25m)
+            let isPinchingNearJugnu = false;
+            if (isLeftPinching && leftTip.distanceTo(activeJugnuPos) < 0.25) {
+                isPinchingNearJugnu = true;
+            } else if (isRightPinching && rightTip.distanceTo(activeJugnuPos) < 0.25) {
+                isPinchingNearJugnu = true;
+            }
+
+            // Active hold check: any index pinch held anywhere keeping it open
+            const isAnyPinchHeld = isLeftPinching || isRightPinching;
+
+            if (!this.isCompassOpen) {
+                if (isPinchingNearJugnu) {
+                    this.indexPinchTimer += safeDt;
+                    if (this.indexPinchTimer >= 2.0) {
+                        this.isCompassOpen = true;
+                        this.indexPinchTimer = 0.0;
+                        this.buttonCooldown = 0.5;
+
+                        console.log(`[Compass] Compass toggled! Open: ${this.isCompassOpen}`);
+                        
+                        this.compassGroup.visible = true;
+                        this.activeCompassTileIndex = -1;
+                        this.hoveredCellIndex = -1;
+
+                        this.redrawCompassGrid(-1);
+                        
+                        const jugModel = activeJugnuModel as JugnuV3Model;
+                        if (jugModel && typeof jugModel.setMood === 'function') {
+                            jugModel.setMood('happy');
+                        }
+                        if (jugModel && typeof jugModel.triggerPinchAnimation === 'function') {
+                            jugModel.triggerPinchAnimation();
+                        }
                     }
                 } else {
-                    this.pinchReleasedTimer = 0.0;
+                    this.indexPinchTimer = 0.0;
+                }
+            } else {
+                // Compass is already open
+                if (isAnyPinchHeld) {
+                    this.pinchReleasedTimer = 0.0; // Keep open as long as a pinch is held
+                } else {
+                    if (!this.isGridLocked) {
+                        this.pinchReleasedTimer += safeDt;
+                        if (this.pinchReleasedTimer >= 2.0) {
+                            this.isCompassOpen = false;
+                            this.pinchReleasedTimer = 0.0;
+                            console.log("[Compass] Pinch released for 2.0s. Closing Compass UI.");
+                        }
+                    } else {
+                        this.pinchReleasedTimer = 0.0;
+                    }
                 }
             }
         }
@@ -1083,40 +1162,28 @@ export class JugnuSystem extends createSystem({
                 this.compassRing.rotation.z += safeDt * 0.5; // Slow diagnostic spin
             }
 
-            if (this.activeCompassTileIndex !== -1) {
-                this.compassInfoMat.opacity = THREE.MathUtils.lerp(this.compassInfoMat.opacity, 0.95, safeDt * 8.0);
-                this.compassInfoCard.position.z = THREE.MathUtils.lerp(this.compassInfoCard.position.z, -0.012, safeDt * 8.0);
-            }
 
-            // Multi-tab side-by-side slide math for Chat, Tutorial, and Debug
+            // Multi-tab side-by-side slide math for Chat, Tutorial, Stadium Selector, and Debug
             let openCards: string[] = [];
             if (this.isChatOpen) openCards.push('CHAT');
             if (this.isTutorialOpen) openCards.push('TUTORIAL');
+            if (this.isStadiumMenuOpen) openCards.push('STADIUM_SEL');
             if (this.isDebugOpen) openCards.push('DEBUG');
 
             let targetTranscriptX = 0.0;
             let targetTutorialX = 0.0;
+            let targetStadiumMenuX = 0.0;
             let targetDebugX = 0.0;
 
-            if (openCards.length === 1) {
-                targetTranscriptX = 0.0;
-                targetTutorialX = 0.0;
-                targetDebugX = 0.0;
-            } else if (openCards.length === 2) {
-                // Assign first open card to -0.135 and second open card to 0.135
-                if (openCards[0] === 'CHAT') targetTranscriptX = -0.135;
-                if (openCards[0] === 'TUTORIAL') targetTutorialX = -0.135;
-                if (openCards[0] === 'DEBUG') targetDebugX = -0.135;
-
-                if (openCards[1] === 'CHAT') targetTranscriptX = 0.135;
-                if (openCards[1] === 'TUTORIAL') targetTutorialX = 0.135;
-                if (openCards[1] === 'DEBUG') targetDebugX = 0.135;
-            } else if (openCards.length === 3) {
-                // Spacing layout with three tabs active: Chat (-0.27), Tutorial center (0.0), Debug right (0.27)
-                targetTranscriptX = -0.27;
-                targetTutorialX = 0.0;
-                targetDebugX = 0.27;
-            }
+            const tabSpacing = 0.27;
+            const numOpen = openCards.length;
+            openCards.forEach((card, idx) => {
+                const offset = (idx - (numOpen - 1) / 2) * tabSpacing;
+                if (card === 'CHAT') targetTranscriptX = offset;
+                if (card === 'TUTORIAL') targetTutorialX = offset;
+                if (card === 'STADIUM_SEL') targetStadiumMenuX = offset;
+                if (card === 'DEBUG') targetDebugX = offset;
+            });
 
             // Smooth scaling & sliding transition for the Transcript card (slides vertically ABOVE the board)
             if (this.compassChatCard) {
@@ -1172,6 +1239,23 @@ export class JugnuSystem extends createSystem({
                 }
             }
 
+            // Smooth scaling & sliding transition for the Stadium Selector card (slides vertically ABOVE the board)
+            if (this.compassStadiumCard) {
+                if (this.isStadiumMenuOpen) {
+                    this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.95, safeDt * 8.0);
+                    this.compassStadiumCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 8.0);
+                    this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, targetStadiumMenuX, safeDt * 8.0);
+                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, 0.15, safeDt * 8.0); // Vertically on top
+                    this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 8.0);
+                } else {
+                    this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.0, safeDt * 8.0);
+                    this.compassStadiumCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 8.0);
+                    this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, 0.0, safeDt * 8.0);
+                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, -0.02, safeDt * 8.0);
+                    this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 8.0);
+                }
+            }
+
             const leftIndexTip = new THREE.Vector3();
             const rightIndexTip = new THREE.Vector3();
             const hasLeft = this.getIndexData('left', leftIndexTip);
@@ -1221,6 +1305,44 @@ export class JugnuSystem extends createSystem({
                 }
             }
 
+            let hoveredStadiumOption = -1;
+            if (this.isStadiumMenuOpen && activeTip && this.compassStadiumCard) {
+                const cardLocalTip = activeTip.clone().applyMatrix4(this.compassStadiumCard.matrixWorld.clone().invert());
+                const isWithinCardHoverZ = Math.abs(cardLocalTip.z) < 0.025;
+                const isWithinCardBoundsX = cardLocalTip.x > -0.12 && cardLocalTip.x < 0.12;
+                const isWithinCardBoundsY = cardLocalTip.y > -0.09 && cardLocalTip.y < 0.09;
+
+                if (isWithinCardHoverZ && isWithinCardBoundsX && isWithinCardBoundsY) {
+                    const canvasX = (cardLocalTip.x + 0.12) / 0.24 * 512;
+                    const canvasY = (0.09 - cardLocalTip.y) / 0.18 * 384;
+
+                    if (canvasX >= 40 && canvasX <= 472) {
+                        if (canvasY >= 100 && canvasY <= 170) hoveredStadiumOption = 0;
+                        else if (canvasY >= 190 && canvasY <= 260) hoveredStadiumOption = 1;
+                        else if (canvasY >= 280 && canvasY <= 350) hoveredStadiumOption = 2;
+                    }
+
+                    const isPressed = Math.abs(cardLocalTip.z) < 0.014;
+                    if (isPressed && hoveredStadiumOption !== -1 && this.buttonCooldown <= 0.0) {
+                        this.buttonCooldown = 0.8;
+                        const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
+                        const source = this.input.getPrimaryInputSource(activeHand);
+                        if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
+                            source.gamepad.hapticActuators[0].pulse(0.85, 50);
+                        }
+
+                        const choices: ('default' | 'berlin' | 'inuit')[] = ['default', 'berlin', 'inuit'];
+                        this.selectedStadium = choices[hoveredStadiumOption];
+                        (window as any).selectedStadiumType = this.selectedStadium;
+                        console.log(`[StadiumSelector] Selected: ${this.selectedStadium}`);
+                    }
+                }
+            }
+
+            if (this.isStadiumMenuOpen) {
+                this.redrawCompassStadiumMenu(hoveredStadiumOption);
+            }
+
             if (currentHoverIdx !== this.hoveredCellIndex) {
                 this.hoveredCellIndex = currentHoverIdx;
                 this.redrawCompassGrid(currentHoverIdx);
@@ -1259,7 +1381,7 @@ export class JugnuSystem extends createSystem({
       const h = 192;
       ctx.clearRect(0, 0, w, h);
 
-      ctx.fillStyle = '#05050f';
+      ctx.fillStyle = 'rgba(5, 5, 20, 0.82)';
       ctx.beginPath();
       ctx.roundRect(0, 0, w, h, 12);
       ctx.fill();
@@ -1292,8 +1414,8 @@ export class JugnuSystem extends createSystem({
           { label: "VOICE",    type: "VOICE" },
           { label: "COMPASS",  type: "COMPASS" },
           { label: this.isDebugOpen ? "CLOSE DEBUG" : "DEBUG", type: "DEBUG" },
-          { label: "EFFECTS",  type: "PARTICLES" },
-          { label: "RESET",    type: "RESET" },
+          { label: this.isStadiumMenuOpen ? "CLOSE MAPS" : "MAPS", type: "STADIUM_SEL" },
+          { label: (window as any).showRoomWalls ? "WALLS ON" : "WALLS OFF", type: "RESET" },
           { label: this.isGridLocked ? "UNLOCK" : "LOCK GRID", type: "LOCK" }
       ];
 
@@ -1415,12 +1537,19 @@ export class JugnuSystem extends createSystem({
                   // Draw "_" cursor
                   ctx.fillStyle = ctx.strokeStyle;
                   ctx.fillRect(cx - 1, iconY + 2, 6, 3);
-              } else if (icon.type === 'PARTICLES') {
+              } else if (icon.type === 'STADIUM_SEL') {
+                  ctx.fillStyle = this.isStadiumMenuOpen ? '#22d3ee' : '#ffffff';
+                  ctx.strokeStyle = ctx.fillStyle;
+                  ctx.lineWidth = 3;
                   ctx.beginPath();
-                  ctx.arc(cx - 6, iconY - 6, 2, 0, 2 * Math.PI);
-                  ctx.arc(cx + 6, iconY + 6, 2, 0, 2 * Math.PI);
-                  ctx.arc(cx + 4, iconY - 4, 1.5, 0, 2 * Math.PI);
-                  ctx.arc(cx - 4, iconY + 4, 3, 0, 2 * Math.PI);
+                  ctx.arc(cx, iconY + 4, 12, Math.PI, 0); // Top dome arch
+                  ctx.stroke();
+                  ctx.beginPath();
+                  ctx.moveTo(cx - 12, iconY + 4); ctx.lineTo(cx - 12, iconY + 10);
+                  ctx.moveTo(cx + 12, iconY + 4); ctx.lineTo(cx + 12, iconY + 10);
+                  ctx.stroke();
+                  ctx.beginPath();
+                  ctx.arc(cx, iconY + 1, 3, 0, 2 * Math.PI);
                   ctx.fill();
               } else if (icon.type === 'RESET') {
                   ctx.beginPath();
@@ -1511,27 +1640,7 @@ export class JugnuSystem extends createSystem({
       pivot.position.z = 0.0015;
       this.compassNeedle.add(pivot);
 
-      this.compassInfoCard = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.15, 0.0744), 
-          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0, depthWrite: false })
-      );
-      this.compassInfoCard.position.set(0, 0, -0.005);
-      this.compassGroup.add(this.compassInfoCard);
 
-      this.compassInfoTextCanvas = document.createElement('canvas');
-      this.compassInfoTextCanvas.width = 256;
-      this.compassInfoTextCanvas.height = 128;
-      this.compassInfoTextCtx = this.compassInfoTextCanvas.getContext('2d')!;
-      this.compassInfoTextTexture = new THREE.CanvasTexture(this.compassInfoTextCanvas);
-      this.compassInfoTextTexture.colorSpace = THREE.SRGBColorSpace;
-
-      this.compassInfoMat = new THREE.MeshBasicMaterial({
-          map: this.compassInfoTextTexture,
-          transparent: true,
-          opacity: 0.0,
-          depthWrite: false
-      });
-      this.compassInfoCard.material = this.compassInfoMat;
 
       // Initialize Chat Tab UI
       this.compassChatCanvas = document.createElement('canvas');
@@ -1612,66 +1721,51 @@ export class JugnuSystem extends createSystem({
       this.compassTutorialCard.scale.setScalar(0.001); // Shrink initially
       this.compassGroup.add(this.compassTutorialCard);
 
+      // Initialize Stadium Selector Tab UI
+      this.compassStadiumCanvas = document.createElement('canvas');
+      this.compassStadiumCanvas.width = 512;
+      this.compassStadiumCanvas.height = 384;
+      this.compassStadiumCtx = this.compassStadiumCanvas.getContext('2d')!;
+
+      this.compassStadiumTexture = new THREE.CanvasTexture(this.compassStadiumCanvas);
+      this.compassStadiumTexture.colorSpace = THREE.SRGBColorSpace;
+
+      this.compassStadiumMat = new THREE.MeshBasicMaterial({
+          map: this.compassStadiumTexture,
+          transparent: true,
+          opacity: 0.0,
+          depthWrite: false
+      });
+
+      this.compassStadiumCard = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.24, 0.18),
+          this.compassStadiumMat
+      );
+      this.compassStadiumCard.position.set(0, -0.02, -0.01);
+      this.compassStadiumCard.scale.setScalar(0.001); // Shrink initially
+      this.compassGroup.add(this.compassStadiumCard);
+
+      this.redrawCompassStadiumMenu();
+
       // Draw initial grid
       this.redrawCompassGrid(-1);
 
       this.world.createTransformEntity(this.compassGroup);
   }
 
-  private redrawCompassInfoCard(title: string, detailText: string) {
-      const ctx = this.compassInfoTextCtx;
-      const w = 256;
-      const h = 128;
-      ctx.clearRect(0, 0, w, h);
-
-      ctx.fillStyle = '#05050f';
-      ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 8);
-      ctx.fill();
-
-      ctx.strokeStyle = '#f97316';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 8);
-      ctx.stroke();
-
-      ctx.fillStyle = '#f97316';
-      ctx.font = 'bold 13px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(title.toUpperCase(), w / 2, 20);
-
-      ctx.strokeStyle = 'rgba(249, 115, 22, 0.3)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(16, 28); ctx.lineTo(w - 16, 28);
-      ctx.stroke();
-
-      ctx.fillStyle = '#e2e8f0';
-      ctx.font = '9px monospace';
-      ctx.textAlign = 'left';
-      
-      const lines = detailText.split('\n');
-      let y = 42;
-      lines.forEach((line) => {
-          ctx.fillText(line, 12, y);
-          y += 12;
-      });
-
-      this.compassInfoTextTexture.needsUpdate = true;
-  }
 
   private handleCompassTileClick(tileIndex: number) {
       console.log(`[Compass] Clicked cell index: ${tileIndex}`);
 
       const icons = [
           { label: "CHAT",     type: "CHAT" },
-          { label: "STADIUM",  type: "STADIUM" },
+          { label: "MAPS",     type: "STADIUM" },
           { label: "TUTORIAL", type: "TUTORIAL" },
           { label: "VOICE",    type: "VOICE" },
           { label: "COMPASS",  type: "COMPASS" },
           { label: "DEBUG",    type: "DEBUG" },
-          { label: "EFFECTS",  type: "PARTICLES" },
-          { label: "RESET",    type: "RESET" },
+          { label: "MAPS",     type: "STADIUM_SEL" },
+          { label: (window as any).showRoomWalls ? "WALLS ON" : "WALLS OFF", type: "RESET" },
           { label: "LOCK",     type: "LOCK" }
       ];
 
@@ -1721,17 +1815,25 @@ export class JugnuSystem extends createSystem({
               detail = "Debug Console retracted.\n\nStatus: STANDBY.\nGrid view updated.";
           }
           this.redrawCompassGrid(this.hoveredCellIndex);
-      } else if (tileType === 'PARTICLES') {
-          title = "Ambient FX Engine";
-          if (this.particleMesh) {
-              this.particleMesh.visible = !this.particleMesh.visible;
+      } else if (tileType === 'STADIUM_SEL') {
+          this.isStadiumMenuOpen = !this.isStadiumMenuOpen;
+          title = this.isStadiumMenuOpen ? "Stadium Selector" : "Stadium Selector";
+          if (this.isStadiumMenuOpen) {
+              this.redrawCompassStadiumMenu();
+              detail = "Stadium Geometry Selector active.\n\nStatus: ACTIVE VIEW.\nSelect between Default, Berlin (Hollow Cylinder), and Inuit (Oval) geometries.";
+          } else {
+              detail = "Stadium Selector retracted.\n\nStatus: STANDBY.\nGrid view updated.";
           }
-          const particleStatus = this.particleMesh && this.particleMesh.visible ? "ENABLED" : "DISABLED";
-          detail = `Concentric Spline FX Status: ${particleStatus}\n\nRunning 2000 instanced micro-spheres.`;
+          this.redrawCompassGrid(this.hoveredCellIndex);
       } else if (tileType === 'RESET') {
-          title = "Reset Position";
+          // Toggle room wall visualizer
+          (window as any).showRoomWalls = !((window as any).showRoomWalls ?? false);
+          const wallsVisible = (window as any).showRoomWalls as boolean;
+          title = wallsVisible ? "Room Walls ON" : "Room Walls OFF";
           this.activateJugnu();
-          detail = "Companion Avatar Reset.\n\nPosition recalibrated to 80cm in front of headset view vector.";
+          detail = wallsVisible
+              ? "Room Wall Visualization: ENABLED.\n\nWhite edge lines are now visible on all detected surfaces and planes."
+              : "Room Wall Visualization: DISABLED.\n\nSurface edge lines hidden. Clean AR mode active.";
       } else if (tileType === 'LOCK') {
           this.isGridLocked = !this.isGridLocked;
           title = this.isGridLocked ? "Grid Locked" : "Grid Unlocked";
@@ -1761,7 +1863,115 @@ export class JugnuSystem extends createSystem({
           this.redrawCompassGrid(this.hoveredCellIndex);
       }
 
-      this.redrawCompassInfoCard(title, detail);
+
+  }
+
+  private redrawCompassStadiumMenu(hoveredIdx: number = -1) {
+      const ctx = this.compassStadiumCtx;
+      const w = 512;
+      const h = 384;
+      ctx.clearRect(0, 0, w, h);
+
+      // Dark glassmorphic background
+      ctx.fillStyle = 'rgba(5, 5, 26, 0.96)';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 16);
+      ctx.fill();
+
+      // Cyberpunk style neon border (cyan)
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 16);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(10, 10, w - 20, h - 20, 12);
+      ctx.stroke();
+
+      // Header text
+      ctx.fillStyle = '#22d3ee';
+      ctx.font = 'bold 20px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText("STADIUM GEOMETRY SELECTOR", w / 2, 38);
+
+      // Divider line
+      ctx.strokeStyle = 'rgba(34, 211, 238, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(24, 52); ctx.lineTo(w - 24, 52);
+      ctx.stroke();
+
+      // Options
+      const options = [
+          { key: 'default', label: "WANKHEDE  —  Mumbai, India",     desc: "IPL Final 2026 • RCB vs RR • Cricket" },
+          { key: 'berlin',  label: "OLYMPIASTADION  —  Berlin, Germany", desc: "Bundesliga • FC Bayern vs Hertha • Football" },
+          { key: 'inuit',   label: "CRYPTO.COM ARENA  —  Los Angeles, USA",  desc: "NBA Finals • LA Lakers vs Boston Celtics • Basketball" }
+      ];
+
+      const btnX = 40;
+      const btnW = 432;
+      const btnH = 70;
+      const btnYs = [100, 190, 280];
+
+      options.forEach((opt, idx) => {
+          const by = btnYs[idx];
+          const isSelected = this.selectedStadium === opt.key;
+          const isHovered = hoveredIdx === idx;
+
+          // Drawing shadow glow for hover or selection
+          if (isHovered || isSelected) {
+              ctx.shadowColor = isSelected ? '#22d3ee' : 'rgba(34, 211, 238, 0.5)';
+              ctx.shadowBlur = 15;
+          } else {
+              ctx.shadowBlur = 0;
+          }
+
+          // Button backing
+          ctx.fillStyle = isSelected ? 'rgba(34, 211, 238, 0.25)' : 'rgba(5, 5, 20, 0.75)';
+          ctx.beginPath();
+          ctx.roundRect(btnX, by, btnW, btnH, 10);
+          ctx.fill();
+
+          // Reset shadow
+          ctx.shadowBlur = 0;
+
+          // Button border
+          ctx.strokeStyle = isSelected ? '#22d3ee' : (isHovered ? 'rgba(34, 211, 238, 0.8)' : 'rgba(34, 211, 238, 0.3)');
+          ctx.lineWidth = isSelected ? 3 : 2;
+          ctx.beginPath();
+          ctx.roundRect(btnX, by, btnW, btnH, 10);
+          ctx.stroke();
+
+          // Button label text
+          ctx.fillStyle = isSelected ? '#ffffff' : (isHovered ? '#22d3ee' : '#a5f3fc');
+          ctx.font = 'bold 16px monospace';
+          ctx.textAlign = 'left';
+          ctx.fillText((isSelected ? ">> " : "") + opt.label, btnX + 20, by + 28);
+
+          // Button description text
+          ctx.fillStyle = isSelected ? '#a5f3fc' : '#67e8f9';
+          ctx.font = '11px monospace';
+          ctx.fillText(opt.desc, btnX + 20, by + 50);
+
+          // Draw radio indicator
+          ctx.strokeStyle = isSelected ? '#22d3ee' : 'rgba(34, 211, 238, 0.5)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(btnX + btnW - 30, by + 35, 8, 0, 2 * Math.PI);
+          ctx.stroke();
+
+          if (isSelected) {
+              ctx.fillStyle = '#22d3ee';
+              ctx.beginPath();
+              ctx.arc(btnX + btnW - 30, by + 35, 4, 0, 2 * Math.PI);
+              ctx.fill();
+          }
+      });
+
+      this.compassStadiumTexture.needsUpdate = true;
   }
 
   private redrawCompassTutorial(step: number) {

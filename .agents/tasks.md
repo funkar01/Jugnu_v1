@@ -114,6 +114,16 @@
   - `[x]` Fix Jugnu locked growth bug: lock scale strictly to `0.03` when spatial lock is active
   - `[x]` Run static type verification check `npx tsc --noEmit`
   - `[x]` Run Vite client production compilation `npm run build`
+- `[x]` Stadium Minimap Scale Glitch & Visibility Integration (Build)
+  - `[x]` Publish `(window as any).minimapTableScale` and `(window as any).minimapTableVisible` dynamically from `src/domainExpansion.ts`
+  - `[x]` Dynamically hide Jugnu companion avatar (`obj.visible = false`) when minimap scale >= 2.0 to prevent occlusion Z-fighting
+  - `[x]` Smoothly retract/shrink the Compass UI (`isCompassOpen = false`) when the threshold is breached
+  - `[x]` Bypass all index pinch summon gestures while maximum scale is active to prevent accidental UI spawning inside geometry
+  - `[x]` Automatically scale/deactivate all existing floating trail particles instantly when maximum scale is activated
+  - `[x]` Cleanly restore Jugnu visibility and summon gestures when the minimap is scaled back down or closed
+  - `[x]` Strictly preserve Jugnu scale at exactly `0.03` when grid-locked, bypassing all listen/process audio pulsing to fix growth jitters
+  - `[x]` Run TypeScript validation check `npx tsc --noEmit` and confirm zero errors
+  - `[x]` Compile production bundle via `npm run build` and ensure successful build
 
 
 
