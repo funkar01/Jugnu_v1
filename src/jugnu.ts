@@ -126,6 +126,12 @@ export class JugnuSystem extends createSystem({
   private originalError = console.error;
   private lockedCompassPos: THREE.Vector3 | null = null;
   private lockedCompassQuat: THREE.Quaternion | null = null;
+  private isTutorialOpen = false;
+  private compassTutorialCard!: THREE.Mesh;
+  private compassTutorialMat!: THREE.MeshBasicMaterial;
+  private compassTutorialCanvas!: HTMLCanvasElement;
+  private compassTutorialCtx!: CanvasRenderingContext2D;
+  private compassTutorialTexture!: THREE.CanvasTexture;
 
   init() {
     this.chatHistory.push({ sender: 'System', text: 'Jugnu XR Core Engine v13.4 initialized.' });
@@ -778,7 +784,7 @@ export class JugnuSystem extends createSystem({
       // When released close to us (within 1m), stay at 0.03.
       // When thrown away, increase in size up to a max of 0.25.
       let targetScale = 0.03;
-      if (this.interactionState === 'Attached' || this.interactionState === 'LerpingToHand') {
+      if (this.interactionState === 'Attached' || this.interactionState === 'LerpingToHand' || this.isGridLocked) {
           targetScale = 0.03;
       } else {
           if (distToPlayer > 1.0) {
@@ -1082,12 +1088,34 @@ export class JugnuSystem extends createSystem({
                 this.compassInfoCard.position.z = THREE.MathUtils.lerp(this.compassInfoCard.position.z, -0.012, safeDt * 8.0);
             }
 
-            // Multi-tab side-by-side slide math
+            // Multi-tab side-by-side slide math for Chat, Tutorial, and Debug
+            let openCards: string[] = [];
+            if (this.isChatOpen) openCards.push('CHAT');
+            if (this.isTutorialOpen) openCards.push('TUTORIAL');
+            if (this.isDebugOpen) openCards.push('DEBUG');
+
             let targetTranscriptX = 0.0;
+            let targetTutorialX = 0.0;
             let targetDebugX = 0.0;
-            if (this.isChatOpen && this.isDebugOpen) {
-                targetTranscriptX = -0.135;
-                targetDebugX = 0.135;
+
+            if (openCards.length === 1) {
+                targetTranscriptX = 0.0;
+                targetTutorialX = 0.0;
+                targetDebugX = 0.0;
+            } else if (openCards.length === 2) {
+                // Assign first open card to -0.135 and second open card to 0.135
+                if (openCards[0] === 'CHAT') targetTranscriptX = -0.135;
+                if (openCards[0] === 'TUTORIAL') targetTutorialX = -0.135;
+                if (openCards[0] === 'DEBUG') targetDebugX = -0.135;
+
+                if (openCards[1] === 'CHAT') targetTranscriptX = 0.135;
+                if (openCards[1] === 'TUTORIAL') targetTutorialX = 0.135;
+                if (openCards[1] === 'DEBUG') targetDebugX = 0.135;
+            } else if (openCards.length === 3) {
+                // Spacing layout with three tabs active: Chat (-0.27), Tutorial center (0.0), Debug right (0.27)
+                targetTranscriptX = -0.27;
+                targetTutorialX = 0.0;
+                targetDebugX = 0.27;
             }
 
             // Smooth scaling & sliding transition for the Transcript card (slides vertically ABOVE the board)
@@ -1104,6 +1132,26 @@ export class JugnuSystem extends createSystem({
                     this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, 0.0, safeDt * 8.0);
                     this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, -0.02, safeDt * 8.0);
                     this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 8.0);
+                }
+            }
+
+            // Smooth scaling & sliding transition for the Tutorial card (slides vertically ABOVE the board)
+            if (this.compassTutorialCard) {
+                if (this.isTutorialOpen) {
+                    this.compassTutorialMat.opacity = THREE.MathUtils.lerp(this.compassTutorialMat.opacity, 0.95, safeDt * 8.0);
+                    this.compassTutorialCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 8.0);
+                    this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, targetTutorialX, safeDt * 8.0);
+                    this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, 0.15, safeDt * 8.0); // Vertically on top
+                    this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 8.0);
+                    
+                    // Reactive dynamic update matching user instructionStep
+                    this.redrawCompassTutorial(instructionStep);
+                } else {
+                    this.compassTutorialMat.opacity = THREE.MathUtils.lerp(this.compassTutorialMat.opacity, 0.0, safeDt * 8.0);
+                    this.compassTutorialCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 8.0);
+                    this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, 0.0, safeDt * 8.0);
+                    this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, -0.02, safeDt * 8.0);
+                    this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 8.0);
                 }
             }
 
@@ -1240,7 +1288,7 @@ export class JugnuSystem extends createSystem({
       const icons = [
           { label: this.isChatOpen ? "CLOSE CHAT" : "CHAT", type: "CHAT" },
           { label: "STADIUM",  type: "STADIUM" },
-          { label: "GUIDE",    type: "GUIDE" },
+          { label: this.isTutorialOpen ? "CLOSE TUTORIAL" : "TUTORIAL", type: "TUTORIAL" },
           { label: "VOICE",    type: "VOICE" },
           { label: "COMPASS",  type: "COMPASS" },
           { label: this.isDebugOpen ? "CLOSE DEBUG" : "DEBUG", type: "DEBUG" },
@@ -1329,11 +1377,18 @@ export class JugnuSystem extends createSystem({
                   ctx.moveTo(cx - 14, iconY); ctx.lineTo(cx - 14, iconY + 8);
                   ctx.moveTo(cx + 14, iconY); ctx.lineTo(cx + 14, iconY + 8);
                   ctx.stroke();
-              } else if (icon.type === 'GUIDE') {
+              } else if (icon.type === 'TUTORIAL') {
+                  ctx.fillStyle = this.isTutorialOpen ? '#22d3ee' : '#ffffff';
+                  ctx.strokeStyle = ctx.fillStyle;
+                  ctx.lineWidth = 3;
+                  // Draw book pages / outline
                   ctx.beginPath();
-                  ctx.arc(cx - 3, iconY - 3, 7, 0, 2 * Math.PI);
-                  ctx.moveTo(cx + 2, iconY + 2);
-                  ctx.lineTo(cx + 10, iconY + 10);
+                  ctx.roundRect(cx - 12, iconY - 8, 24, 16, 2);
+                  ctx.stroke();
+                  // Center book binding line
+                  ctx.beginPath();
+                  ctx.moveTo(cx, iconY - 8);
+                  ctx.lineTo(cx, iconY + 8);
                   ctx.stroke();
               } else if (icon.type === 'VOICE') {
                   ctx.beginPath();
@@ -1533,6 +1588,30 @@ export class JugnuSystem extends createSystem({
       // Draw initial debug screen
       this.redrawCompassDebug();
 
+      // Initialize Tutorial Tab UI
+      this.compassTutorialCanvas = document.createElement('canvas');
+      this.compassTutorialCanvas.width = 512;
+      this.compassTutorialCanvas.height = 384;
+      this.compassTutorialCtx = this.compassTutorialCanvas.getContext('2d')!;
+
+      this.compassTutorialTexture = new THREE.CanvasTexture(this.compassTutorialCanvas);
+      this.compassTutorialTexture.colorSpace = THREE.SRGBColorSpace;
+
+      this.compassTutorialMat = new THREE.MeshBasicMaterial({
+          map: this.compassTutorialTexture,
+          transparent: true,
+          opacity: 0.0,
+          depthWrite: false
+      });
+
+      this.compassTutorialCard = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.24, 0.18),
+          this.compassTutorialMat
+      );
+      this.compassTutorialCard.position.set(0, -0.02, -0.01);
+      this.compassTutorialCard.scale.setScalar(0.001); // Shrink initially
+      this.compassGroup.add(this.compassTutorialCard);
+
       // Draw initial grid
       this.redrawCompassGrid(-1);
 
@@ -1587,7 +1666,7 @@ export class JugnuSystem extends createSystem({
       const icons = [
           { label: "CHAT",     type: "CHAT" },
           { label: "STADIUM",  type: "STADIUM" },
-          { label: "GUIDE",    type: "GUIDE" },
+          { label: "TUTORIAL", type: "TUTORIAL" },
           { label: "VOICE",    type: "VOICE" },
           { label: "COMPASS",  type: "COMPASS" },
           { label: "DEBUG",    type: "DEBUG" },
@@ -1614,9 +1693,21 @@ export class JugnuSystem extends createSystem({
           title = "Tactical Minimap";
           (window as any).triggerMinimapToggle = true;
           detail = "Minimap Stadium Table toggled.\n\nStatus: Toggled successfully!\nCheck for the 3D desk in front of you.";
-      } else if (tileType === 'GUIDE') {
-          title = "Minimap Guide";
-          detail = "Holographic Gestures:\n- Use MIDDLE finger pinch to rotate deck.\n- Use TWO-HAND index pinch to scale.\n- Proximity index poke outline buttons.";
+      } else if (tileType === 'TUTORIAL') {
+          this.isTutorialOpen = !this.isTutorialOpen;
+          title = this.isTutorialOpen ? "Holographic Tutorial" : "Holographic Tutorial";
+          if (this.isTutorialOpen) {
+              let currentStep = 0;
+              for (const entity of this.queries.jugnu.entities) {
+                  currentStep = entity.getValue(Jugnu, "instructionStep") as number;
+                  break;
+              }
+              this.redrawCompassTutorial(currentStep);
+              detail = "Holographic Manual active above Jugnu.\n\nStatus: ACTIVE VIEW.\nDisplays custom gesture/pinch illustrations and live step progression.";
+          } else {
+              detail = "Tutorial Screen retracted.\n\nStatus: STANDBY.\nGrid view updated.";
+          }
+          this.redrawCompassGrid(this.hoveredCellIndex);
       } else if (tileType === 'VOICE') {
           title = "Gemini AI Voice";
           detail = "Voice pipeline: ACTIVE.\n\nMicrophone bounds: Calibrating...\nSay any prompt after poking Jugnu's head.";
@@ -1671,6 +1762,153 @@ export class JugnuSystem extends createSystem({
       }
 
       this.redrawCompassInfoCard(title, detail);
+  }
+
+  private redrawCompassTutorial(step: number) {
+      const ctx = this.compassTutorialCtx;
+      const w = 512;
+      const h = 384;
+      ctx.clearRect(0, 0, w, h);
+
+      // Dark glassmorphic background
+      ctx.fillStyle = 'rgba(5, 5, 26, 0.95)';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 16);
+      ctx.fill();
+
+      // Cyberpunk style neon border (Yellow tutorial accent border)
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 16);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(10, 10, w - 20, h - 20, 12);
+      ctx.stroke();
+
+      // Console Header text
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 20px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText("HOLOGRAPHIC TUTORIAL", w / 2, 36);
+
+      // Divider line
+      ctx.strokeStyle = 'rgba(255, 215, 0, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(24, 48); ctx.lineTo(w - 24, 48);
+      ctx.stroke();
+
+      // Current Active Instruction
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 15px monospace';
+      ctx.fillText(`STEP ${step + 1} OF 3`, w / 2, 85);
+
+      // Draw tutorial illustration/diagram representing the steps
+      let title = "";
+      let desc = "";
+      if (step === 0) {
+          title = "Pinch & Summon";
+          desc = "Pinch Jugnu with your index finger and thumb to grab or interact. Hold index pinch near Jugnu for 2 seconds to summon/dismiss the compass UI.";
+          
+          // Draw a stylized grab/hand illustration
+          ctx.strokeStyle = 'rgba(255, 215, 0, 0.6)';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(w / 2, 170, 25, 0, 2 * Math.PI); // Jugnu body
+          ctx.stroke();
+          ctx.fillStyle = '#f97316';
+          ctx.beginPath();
+          ctx.arc(w / 2, 170, 10, 0, 2 * Math.PI); // Jugnu core
+          ctx.fill();
+          
+          // Pinching fingers lines
+          ctx.strokeStyle = '#00ffff';
+          ctx.beginPath();
+          ctx.moveTo(w / 2 - 45, 170); ctx.lineTo(w / 2 - 25, 170); // Pinching left
+          ctx.moveTo(w / 2 + 45, 170); ctx.lineTo(w / 2 + 25, 170); // Pinching right
+          ctx.stroke();
+      } else if (step === 1) {
+          title = "Two-Handed Pinch";
+          desc = "Touch your two index fingers together to perform two-handed scaling gestures on the tactical minimap, or rotate using the middle finger pinch.";
+          
+          // Draw fingers touching illustration
+          ctx.strokeStyle = '#00ffff';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(w / 2 - 50, 170); ctx.lineTo(w / 2 - 10, 170); // Finger 1
+          ctx.moveTo(w / 2 + 50, 170); ctx.lineTo(w / 2 + 10, 170); // Finger 2
+          ctx.stroke();
+          ctx.fillStyle = '#ff007f';
+          ctx.beginPath();
+          ctx.arc(w / 2 - 10, 170, 5, 0, 2 * Math.PI); // Tip 1
+          ctx.arc(w / 2 + 10, 170, 5, 0, 2 * Math.PI); // Tip 2
+          ctx.fill();
+      } else if (step === 2) {
+          title = "Wrist Control Button";
+          desc = "Look at your left wrist joint to reveal a glowing holographic minimap button. Tap it with your right index finger to spawn/dismiss the tactical stadium.";
+          
+          // Draw wrist button illustration
+          ctx.strokeStyle = '#ffd700';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.roundRect(w / 2 - 40, 155, 80, 30, 6); // Button
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 12px monospace';
+          ctx.fillText("MAP TOGGLE", w / 2, 174);
+      } else {
+          title = "Tutorial Complete";
+          desc = "All core gestures learned successfully! You are fully configured to operate Jugnu XR Core features. Use the Compass UI for stadium controls at any time.";
+          
+          // Draw checkmark
+          ctx.strokeStyle = '#22c55e';
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.moveTo(w / 2 - 20, 170);
+          ctx.lineTo(w / 2 - 5, 185);
+          ctx.lineTo(w / 2 + 20, 150);
+          ctx.stroke();
+      }
+
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText(title, w / 2, 230);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.font = '13px monospace';
+      this.wrapText(desc, w / 2, 260, 440, 18);
+
+      this.compassTutorialTexture.needsUpdate = true;
+  }
+
+  private wrapText(text: string, x: number, y: number, maxWidth: number, lineHeight: number): number {
+      const words = text.split(' ');
+      let line = '';
+      let currentY = y;
+      this.compassTutorialCtx.textAlign = 'center';
+
+      for(let n = 0; n < words.length; n++) {
+          const testLine = line + words[n] + ' ';
+          const metrics = this.compassTutorialCtx.measureText(testLine);
+          const testWidth = metrics.width;
+          
+          if (testWidth > maxWidth && n > 0) {
+              this.compassTutorialCtx.fillText(line, x, currentY);
+              line = words[n] + ' ';
+              currentY += lineHeight;
+          }
+          else {
+              line = testLine;
+          }
+      }
+      this.compassTutorialCtx.fillText(line, x, currentY);
+      return currentY;
   }
 
   private redrawCompassChat() {

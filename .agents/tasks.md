@@ -105,6 +105,16 @@
   - `[x]` Strip out the outer roundRect grid border, leaving a clean borderless outline with only internal grid partition lines
   - `[x]` Confirm zero-error static type safety check (`npx tsc --noEmit`)
   - `[x]` Confirm zero-error client production bundle compilation (`npm run build`)
+- `[x]` MR Compass UI Tutorial Tab Integration & Jitter Fix (Release)
+  - `[x]` Replace Search (GUIDE) icon with dedicated book-themed TUTORIAL tile (index 2)
+  - `[x]` Initialize Tutorial mesh card, canvas, texture, and materials inside initCompassUI()
+  - `[x]` Program dynamic 3-tab layout spacing manager inside the update loop (Chat, Tutorial, Debug)
+  - `[x]` Implement redrawCompassTutorial(step) with dynamic vector art illustrations for pinch and wrist buttons
+  - `[x]` Keep Tutorial screen fully reactive to live step updates of the user's progress
+  - `[x]` Fix Jugnu locked growth bug: lock scale strictly to `0.03` when spatial lock is active
+  - `[x]` Run static type verification check `npx tsc --noEmit`
+  - `[x]` Run Vite client production compilation `npm run build`
+
 
 
 
