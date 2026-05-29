@@ -54,4 +54,10 @@
 - `[x]` Verification and validation
   - `[x]` Run typescript check `npx tsc --noEmit`
   - `[x]` Verify clean production build `npm run build`
-
+- `[x]` Run dev server (npm run dev)
+- `[x]` Match Stats UI & Player Card Refinements
+  - `[x]` Processed UI assets and imported to `public/ui/ipl/`
+  - `[x]` Disabled `instructionBoard` in `src/jugnu.ts` to hide tutorial cards
+  - `[x]` Scaled down `cardGroup` meshes by 50% in `src/domainExpansion.ts`
+  - `[x]` Added match stats UI billboard ring above the Wankhede Stadium roof rim
+  - `[x]` Implemented pinch/poke scaling tap-to-activate interaction for full-frame banners

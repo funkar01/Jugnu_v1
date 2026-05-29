@@ -857,7 +857,7 @@ export class JugnuSystem extends createSystem({
     // Update Instruction Board Position & Text
     if (activeJugnuModel && this.instructionBoard) {
         if (instructionStep < 3) {
-            this.instructionBoard.visible = true;
+            this.instructionBoard.visible = false; // Hidden for now
             this.instructionBoard.setStep(instructionStep);
             
             // Position it nicely 22cm above Jugnu and face the player

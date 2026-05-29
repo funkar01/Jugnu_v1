@@ -525,12 +525,7 @@ export class DomainExpansionSystem extends createSystem({
                 }
             });
 
-            // Volumetric-style cyan SpotLight pointing directly at the central pitch
-            const stadiumSpotlight = new THREE.SpotLight(0x00ffff, 8.0, 0.4, Math.PI / 4, 0.5, 1.0);
-            stadiumSpotlight.position.set(0, 0.15, 0);
-            stadiumSpotlight.target.position.set(0, 0, 0);
-            this.stadiumMesh.add(stadiumSpotlight);
-            this.stadiumMesh.add(stadiumSpotlight.target);
+            // Volumetric-style cyan SpotLight pointing directly at the central pitch removed as per request
 
             // Measure bounding box to scale it correctly to fit the map
             const box = new THREE.Box3().setFromObject(this.stadiumMesh);
@@ -2965,314 +2960,63 @@ export class DomainExpansionSystem extends createSystem({
         }
     }
 
+    private makeBlackTransparent(image: HTMLImageElement): THREE.CanvasTexture {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(image, 0, 0);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i+1];
+            const b = data[i+2];
+            const luma = Math.max(r, g, b);
+            if (luma < 15) {
+                data[i+3] = 0;
+            } else if (luma < 40) {
+                data[i+3] = (luma - 15) * 10;
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.minFilter = THREE.LinearMipMapLinearFilter;
+        return tex;
+    }
+
     private initARBillboard() {
         this.arBillboard = new THREE.Group();
-        this.arBillboard.position.set(0, 0.115, 0); // Position directly above pitch center
+        this.arBillboard.position.set(0, 0.115, 0); 
 
-        // 1. Light Beam Cylinder
-        const beamGeom = new THREE.CylinderGeometry(0.001, 0.015, 0.08, 16, 1, true);
-        const beamMat = new THREE.MeshBasicMaterial({
-            color: 0x00ffff,
-            transparent: true,
-            opacity: 0.12,
-            blending: THREE.AdditiveBlending,
+        const bannerGeom = new THREE.PlaneGeometry(0.18, 0.1146);
+        const bannerMat = new THREE.MeshBasicMaterial({ 
+            transparent: true, 
             side: THREE.DoubleSide,
             depthWrite: false
         });
-        const lightBeam = new THREE.Mesh(beamGeom, beamMat);
-        lightBeam.position.y = -0.04; // offset downwards to stretch from pitch to billboard
-        lightBeam.userData.defaultOpacity = 0.12; // Store default opacity for fading
-        this.arBillboard.add(lightBeam);
-
-        // 2. Glassmorphic Panel
-        const panelGeom = new THREE.PlaneGeometry(0.12, 0.05);
+        const banner = new THREE.Mesh(bannerGeom, bannerMat);
+        banner.userData.defaultOpacity = 1.0;
+        this.arBillboard.add(banner);
         
-        // Premium transparent standard material
-        const panelMat = new THREE.MeshStandardMaterial({
-            color: 0x040e24, // Deep luxury navy
-            roughness: 0.2,
-            metalness: 0.8,
-            transparent: true,
-            opacity: 0.82,
-            side: THREE.DoubleSide,
-            depthWrite: false
-        });
-        const panel = new THREE.Mesh(panelGeom, panelMat);
-        panel.userData.defaultOpacity = 0.82; // Store default opacity for fading
-        this.arBillboard.add(panel);
-
-        // 3. Dynamic Canvas Texture for TV-style AR Graphic
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 256;
-        const ctx = canvas.getContext('2d')!;
-
-        this.billboardCanvas = canvas;
-        this.billboardCtx = ctx;
-
-        const labelTex = new THREE.CanvasTexture(canvas);
-        labelTex.colorSpace = THREE.SRGBColorSpace;
-        this.billboardTexture = labelTex;
-
-        const textMat = new THREE.MeshBasicMaterial({
-            map: labelTex,
-            transparent: true,
-            opacity: 0.95,
-            side: THREE.DoubleSide,
-            depthWrite: false
-        });
-        const textMesh = new THREE.Mesh(panelGeom, textMat);
-        textMesh.position.set(0, 0, 0.001); // prevent z-fighting
-        textMesh.userData.defaultOpacity = 0.95; // Store default opacity for fading
-        this.arBillboard.add(textMesh);
-
-        // subtle wireframe border line slightly offset
-        const wireGeom = new THREE.PlaneGeometry(0.126, 0.056);
-        const wireMat = new THREE.MeshBasicMaterial({
-            color: 0x00ffff,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.3,
-            depthWrite: false
-        });
-        const wireframe = new THREE.Mesh(wireGeom, wireMat);
-        wireframe.userData.defaultOpacity = 0.3; // Store default opacity for fading
-        this.arBillboard.add(wireframe);
-
-        // Render B2C Predictions Buttons directly under the billboard (so they follow billboarding/floating automatically!)
-        const btnGeom = new THREE.PlaneGeometry(0.034, 0.013);
-        
-        const btnConfigs = [
-            { text: "ANALYZE: SIX", colorHex: "#e2af37", colorVal: 0xe2af37, x: -0.038 },
-            { text: "ANALYZE: WKT", colorHex: "#ff3333", colorVal: 0xff3333, x: 0.0 },
-            { text: "ANALYZE: DOT", colorHex: "#00ffff", colorVal: 0x00ffff, x: 0.038 }
-        ];
-
-        this.predictionButtons = [];
-        this.predictionButtonMats = [];
-
-        btnConfigs.forEach((cfg) => {
-            const btnGroup = new THREE.Group();
-            btnGroup.position.set(cfg.x, -0.038, 0.002); // 3.8cm below the scoreboard center
-
-            // 1. Backing panel
-            const backingMat = new THREE.MeshBasicMaterial({
-                color: 0x050c1c,
-                transparent: true,
-                opacity: 0.8,
-                side: THREE.DoubleSide,
-                depthWrite: false
-            });
-            const backing = new THREE.Mesh(btnGeom, backingMat);
-            backing.userData = { defaultOpacity: 0.8 };
-            btnGroup.add(backing);
-
-            // 2. Neon border outline
-            const borderGeom = new THREE.PlaneGeometry(0.035, 0.014);
-            const borderMat = new THREE.MeshBasicMaterial({
-                color: cfg.colorVal,
-                wireframe: true,
-                transparent: true,
-                opacity: 0.45,
-                side: THREE.DoubleSide,
-                depthWrite: false
-            });
-            const border = new THREE.Mesh(borderGeom, borderMat);
-            border.userData = { defaultOpacity: 0.45 };
-            this.predictionButtonMats.push(borderMat);
-            btnGroup.add(border);
-
-            // 3. Glowing text canvas texture
-            const btnTex = this.createButtonTexture(cfg.text, cfg.colorHex);
-            const btnTextMat = new THREE.MeshBasicMaterial({
-                map: btnTex,
-                transparent: true,
-                opacity: 0.9,
-                side: THREE.DoubleSide,
-                depthWrite: false
-            });
-            const btnTextMesh = new THREE.Mesh(btnGeom, btnTextMat);
-            btnTextMesh.position.set(0, 0, 0.0005); // prevent z-fighting
-            btnTextMesh.userData = { defaultOpacity: 0.9 };
-            btnGroup.add(btnTextMesh);
-
-            // Store for hover / click detection
-            btnGroup.userData = { defaultOpacity: 0.95 }; // for scaling fades
-            this.predictionButtons.push(btnGroup);
-            this.arBillboard.add(btnGroup);
+        const texLoader = new THREE.TextureLoader();
+        texLoader.load('./ui/ipl/grand_finale_banner.png', (tex) => {
+            const alphaTex = this.makeBlackTransparent(tex.image);
+            bannerMat.map = alphaTex;
+            bannerMat.needsUpdate = true;
         });
 
-        // Trigger initial dynamic draw
-        this.redrawBillboard();
+        // Dummy objects to prevent errors in update/fade logic
+        this.billboardCanvas = document.createElement('canvas');
+        this.billboardCtx = this.billboardCanvas.getContext('2d')!;
+        this.billboardTexture = new THREE.CanvasTexture(this.billboardCanvas);
 
         this.tableGroup.add(this.arBillboard);
     }
 
-    private createButtonTexture(text: string, colorHexStr: string): THREE.CanvasTexture {
-        const canvas = document.createElement('canvas');
-        canvas.width = 128;
-        canvas.height = 64;
-        const ctx = canvas.getContext('2d')!;
-
-        ctx.clearRect(0, 0, 128, 64);
-
-        // Premium container backing
-        ctx.fillStyle = 'rgba(5, 12, 28, 0.92)';
-        ctx.strokeStyle = colorHexStr;
-        ctx.lineWidth = 4;
-        
-        // Rounded corner rect
-        const x = 3, y = 3, w = 122, h = 58, r = 12;
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-        ctx.lineTo(x + w, y + h - r);
-        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-        ctx.lineTo(x + r, y + h);
-        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-        ctx.lineTo(x, y + r);
-        ctx.quadraticCurveTo(x, y, x + r, y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Glowing badge text
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 20px monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(text, 64, 30);
-
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.colorSpace = THREE.SRGBColorSpace;
-        return tex;
-    }
-
     private redrawBillboard() {
-        if (!this.billboardCtx || !this.billboardCanvas || !this.billboardTexture) return;
-        const ctx = this.billboardCtx;
-        const canvas = this.billboardCanvas;
-
-        // Clear background
-        ctx.clearRect(0, 0, 512, 256);
-
-        // Draw dynamic gradient background
-        const grad = ctx.createLinearGradient(0, 0, 512, 0);
-        grad.addColorStop(0, 'rgba(10, 25, 45, 0.94)');
-        grad.addColorStop(0.5, 'rgba(4, 10, 24, 0.98)');
-        grad.addColorStop(1, 'rgba(10, 25, 45, 0.94)');
-        
-        ctx.fillStyle = grad;
-        const x = 10, y = 10, w = 492, h = 236, r = 24;
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-        ctx.lineTo(x + w, y + h - r);
-        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-        ctx.lineTo(x + r, y + h);
-        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-        ctx.lineTo(x, y + r);
-        ctx.quadraticCurveTo(x, y, x + r, y);
-        ctx.closePath();
-        ctx.fill();
-
-        // Glowing border outline
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = this.predictionFlashColor || 'rgba(0, 255, 255, 0.7)';
-        ctx.stroke();
-
-        // Corner futuristic bracket decorations
-        ctx.strokeStyle = '#e2af37';
-        ctx.lineWidth = 6;
-        const offset = 8;
-        // Top-left
-        ctx.beginPath(); ctx.moveTo(x + offset, y + offset + 25); ctx.lineTo(x + offset, y + offset); ctx.lineTo(x + offset + 25, y + offset); ctx.stroke();
-        // Top-right
-        ctx.beginPath(); ctx.moveTo(x + w - offset - 25, y + offset); ctx.lineTo(x + w - offset, y + offset); ctx.lineTo(x + w - offset, y + offset + 25); ctx.stroke();
-        // Bottom-left
-        ctx.beginPath(); ctx.moveTo(x + offset, y + h - offset - 25); ctx.lineTo(x + offset, y + h - offset); ctx.lineTo(x + offset + 25, y + h - offset); ctx.stroke();
-        // Bottom-right
-        ctx.beginPath(); ctx.moveTo(x + w - offset - 25, y + h - offset); ctx.lineTo(x + w - offset, y + h - offset); ctx.lineTo(x + w - offset, y + h - offset - 25); ctx.stroke();
-
-        // Draw header badge "IPL FINALS 2026"
-        ctx.fillStyle = '#e2af37';
-        ctx.font = 'bold 26px "Outfit", "Inter", "Arial Black"';
-        ctx.textAlign = 'center';
-        ctx.shadowColor = 'rgba(226, 175, 55, 0.5)';
-        ctx.shadowBlur = 8;
-        ctx.fillText('IPL FINALS 2026', 256, 46);
-        ctx.shadowBlur = 0;
-
-        // Draw elegant B2B broadcast status
-        ctx.fillStyle = '#00ffcc';
-        ctx.font = 'bold 18px monospace';
-        ctx.textAlign = 'right';
-        ctx.shadowColor = 'rgba(0, 255, 204, 0.4)';
-        ctx.shadowBlur = 6;
-        ctx.fillText("AI TELEMETRY: READY", 470, 46);
-        ctx.shadowBlur = 0;
-
-        // Draw matchup
-        // RCB
-        ctx.fillStyle = '#ff3333';
-        ctx.font = 'bold 76px "Outfit", "Inter", "Arial Black"';
-        ctx.textAlign = 'right';
-        ctx.shadowColor = 'rgba(255, 51, 51, 0.6)';
-        ctx.shadowBlur = 12;
-        ctx.fillText('RCB', 200, 134);
-
-        // VS Shield / Capsule
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-        ctx.beginPath();
-        ctx.arc(256, 112, 22, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#ffffff';
-        ctx.stroke();
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'italic bold 24px "Outfit", "Inter", "Arial"';
-        ctx.textAlign = 'center';
-        ctx.fillText('VS', 256, 120);
-
-        // RR
-        ctx.fillStyle = '#e0115f';
-        ctx.font = 'bold 76px "Outfit", "Inter", "Arial Black"';
-        ctx.textAlign = 'left';
-        ctx.shadowColor = 'rgba(224, 17, 95, 0.6)';
-        ctx.shadowBlur = 12;
-        ctx.fillText('RR', 312, 134);
-        ctx.shadowBlur = 0;
-
-        // Bottom status footer - DYNAMIC
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.font = 'bold 18px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(this.predictionStatusText, 256, 195);
-
-        // Live recording dot / status icon
-        if (this.activePrediction) {
-            ctx.fillStyle = '#ffcc00'; // active query pulsing dot
-            ctx.beginPath();
-            ctx.arc(256, 220, 6, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.font = 'bold 15px monospace';
-            ctx.fillStyle = '#ffcc00';
-            ctx.fillText(`COMPUTING TRAJECTORY VECTORS IN ${(this.predictionTimer).toFixed(1)}s`, 256, 242);
-        } else {
-            ctx.fillStyle = '#ff2222';
-            ctx.beginPath();
-            ctx.arc(148, 220, 6, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-            ctx.font = 'bold 16px "Outfit", "Inter", "Arial"';
-            ctx.fillText('● LIVE AR TELECAST', 256, 226);
-        }
-
-        this.billboardTexture.needsUpdate = true;
+        // Obsolete - using static grand finale banner
     }
 
     private initHawkEye() {
@@ -3755,8 +3499,8 @@ export class DomainExpansionSystem extends createSystem({
         const cardGroup = new THREE.Group();
 
         if (rcbCardKey) {
-            // Portrait card geometry — 5:8 aspect ratio matches the JPEG
-            const planeGeom = new THREE.PlaneGeometry(0.055, 0.088);
+            // Portrait card geometry — 3:4 aspect ratio matches the JPEG
+            const planeGeom = new THREE.PlaneGeometry(0.055, 0.0733);
             const planeMat = new THREE.MeshBasicMaterial({
                 transparent: true,
                 opacity: 0.0,
@@ -3779,7 +3523,7 @@ export class DomainExpansionSystem extends createSystem({
             cardGroup.add(cardMesh); // Child[0]
 
             // Holographic B2B backing panel (Obsidian glass style)
-            const backGeom = new THREE.PlaneGeometry(0.060, 0.093);
+            const backGeom = new THREE.PlaneGeometry(0.060, 0.0783);
             const backMat = new THREE.MeshBasicMaterial({
                 color: 0x050c1c,
                 transparent: true,
@@ -3795,7 +3539,7 @@ export class DomainExpansionSystem extends createSystem({
             cardGroup.add(backMesh);
 
             // Neon cyan wireframe border outline
-            const borderGeom = new THREE.PlaneGeometry(0.061, 0.094);
+            const borderGeom = new THREE.PlaneGeometry(0.061, 0.0793);
             const borderMat = new THREE.MeshBasicMaterial({
                 color: 0x00ffff,
                 wireframe: true,
@@ -3854,6 +3598,7 @@ export class DomainExpansionSystem extends createSystem({
             // Store metadata for lazy loading and correct position lerp in update()
             cardGroup.userData.rcbCardKey = rcbCardKey;
             cardGroup.userData.baseY = BASE_Y;
+            cardGroup.scale.set(0.5, 0.5, 0.5);
             return cardGroup;
         }
 
@@ -3932,6 +3677,7 @@ export class DomainExpansionSystem extends createSystem({
         cardMesh.position.y = 0.045;
         cardGroup.add(cardMesh);
 
+        cardGroup.scale.set(0.5, 0.5, 0.5);
         return cardGroup;
     }
 
@@ -4052,92 +3798,42 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     private initScoreDisplay() {
-        // Score display spans a 90° arc on the roof, offset 80° from the button arc center
-        const scoreArcCenter = Math.PI; // back/top of the stadium (opposite side from buttons)
-        const scoreArcSpan   = Math.PI * (80 / 180);
-        const scoreArcStart  = scoreArcCenter - scoreArcSpan / 2;
-        const numSegments    = 5; // number of curved score panels
-        const scoreArcStep   = scoreArcSpan / (numSegments - 1);
-
-        const scoreLines = [
-            { line1: "IPL FINAL 2025",   line2: "WANKHEDE STADIUM" },
-            { line1: "MI  182 / 3",      line2: "20 OVERS" },
-            { line1: "RCB  161 / 7",     line2: "18.4 OVERS" },
-            { line1: "V.KOHLI  82*",     line2: "SR: 154.7" },
-            { line1: "J.BUMRAH  3/18",   line2: "3.4 OVERS" }
+        const texLoader = new THREE.TextureLoader();
+        
+        const configs = [
+            { file: 'rr_stats.png', angleOffset: -55, w: 0.08, h: 0.022 },
+            { file: 'h2h_metrics.png', angleOffset: -25, w: 0.05, h: 0.029 },
+            { file: 'ipl_champion_trophy.png', angleOffset: 0, w: 0.045, h: 0.028 },
+            { file: 'h2h_boundaries.png', angleOffset: 25, w: 0.05, h: 0.029 },
+            { file: 'rcb_stats.png', angleOffset: 55, w: 0.08, h: 0.021 }
         ];
 
-        for (let i = 0; i < numSegments; i++) {
-            const angle = scoreArcStart + i * scoreArcStep;
+        configs.forEach((cfg) => {
+            const angle = Math.PI + (cfg.angleOffset * Math.PI / 180);
             const px = Math.sin(angle) * this.ROOF_RADIUS;
             const pz = Math.cos(angle) * this.ROOF_RADIUS;
 
-            // Build canvas panel for this score segment
-            const canvas = document.createElement('canvas');
-            canvas.width  = 256;
-            canvas.height = 128;
-            const ctx = canvas.getContext('2d')!;
-            ctx.clearRect(0, 0, 256, 128);
-
-            // Dark holographic background
-            const grad = ctx.createLinearGradient(0, 0, 0, 128);
-            grad.addColorStop(0, 'rgba(2, 8, 28, 0.96)');
-            grad.addColorStop(1, 'rgba(4, 16, 44, 0.96)');
-            ctx.fillStyle = grad;
-            ctx.roundRect(4, 4, 248, 120, 10);
-            ctx.fill();
-
-            // Border glow
-            ctx.strokeStyle = 'rgba(0, 200, 255, 0.85)';
-            ctx.lineWidth = 4;
-            ctx.roundRect(4, 4, 248, 120, 10);
-            ctx.stroke();
-
-            // Corner accents
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.5)';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(14, 24); ctx.lineTo(14, 14); ctx.lineTo(24, 14);
-            ctx.moveTo(242, 104); ctx.lineTo(242, 114); ctx.lineTo(232, 114);
-            ctx.stroke();
-
-            // Primary text
-            ctx.shadowColor = '#00ffff';
-            ctx.shadowBlur = 12;
-            ctx.fillStyle = '#00ffff';
-            ctx.font = 'bold 26px monospace';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(scoreLines[i].line1, 128, 48);
-
-            // Secondary text
-            ctx.shadowBlur = 6;
-            ctx.fillStyle = 'rgba(180, 240, 255, 0.85)';
-            ctx.font = '20px monospace';
-            ctx.fillText(scoreLines[i].line2, 128, 92);
-
-            const tex = new THREE.CanvasTexture(canvas);
-            tex.colorSpace = THREE.SRGBColorSpace;
-            tex.needsUpdate = true;
-
-            const panelGeom = new THREE.PlaneGeometry(0.028, 0.014);
+            const panelGeom = new THREE.PlaneGeometry(cfg.w, cfg.h); 
             const panelMat = new THREE.MeshBasicMaterial({
-                map: tex,
                 transparent: true,
-                opacity: 0.92,
                 side: THREE.DoubleSide,
                 depthWrite: false
             });
             const panelMesh = new THREE.Mesh(panelGeom, panelMat);
 
+            texLoader.load(`./ui/ipl/${cfg.file}`, (tex) => {
+                const alphaTex = this.makeBlackTransparent(tex.image);
+                panelMat.map = alphaTex;
+                panelMat.needsUpdate = true;
+            });
+
             panelMesh.position.set(px, this.ROOF_Y + 0.006, pz);
-            // Rotate to face inward (toward pitch) and tilt slightly for readability
             panelMesh.rotation.y = angle + Math.PI;
-            panelMesh.rotation.x = -0.18; // slight downward tilt for readability from above
+            panelMesh.rotation.x = -0.18; 
 
             this.tableGroup.add(panelMesh);
             this.scoreDisplayMeshes.push(panelMesh);
-        }
+        });
     }
 
     private triggerSixAnimation(index: number) {
