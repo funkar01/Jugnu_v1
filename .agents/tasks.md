@@ -84,9 +84,31 @@
   - [x] Implement 5s volume-preserving squash-and-stretch with 0.8 decay
   - [x] Set mood to happy during squash-and-stretch
   - [x] Enable UI interactions only after 5s
-
-
-
-
-
-
+- [x] Onboarding Teleportation Fix
+  - [x] Implement updateOnboardingHover in src/jugnu.ts
+  - [x] Integrate hover check in OnboardingIntro and OnboardingTutorial
+  - [x] Refactor activateJugnu to handle reload state persistence
+  - [x] Guard outer scale lerp
+- [x] Phase 1 to Phase 2 Transition Continuity Fix
+  - [x] Update spawning targetPos to follow camera front view every frame
+  - [x] Reset velocity to zero and copy obj.position to centerPos on spawn complete
+- [x] Phase 2 Squash-and-Stretch Axis Limitation & Smooth Onset
+  - [x] Restrict squash-and-stretch mesh deformation to the vertical axis only (Three.js Y axis / CAD Z axis)
+  - [x] Implement a 1.5s ease-in onset envelope to eliminate the abrupt velocity snap on transition
+- [x] Squash-and-Stretch Disabling & Isolation Test
+  - [x] Disable Phase 2 squash-and-stretch scaling entirely, keeping scale constant at 0.2 during the 5s window
+- [x] Phase 2 & 3 Hover Smoothing & Spring Disabling
+  - [x] Replace spring-damper physics solver in updateOnboardingHover with smooth direct lerping
+  - [x] Verify clean TypeScript compilation and Vite build
+- [x] Phase 2 Yawn & Morning Stretch Animation
+  - [x] Program yawn animation (0.0s to 1.5s) using 'bored' mood & vertical squeeze/stretch
+  - [x] Program morning stretch animation (1.5s to 3.5s) using 'bright' mood & deep vertical stretch
+  - [x] Settle and relax back to normal (3.5s to 5.0s) with 'happy' mood & minor settle wobble
+- [x] Onboarding Intro Phase Refinements (Phase 2a & 2b Split)
+  - [x] Hide the instruction board by default on initialization in src/jugnu.ts
+  - [x] Defer room-loading check in update() until the Jugnu entity is loaded
+  - [x] Load onboardingPhase directly from the entity inside activateJugnu() and reset UI
+  - [x] Map intro dialogue speeches to user quotes ("Hi, I am Jugnu. Your spatial  companion" and "Welcome to the onboarding session")
+  - [x] Set timing boundaries for Phase 2a (0s-5s yawn/stretch) and Phase 2b (5s-10.5s speech)
+  - [x] Update canvas onboarding card header to "Hey, I am Jugnu." and buttons to "Play Tutorial" / "Skip"
+  - [x] Verify compilation (tsc) and successful production bundling (npm run build)

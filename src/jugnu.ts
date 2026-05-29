@@ -1,4 +1,4 @@
-import { createComponent, createSystem, Pressed, Vector3, PhysicsBody, PhysicsState, PhysicsManipulation, PhysicsShape, PhysicsShapeType, Interactable } from "@iwsdk/core";
+import { createComponent, createSystem, Pressed, Vector3, PhysicsBody, PhysicsState, PhysicsManipulation, PhysicsShape, PhysicsShapeType, Interactable, AudioSource, AudioUtils, PlaybackMode } from "@iwsdk/core";
 import { MoodColors } from "./JugnuV3Model.js";
 import type { JugnuV3Model, Mood } from "./JugnuV3Model.js";
 import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
@@ -25,6 +25,9 @@ export class JugnuSystem extends createSystem({
   // Audio state
   private isListening = false;
   private isProcessingAudio = false;
+  private yawnAudioPlayed = false;
+  private introSpeech1Played = false;
+  private introSpeech2Played = false;
   private synth!: SpeechSynthesis;
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
@@ -119,6 +122,7 @@ export class JugnuSystem extends createSystem({
 
   init() {
     this.instructionBoard = new JugnuInstructionBoard();
+    this.instructionBoard.visible = false;
     this.world.createTransformEntity(this.instructionBoard);
 
     this.lookAtTarget = new Vector3();
@@ -213,6 +217,9 @@ export class JugnuSystem extends createSystem({
             this.spawnTimer = 0.0;
             this.isSpawning = false;
             this.wakeUpTimer = 0.0;
+            this.yawnAudioPlayed = false;
+            this.introSpeech1Played = false;
+            this.introSpeech2Played = false;
             this.gazeTimer = 0.0;
             this.celebrationActive = false;
             this.celebrationTimer = 0.0;
@@ -481,8 +488,16 @@ export class JugnuSystem extends createSystem({
   }
 
   activateJugnu() {
+      this.queries.jugnu.entities.forEach(entity => {
+          this.onboardingPhase = entity.getValue(Jugnu, "onboardingPhase") as number;
+      });
+      this.hideOnboardingUI();
+
       if (this.onboardingPhase === 0) {
           this.interactionState = 'OnboardingWakeUp';
+          this.yawnAudioPlayed = false;
+          this.introSpeech1Played = false;
+          this.introSpeech2Played = false;
           this.queries.jugnu.entities.forEach(e => {
               if (e.object3D) {
                   e.object3D.visible = false; // Hide until wrist tap
@@ -498,9 +513,74 @@ export class JugnuSystem extends createSystem({
           if (this.dimOverlayMat) {
               this.dimOverlayMat.uniforms.u_dimIntensity.value = 0.8;
           }
+      } else if (this.onboardingPhase === 1) {
+          this.interactionState = 'OnboardingIntro';
+          this.wakeUpTimer = 0.0; // Play the yawn and morning stretch animation sequence on reload
+          this.yawnAudioPlayed = false;
+          this.introSpeech1Played = false;
+          this.introSpeech2Played = false;
+          this.player.head.getWorldPosition(this.headPos);
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+          forward.y = 0; 
+          forward.normalize();
+          const spawnPos = this.headPos.clone().add(forward.multiplyScalar(0.5));
+          spawnPos.y = this.headPos.y - 0.15; 
+          this.centerPos.copy(spawnPos); 
+
+          this.queries.jugnu.entities.forEach(e => { 
+              if (e.object3D) {
+                  e.object3D.position.copy(spawnPos);
+                  e.object3D.visible = true; 
+              }
+              const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
+              if (currentState !== PhysicsState.Kinematic) {
+                  this.setPhysicsState(e, PhysicsState.Kinematic, 0.0);
+              }
+          });
+          this.hideOnboardingUI();
+      } else if (this.onboardingPhase === 2) {
+          this.interactionState = 'OnboardingTutorial';
+          this.player.head.getWorldPosition(this.headPos);
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+          forward.y = 0; 
+          forward.normalize();
+          const spawnPos = this.headPos.clone().add(forward.multiplyScalar(0.5));
+          spawnPos.y = this.headPos.y - 0.15; 
+          this.centerPos.copy(spawnPos); 
+
+          this.queries.jugnu.entities.forEach(e => { 
+              if (e.object3D) {
+                  e.object3D.position.copy(spawnPos);
+                  e.object3D.visible = true; 
+              }
+              const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
+              if (currentState !== PhysicsState.Kinematic) {
+                  this.setPhysicsState(e, PhysicsState.Kinematic, 0.0);
+              }
+          });
+      } else if (this.onboardingPhase === 3) {
+          this.interactionState = 'OnboardingNavigation';
+          this.spinTimer = 0.0;
+          this.player.head.getWorldPosition(this.headPos);
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+          forward.y = 0; 
+          forward.normalize();
+          const spawnPos = this.headPos.clone().add(forward.multiplyScalar(0.5));
+          spawnPos.y = this.headPos.y - 0.15; 
+          this.centerPos.copy(spawnPos); 
+
+          this.queries.jugnu.entities.forEach(e => { 
+              if (e.object3D) {
+                  e.object3D.position.copy(spawnPos);
+                  e.object3D.visible = true; 
+              }
+              const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
+              if (currentState !== PhysicsState.Kinematic) {
+                  this.setPhysicsState(e, PhysicsState.Kinematic, 0.0);
+              }
+          });
       } else {
           this.interactionState = 'Following';
-          
           this.player.head.getWorldPosition(this.headPos);
           const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
           forward.y = 0; 
@@ -537,6 +617,37 @@ export class JugnuSystem extends createSystem({
           linearDamping: 0.1,
           angularDamping: 0.1
       });
+  }
+
+  private updateOnboardingHover(entity: any, obj: THREE.Object3D, safeDt: number, followCamera = true, lerpSpeed = 2.0) {
+      if (followCamera) {
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+          forward.y = 0;
+          forward.normalize();
+          const targetCenter = this.headPos.clone().add(forward.multiplyScalar(0.5));
+          targetCenter.y -= 0.15;
+          
+          this.centerPos.lerp(targetCenter, lerpSpeed * safeDt);
+      }
+
+      // Add gentle floating noise offset
+      const floatX = this.noise(this.floatTime * 0.18, 0) * this.floatRadius;
+      const floatY = this.noise(this.floatTime * 0.18, 1) * this.floatRadius * 0.5;
+      const floatZ = this.noise(this.floatTime * 0.18, 2) * this.floatRadius;
+      const hoverTarget = this.centerPos.clone().add(new THREE.Vector3(floatX, floatY, floatZ));
+
+      // Direct smooth lerp to hoverTarget instead of spring-damper physics
+      const oldPos = obj.position.clone();
+      obj.position.lerp(hoverTarget, 5.0 * safeDt);
+
+      if (safeDt > 0.0001) {
+          this.velocity.subVectors(obj.position, oldPos).divideScalar(safeDt);
+      } else {
+          this.velocity.set(0, 0, 0);
+      }
+
+      // Apply linearVelocity manipulation to sync physics collider
+      entity.addComponent(PhysicsManipulation, { linearVelocity: [this.velocity.x, this.velocity.y, this.velocity.z] });
   }
 
   private noise(t: number, seed: number): number {
@@ -816,8 +927,8 @@ export class JugnuSystem extends createSystem({
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 28px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText("Hey! I'm Jugnu,", 256, 80);
-      ctx.fillText("your Antigravity companion.", 256, 120);
+      ctx.fillText("Hey, I am Jugnu.", 256, 80);
+      ctx.fillText("Your spatial companion.", 256, 120);
 
       const texture = new THREE.CanvasTexture(canvas);
       texture.colorSpace = THREE.SRGBColorSpace;
@@ -840,7 +951,7 @@ export class JugnuSystem extends createSystem({
       btn1Ctx.fillStyle = '#ffffff';
       btn1Ctx.font = 'bold 18px sans-serif';
       btn1Ctx.textAlign = 'center';
-      btn1Ctx.fillText("Play Tutorial (Fun)", 128, 36);
+      btn1Ctx.fillText("Play Tutorial", 128, 36);
 
       const btn1Tex = new THREE.CanvasTexture(btn1Canvas);
       btn1Tex.colorSpace = THREE.SRGBColorSpace;
@@ -865,7 +976,7 @@ export class JugnuSystem extends createSystem({
       btn2Ctx.fillStyle = '#ffffff';
       btn2Ctx.font = 'bold 18px sans-serif';
       btn2Ctx.textAlign = 'center';
-      btn2Ctx.fillText("Skip to Stadium", 128, 36);
+      btn2Ctx.fillText("Skip", 128, 36);
 
       const btn2Tex = new THREE.CanvasTexture(btn2Canvas);
       btn2Tex.colorSpace = THREE.SRGBColorSpace;
@@ -944,6 +1055,9 @@ export class JugnuSystem extends createSystem({
     
     // Room Loading Block
     if (this.interactionState === 'WaitingForRoom') {
+        if (this.queries.jugnu.entities.size === 0) {
+            return;
+        }
         const isXR = (this.renderer.xr as any).isPresenting;
         
         if (!isXR) {
@@ -1338,20 +1452,67 @@ export class JugnuSystem extends createSystem({
           } 
           else if (this.interactionState === 'OnboardingIntro') {
               this.wakeUpTimer += safeDt;
-              if (this.wakeUpTimer < 5.0) {
-                  // Volume-preserving squash & stretch animation over 5s
-                  const amplitude = 0.5;
-                  const decay = 0.8;
-                  const scaleY = 1.0 + amplitude * Math.sin(this.wakeUpTimer * 12.0) * Math.exp(-decay * this.wakeUpTimer);
-                  const scaleXZ = 1.0 / Math.sqrt(scaleY);
-                  obj.scale.set(0.2 * scaleXZ, 0.2 * scaleY, 0.2 * scaleXZ);
 
-                  // Keep expression as happy and UI hidden
-                  jugModel.setMood('happy');
+              // Hover and follow camera to keep kinematic physics synced and lively
+              this.updateOnboardingHover(entity, obj, safeDt, true);
+
+              // Play yawn audio once at start
+              if (!this.yawnAudioPlayed) {
+                  this.yawnAudioPlayed = true;
+                  AudioUtils.play(entity);
+              }
+
+              const t = this.wakeUpTimer;
+
+              if (t < 5.0) {
+                  // Phase 2a: Yawning and morning stretch sequence (~5s duration)
+                  let scaleX = 0.2;
+                  let scaleY = 0.2;
+                  let scaleZ = 0.2;
+
+                  if (t < 1.5) {
+                      jugModel.setMood('bored');
+                      const yawnProgress = t / 1.5;
+                      const squeeze = Math.sin(yawnProgress * Math.PI);
+                      scaleY = 0.2 - squeeze * 0.04 + Math.pow(yawnProgress, 2) * 0.06;
+                      scaleX = 0.2 + squeeze * 0.03 - Math.pow(yawnProgress, 2) * 0.04;
+                  } else if (t < 3.5) {
+                      jugModel.setMood('bright');
+                      const stretchProgress = (t - 1.5) / 2.0;
+                      const stretchAmt = Math.sin(stretchProgress * Math.PI);
+                      scaleY = 0.2 + stretchAmt * 0.09;
+                      scaleX = 0.2 - stretchAmt * 0.05;
+                  } else {
+                      jugModel.setMood('happy');
+                      const relaxProgress = (t - 3.5) / 1.5;
+                      const settleAmt = Math.exp(-3.0 * relaxProgress) * Math.cos(relaxProgress * Math.PI * 4.0);
+                      scaleY = 0.2 + settleAmt * 0.03;
+                      scaleX = 0.2 - settleAmt * 0.02;
+                  }
+
+                  obj.scale.set(scaleX, scaleY, scaleZ);
                   this.hideOnboardingUI();
-              } else {
+              } else if (t < 10.5) {
+                  // Phase 2b: Speak introduction (5.0s to 10.5s)
                   obj.scale.setScalar(0.2);
-                  this.showOnboardingUI(); // Fade in buttons after 5s
+                  this.hideOnboardingUI();
+
+                  if (t >= 5.0 && !this.introSpeech1Played) {
+                      this.introSpeech1Played = true;
+                      this.speak("Hi, I am Jugnu. Your spatial  companion");
+                      jugModel.setMood('happy');
+                  }
+
+                  if (t >= 8.0 && !this.introSpeech2Played) {
+                      this.introSpeech2Played = true;
+                      this.speak("Welcome to the onboarding session");
+                      jugModel.setMood('winking');
+                  }
+              } else {
+                  // Phase 2b completion: show Play/Skip buttons
+                  obj.scale.setScalar(0.2);
+                  jugModel.setMood('happy');
+                  this.showOnboardingUI();
               }
 
               // Position panel to the right of Jugnu and make it look at user
@@ -1363,8 +1524,8 @@ export class JugnuSystem extends createSystem({
                   this.uiPanelBg.lookAt(this.headPos);
               }
 
-              // Check buttons only if the 5s animation completes to prevent premature interactions
-              if (this.wakeUpTimer >= 5.0) {
+              // Check buttons only if the intro sequence (10.5s) completes
+              if (t >= 10.5) {
                   if (this.btnPlayEntity && this.btnPlayEntity.hasComponent(Pressed)) {
                       this.btnPlayEntity.removeComponent(Pressed);
                       this.hideOnboardingUI();
@@ -1388,6 +1549,11 @@ export class JugnuSystem extends createSystem({
           } 
           else if (this.onboardingPhase === 2) {
               if (instructionStep === 0) {
+                  // Hover and follow camera only if not currently pinched/lerping
+                  if (this.interactionState === 'OnboardingTutorial') {
+                      this.updateOnboardingHover(entity, obj, safeDt, true);
+                  }
+
                   const isPinchedNow = (this.interactionState as string) === 'Attached' || (this.interactionState as string) === 'LerpingToHand';
                   if (isPinchedNow) {
                       jugModel.setMood('gold');
@@ -1403,6 +1569,11 @@ export class JugnuSystem extends createSystem({
                   }
               } 
               else if (instructionStep === 1) {
+                  // Hover in place behind wicket (do not follow camera!)
+                  if (this.interactionState === 'OnboardingTutorial') {
+                      this.updateOnboardingHover(entity, obj, safeDt, false);
+                  }
+
                   if (this.celebrationActive) {
                       this.celebrationTimer += safeDt;
                       if (this.celebrationTimer >= 2.0) {
@@ -1598,7 +1769,7 @@ export class JugnuSystem extends createSystem({
             } else {
                 this.instructionBoard.visible = false;
             }
-        } else if (instructionStep < 3) {
+        } else if (this.onboardingPhase === 2 && instructionStep < 3) {
             if (activeJugnuModel) {
                 this.instructionBoard.visible = true;
                 this.instructionBoard.setStep(instructionStep);

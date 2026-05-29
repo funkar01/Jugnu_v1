@@ -256,6 +256,12 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   world.createTransformEntity(juguModel)
     .addComponent(Interactable)
     .addComponent(Jugnu)
+    .addComponent(AudioSource, {
+      src: "./audio/yawn.mp3",
+      playbackMode: PlaybackMode.Restart,
+      positional: true,
+      volume: 1.0
+    })
     .addComponent(PhysicsBody, {
       state: PhysicsState.Dynamic,
       gravityFactor: 1.0,
