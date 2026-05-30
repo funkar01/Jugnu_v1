@@ -124,7 +124,66 @@
   - `[x]` Strictly preserve Jugnu scale at exactly `0.03` when grid-locked, bypassing all listen/process audio pulsing to fix growth jitters
   - `[x]` Run TypeScript validation check `npx tsc --noEmit` and confirm zero errors
   - `[x]` Compile production bundle via `npm run build` and ensure successful build
-
-
-
-
+- `[x]` Compass UI Overhaul & Two-Handed Interactions
+  - `[x]` Restrict Jugnu summoning and grab interactions to left hand pinch only
+  - `[x]` Reposition Compass UI board on the right side of Jugnu
+  - `[x]` Stack active tabs vertically on the right side of the Compass board
+  - `[x]` Implement right index finger swipe-to-scroll gesture tracking
+  - `[x]` Integrate scrolling clamping & haptic snap feedback
+  - `[x]` Verify static type safety (`npx tsc --noEmit`)
+  - `[x]` Verify client production build (`npm run build`)
+- `[x]` Havok WASM Physics Crash Fix
+  - `[x]` Remove crash-prone TriMesh physics shape addition from `RoomVisualizerSystem` meshes
+  - `[x]` Synchronize `PhysicsShape` and `PhysicsBody` lifecycle during Jugnu state transitions in `src/jugnu.ts`
+  - `[x]` Prevent deallocated shape index re-use and frame-by-frame component recreation
+  - `[x]` Verify clean static typecheck (`npx tsc --noEmit`)
+  - `[x]` Verify successful client production bundle compilation (`npm run build`)
+- `[x]` Compass Info Tabs Spawning and Proximity Resolution
+  - `[x]` Remove obsolete index pinch safeguard blocks from `src/jugnu.ts`
+  - `[x]` Resolve hand-proximity blockage (`distanceTo(tablePos) < 0.35`) near the open minimap table desk
+  - `[x]` Restore full, non-blocked index pinch summoning of the Compass and active vertical info cards
+  - `[x]` Verify static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Compass Tab Subsystem Overhaul & Smooth Auto-Focus snapping
+  - `[x]` Reset and close all active tab states (Chat, Tutorial, Stadium Selector, Debug) when the Compass UI is closed
+  - `[x]` Fix the permanent swipe-locked click lockout bug by resetting `swipeLocked` when swiping ends/releases
+  - `[x]` Increase vertical swipe-to-scroll sensitivity by 3x for effort-free, responsive scrolling within the backing board
+  - `[x]` Implement dynamic auto-focus LERP snapping that immediately slides the newly opened tab card directly into center focus
+  - `[x]` Verify clean static typecheck (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Compass Lock Escape & Swiping Boundary Alignment Fixes
+  - `[x]` Restrict LOCK ESCAPE trigger strictly to the left hand index pinch (preventing right index pinches from closing Compass/attracting Jugnu)
+  - `[x]` Expand vertical card swiping detection boundary horizontally (from `0.09` to `0.33` local coordinates) to fully encompass the stacked vertical cards at `x=0.21`
+  - `[x]` Expand vertical card swiping detection boundary vertically (from `0.07` to `0.20`) and depth-wise (to `0.05` Z-clearance) for large, forgiving hand gesture space
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Compass UI Proximity & Deadzone Scroll Refinements
+  - `[x]` Reduce `userRight` offset from `0.18` to `0.12` to bring Compass snuggly closer to Jugnu
+  - `[x]` Increase vertical scroll deadzone threshold to `0.015` (1.5cm of deliberate drag travel)
+  - `[x]` Freeze vertical stack scrolling until `swipeLocked` is engaged (exceeding deadzone) to eliminate drift while hovering
+  - `[x]` Add `!this.swipeLocked` check to the stadium selector interaction to prevent accidental selection during drag
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Compass UI Layout Specialization
+  - `[x]` Exclude the Stadium Selector (`STADIUM_SEL`) card from the right-side vertical scrolling stack
+  - `[x]` Hardcode the Stadium Selector map card to spawn centered directly above the Compass menu (`targetStadiumMenuX = 0.0`, `targetStadiumMenuY = 0.15`)
+  - `[x]` Keep all other active cards (Chat, Tutorial, Debug) in the sliding vertical stack on the right side of the Compass menu
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Left Hand Pinch Tutorial Overlay
+  - `[x]` Implement reusable generic `getJointWorldData` helper function to query hand joint positions in world coordinates
+  - `[x]` Initialize holographic cyberpunk glowing cyan tutorial cylinder thread (`tutorialThreadMesh`) and add via ECS transform registration
+  - `[x]` Render capsule-styled glassmorphic canvas sprite (`tutorialThreadTextSprite`) with "JUGNU" text always billboarding towards the user
+  - `[x]` Program breathing neon scale pulse effect (`Math.sin(floatTime * 4.0)`) on the text sprite at the exact middle of the thread
+  - `[x]` Connect fingertips in real-time, stretch/shrink dynamically, and implement one-time completion haptic vibration check when distance < 2.5cm
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` AR Space Glowing Fireflies & Zero-GC Engine Optimizations
+  - `[x]` Construct highly optimized instanced firefly particle system (`firefliesMesh`) rendering 120 fireflies in a single draw call
+  - `[x]` Program organic soft-glowing firefly mesh material (`0xdfff4f` yellow-green) with dynamic floor and ceiling height boundaries
+  - `[x]` Design gentle random-walk wander drifting with player head distance soft-tether clamping (radius 3.5m)
+  - `[x]` Implement dynamic domain sphere detection that hides the fireflies instantly (`visible = false`) when inside Domain expansion
+  - `[x]` Eliminate all Vector3, Quaternion, and Matrix4 object allocations in the active spring physics update loop, utilizing pre-allocated class-level scratch variables
+  - `[x]` Replace redundant `.clone()` operations with high-performance `addScaledVector()` and `subVectors()` operations to completely remove GC pressure
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Compass Summon Lock-Escape Hold Safeguard & Spatial Text Orientation
+  - `[x]` Implement a 1.5-second held-pinch safeguard check (`lockEscapeTimer`) during locked Compass UI modes to prevent accidental lock escapes
+  - `[x]` Transition `tutorialThreadTextSprite` to a high-fidelity 3D text plane (`tutorialThreadTextCard`)
+  - `[x]` Program spatial orientation math aligning the JUGNU card's horizontal (X) axis with the fingertips thread, projecting its surface normal directly to the player's head
+  - `[x]` Hide both the thread and text card completely when fingertips pinch together (distance < 2.5cm)
+  - `[x]` Implement a 5-second release hide cooldown (`threadCooldownTimer`) that suppresses the thread when Jugnu is released or thrown from hand
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)

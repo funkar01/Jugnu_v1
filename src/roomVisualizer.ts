@@ -42,18 +42,9 @@ export class RoomVisualizerSystem extends createSystem({
 
         // Iterate over all mesh entities mapped by the SceneUnderstandingSystem
         this.queries.meshes.entities.forEach(entity => {
-            if (!entity.hasComponent(PhysicsBody)) {
-                // Always add physics — invisible trimesh colliders
-                entity.addComponent(PhysicsBody, { state: PhysicsState.Static })
-                      .addComponent(PhysicsShape, {
-                          shape: PhysicsShapeType.TriMesh,
-                          friction: 0.5,
-                          restitution: 0.8
-                      });
-                const obj = entity.object3D;
-                if (obj) {
-                    obj.visible = false; // Physics-only; wireframe handled on planes
-                }
+            const obj = entity.object3D;
+            if (obj) {
+                obj.visible = false; // Hidden; wireframe handled on planes
             }
         });
 
@@ -88,13 +79,13 @@ export class RoomVisualizerSystem extends createSystem({
                     }
                 });
 
-                entity.addComponent(PhysicsBody, { state: PhysicsState.Static })
-                      .addComponent(PhysicsShape, {
+                entity.addComponent(PhysicsShape, {
                           shape: PhysicsShapeType.Box,
                           dimensions: [size.x, size.y, size.z],
                           friction: 0.2,
                           restitution: 1.2
-                      });
+                      })
+                      .addComponent(PhysicsBody, { state: PhysicsState.Static });
             } else {
                 // Every frame: sync visibility to the toggle flag
                 obj.visible = showWalls;

@@ -275,18 +275,16 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   world.createTransformEntity(juguModel)
     .addComponent(Interactable)
     .addComponent(Jugnu)
-    .addComponent(PhysicsBody, {
-      state: PhysicsState.Dynamic,
-      gravityFactor: 1.0,
-      linearDamping: 0.1,
-      angularDamping: 0.1,
-    })
     .addComponent(PhysicsShape, {
       shape: PhysicsShapeType.Sphere,
-      dimensions: [0.15, 0.15, 0.15],
+      dimensions: [0.15, 0.0, 0.0],
       restitution: 0.95,
       friction: 0.05,
       density: 1.0
+    })
+    .addComponent(PhysicsBody, {
+      state: PhysicsState.Kinematic,
+      gravityFactor: 0.0,
     });
 
   // Hide the glowing green physics box helper

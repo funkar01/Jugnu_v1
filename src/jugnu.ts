@@ -137,6 +137,44 @@ export class JugnuSystem extends createSystem({
   private compassStadiumCard!: THREE.Mesh;
   private selectedStadium: 'default' | 'berlin' | 'inuit' = 'default';
 
+  // Swipe & Scroll State
+  private isSwiping = false;
+  private lastSwipeY = 0.0;
+  private scrollY = 0.0;
+  private targetScrollY = 0.0;
+  private lastSnapIndex = 0;
+  private swipeAccumulatedY = 0.0;
+  private swipeLocked = false;
+  private lastOpenedTab: string | null = null;
+
+  // Left Hand Pinch Tutorial Thread UI
+  private tutorialThreadMesh!: THREE.Mesh;
+  private tutorialThreadTextCard!: THREE.Mesh;
+  private hasLeftPinchCompleted = false;
+  private leftIndexTipWorld = new THREE.Vector3();
+  private leftThumbTipWorld = new THREE.Vector3();
+  private threadCooldownTimer = 0.0;
+  private lockEscapeTimer = 0.0;
+
+  // Optimized Fireflies instanced particle system
+  private firefliesMesh!: THREE.InstancedMesh;
+  private fireflyData: {
+      pos: THREE.Vector3;
+      vel: THREE.Vector3;
+      baseScale: number;
+      flickerSpeed: number;
+      flickerOffset: number;
+      wanderTime: number;
+  }[] = [];
+  private readonly maxFireflies = 120;
+
+  // Pre-allocated scratch variables for zero-GC high-performance render loop
+  private scratchV3_1 = new THREE.Vector3();
+  private scratchV3_2 = new THREE.Vector3();
+  private scratchV3_3 = new THREE.Vector3();
+  private scratchMatrix = new THREE.Matrix4();
+  private scratchQuat = new THREE.Quaternion();
+
   init() {
     this.chatHistory.push({ sender: 'System', text: 'Jugnu XR Core Engine v13.4 initialized.' });
     this.chatHistory.push({ sender: 'System', text: 'Haptic controllers online & calibrated.' });
@@ -177,6 +215,8 @@ export class JugnuSystem extends createSystem({
     // Initialize UI and Keys
     this.createExpressionUI();
     this.initCompassUI();
+    this.initTutorialThread();
+    this.initFireflies();
     window.addEventListener('keydown', (e) => this.handleKeyDown(e));
 
     // Handle Click
@@ -563,78 +603,63 @@ export class JugnuSystem extends createSystem({
     let isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
     let isPinchingRight = this.getPinchData('right', this.rightPinchTip);
 
-    // Safeguard: ignore index pinches if the user is currently rotating the tactical map or pinching near the open table
-    if ((window as any).isRotatingMap) {
-        isPinchingLeft = false;
-        isPinchingRight = false;
-    }
-    if ((window as any).minimapTableVisible) {
-        const tablePos = (window as any).minimapTablePosition as THREE.Vector3;
-        if (tablePos) {
-            if (this.leftPinchTip.distanceTo(tablePos) < 0.35) {
-                isPinchingLeft = false;
-            }
-            if (this.rightPinchTip.distanceTo(tablePos) < 0.35) {
-                isPinchingRight = false;
-            }
-        }
-    }
 
-    // ── LOCK ESCAPE: any fresh pinch while locked → unlock + come to fingertips ──
+
+    // ── LOCK ESCAPE: hold pinch for 1.5 seconds while locked → unlock + come to fingertips ──
     if (this.isGridLocked) {
-        let escapeHand: 'left' | 'right' | null = null;
-        let escapeTip = this.leftPinchTip;
+        if (isPinchingLeft) {
+            this.lockEscapeTimer += safeDt;
+            if (this.lockEscapeTimer >= 1.5) {
+                this.lockEscapeTimer = 0.0;
+                console.log('[Jugnu] Held lock escape pinch for 1.5s — unlocking and lerping to hand.');
 
-        if (isPinchingLeft && !this.wasPinchingLeft) {
-            escapeHand = 'left';
-            escapeTip = this.leftPinchTip;
-        } else if (isPinchingRight && !this.wasPinchingRight) {
-            escapeHand = 'right';
-            escapeTip = this.rightPinchTip;
-        }
+                // 1. Unlock
+                this.isGridLocked = false;
+                this.lockedCompassPos = null;
+                this.lockedCompassQuat = null;
 
-        if (escapeHand) {
-            console.log('[Jugnu] Lock escape pinch detected — unlocking and lerping to hand.');
+                // 2. Close compass UI so it respawns cleanly on next open
+                this.isCompassOpen = false;
+                this.isStadiumMenuOpen = false;
+                this.isChatOpen = false;
+                this.isTutorialOpen = false;
+                this.isDebugOpen = false;
+                this.indexPinchTimer = 0.0;
+                this.pinchReleasedTimer = 0.0;
 
-            // 1. Unlock
-            this.isGridLocked = false;
-            this.lockedCompassPos = null;
-            this.lockedCompassQuat = null;
-
-            // 2. Close compass UI so it respawns cleanly on next open
-            this.isCompassOpen = false;
-            this.isStadiumMenuOpen = false;
-            this.isChatOpen = false;
-            this.isTutorialOpen = false;
-            this.isDebugOpen = false;
-            this.indexPinchTimer = 0.0;
-            this.pinchReleasedTimer = 0.0;
-
-            // 3. Pull Jugnu to fingertip
-            let lockedJugnuPos = new THREE.Vector3();
-            for (const entity of this.queries.jugnu.entities) {
-                if (!entity.object3D) continue;
-                lockedJugnuPos.copy(entity.object3D.position);
-                break;
-            }
-
-            this.interactionState = 'LerpingToHand';
-            this.attachedHand = escapeHand;
-            this.startPos.copy(lockedJugnuPos);
-            this.targetPos.copy(escapeTip);
-            this.previousHandPos.copy(escapeTip);
-            this.handVelocity.set(0, 0, 0);
-            this.lerpTime = 0;
-            this.velocity.set(0, 0, 0);
-
-            this.queries.jugnu.entities.forEach(e => {
-                const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
-                if (currentState !== PhysicsState.Kinematic) {
-                    if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
-                    e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+                // 3. Pull Jugnu to fingertip
+                let lockedJugnuPos = this.scratchV3_1;
+                lockedJugnuPos.set(0, 0, 0);
+                for (const entity of this.queries.jugnu.entities) {
+                    if (!entity.object3D) continue;
+                    lockedJugnuPos.copy(entity.object3D.position);
+                    break;
                 }
-            });
+
+                this.interactionState = 'LerpingToHand';
+                this.attachedHand = 'left';
+                this.startPos.copy(lockedJugnuPos);
+                this.targetPos.copy(this.leftPinchTip);
+                this.previousHandPos.copy(this.leftPinchTip);
+                this.handVelocity.set(0, 0, 0);
+                this.lerpTime = 0;
+                this.velocity.set(0, 0, 0);
+
+                this.queries.jugnu.entities.forEach(e => {
+                    const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
+                    if (currentState !== PhysicsState.Kinematic) {
+                        if (e.hasComponent(PhysicsShape)) e.removeComponent(PhysicsShape);
+                        if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
+                        e.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
+                        e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+                    }
+                });
+            }
+        } else {
+            this.lockEscapeTimer = 0.0;
         }
+    } else {
+        this.lockEscapeTimer = 0.0;
     }
 
     if ((this.interactionState === 'Idle' || this.interactionState === 'Following' || this.interactionState === 'Anchored') && !this.isGridLocked) {
@@ -644,9 +669,6 @@ export class JugnuSystem extends createSystem({
         if (isPinchingLeft && !this.wasPinchingLeft) {
             activeHand = 'left';
             activeTip = this.leftPinchTip;
-        } else if (isPinchingRight && !this.wasPinchingRight) {
-            activeHand = 'right';
-            activeTip = this.rightPinchTip;
         }
 
         if (activeHand) {
@@ -674,7 +696,9 @@ export class JugnuSystem extends createSystem({
                     }
                     const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
                     if (currentState !== PhysicsState.Kinematic) {
+                        if (e.hasComponent(PhysicsShape)) e.removeComponent(PhysicsShape);
                         if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
+                        e.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
                         e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
                     }
                 });
@@ -686,15 +710,17 @@ export class JugnuSystem extends createSystem({
         
         if (!isPinching) {
             this.attachedHand = null;
+            this.threadCooldownTimer = 5.0;
             if (this.handVelocity.lengthSq() > 1.0) {
                 this.interactionState = 'Idle';
                 this.throwTimer = 3.0; 
                 this.queries.jugnu.entities.forEach(entity => {
                     if (!entity.object3D) return;
                     this.basePositions.set(entity, entity.object3D.position.clone());
+                    if (entity.hasComponent(PhysicsShape)) entity.removeComponent(PhysicsShape);
                     if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
+                    entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
                     entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 });
-                    if (!entity.hasComponent(PhysicsShape)) entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
                     entity.addComponent(PhysicsManipulation, { linearVelocity: [this.handVelocity.x * 1.5, this.handVelocity.y * 1.5, this.handVelocity.z * 1.5] });
                 });
             } else {
@@ -703,7 +729,9 @@ export class JugnuSystem extends createSystem({
                 this.queries.jugnu.entities.forEach(entity => {
                     const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
                     if (currentState !== PhysicsState.Kinematic) {
+                        if (entity.hasComponent(PhysicsShape)) entity.removeComponent(PhysicsShape);
                         if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
+                        entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
                         entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
                     }
                 });
@@ -728,15 +756,17 @@ export class JugnuSystem extends createSystem({
         
         if (!isPinching) {
             this.attachedHand = null;
+            this.threadCooldownTimer = 5.0;
             if (this.handVelocity.lengthSq() > 1.0) {
                 this.interactionState = 'Idle';
                 this.throwTimer = 3.0; 
                 this.queries.jugnu.entities.forEach(entity => {
                     if (!entity.object3D) return;
                     this.basePositions.set(entity, entity.object3D.position.clone());
+                    if (entity.hasComponent(PhysicsShape)) entity.removeComponent(PhysicsShape);
                     if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
+                    entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
                     entity.addComponent(PhysicsBody, { state: PhysicsState.Dynamic, gravityFactor: 1.0, linearDamping: 0.1, angularDamping: 0.1 });
-                    if (!entity.hasComponent(PhysicsShape)) entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
                     entity.addComponent(PhysicsManipulation, { linearVelocity: [this.handVelocity.x * 1.5, this.handVelocity.y * 1.5, this.handVelocity.z * 1.5] });
                 });
             } else {
@@ -745,7 +775,9 @@ export class JugnuSystem extends createSystem({
                 this.queries.jugnu.entities.forEach(entity => {
                     const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
                     if (currentState !== PhysicsState.Kinematic) {
+                        if (entity.hasComponent(PhysicsShape)) entity.removeComponent(PhysicsShape);
                         if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
+                        entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
                         entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
                     }
                 });
@@ -872,23 +904,33 @@ export class JugnuSystem extends createSystem({
               this.centerPos.copy(obj.position);
               const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
               if (currentState !== PhysicsState.Kinematic) {
+                  if (entity.hasComponent(PhysicsShape)) entity.removeComponent(PhysicsShape);
                   if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
+                  entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
                   entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
               }
           }
       } else if (this.interactionState === 'Following' || this.interactionState === 'Anchored') {
+          const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
+          if (currentState !== PhysicsState.Kinematic) {
+              if (entity.hasComponent(PhysicsShape)) entity.removeComponent(PhysicsShape);
+              if (entity.hasComponent(PhysicsBody)) entity.removeComponent(PhysicsBody);
+              entity.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
+              entity.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+          }
+
           if (this.isGridLocked) {
               // Rigid Lock: perfectly frozen with zero floating/noise/drift
               obj.position.copy(this.centerPos);
               this.velocity.set(0, 0, 0);
           } else {
               if (this.interactionState === 'Following') {
-                  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+                  const forward = this.scratchV3_1.set(0, 0, -1).applyQuaternion(this.player.head.quaternion);
                   forward.y = 0; 
                   forward.normalize();
                   
                   // Calmed down: float farther away (1.25m instead of 0.95m) and lower to stay out of directly blocking user face
-                  const targetCenter = this.headPos.clone().add(forward.multiplyScalar(1.25)); 
+                  const targetCenter = this.scratchV3_2.copy(this.headPos).addScaledVector(forward, 1.25);
                   targetCenter.y -= 0.22; 
                   
                   // Calmed down: slower following transition (0.7x instead of 1.0x) so it floats lazily
@@ -898,14 +940,17 @@ export class JugnuSystem extends createSystem({
               const floatX = this.noise(this.floatTime * 0.18, 0) * this.floatRadius;
               const floatY = this.noise(this.floatTime * 0.18, 1) * this.floatRadius * 0.5;
               const floatZ = this.noise(this.floatTime * 0.18, 2) * this.floatRadius;
-              const hoverTarget = this.centerPos.clone().add(new THREE.Vector3(floatX, floatY, floatZ));
+              const hoverTarget = this.scratchV3_2.copy(this.centerPos);
+              hoverTarget.x += floatX;
+              hoverTarget.y += floatY;
+              hoverTarget.z += floatZ;
 
-              const displacement = new THREE.Vector3().subVectors(obj.position, hoverTarget);
+              const displacement = this.scratchV3_3.subVectors(obj.position, hoverTarget);
               const force = displacement.multiplyScalar(-this.springStiffness * 0.5); 
-              force.sub(this.velocity.clone().multiplyScalar(this.springDamping));
+              force.addScaledVector(this.velocity, -this.springDamping);
 
-              this.velocity.add(force.multiplyScalar(safeDt));
-              obj.position.add(this.velocity.clone().multiplyScalar(safeDt));
+              this.velocity.addScaledVector(force, safeDt);
+              obj.position.addScaledVector(this.velocity, safeDt);
           }
           
           entity.addComponent(PhysicsManipulation, { linearVelocity: [this.velocity.x, this.velocity.y, this.velocity.z] });
@@ -913,7 +958,7 @@ export class JugnuSystem extends createSystem({
       } else if (this.interactionState === 'LerpingToHand') {
           const t = Math.min(this.lerpTime / this.lerpDuration, 1.0);
           const smoothT = t * t * (3 - 2 * t);
-          const oldPos = obj.position.clone();
+          const oldPos = this.scratchV3_1.copy(obj.position);
           obj.position.lerpVectors(this.startPos, this.targetPos, smoothT);
           
           if (safeDt > 0.0001) {
@@ -921,15 +966,14 @@ export class JugnuSystem extends createSystem({
               entity.addComponent(PhysicsManipulation, { linearVelocity: [this.velocity.x, this.velocity.y, this.velocity.z] });
           }
       } else if (this.interactionState === 'Attached') {
-          const hoverTarget = this.targetPos.clone();
-          // hoverTarget.y += 0.08; 
+          const hoverTarget = this.scratchV3_2.copy(this.targetPos);
 
-          const displacement = new THREE.Vector3().subVectors(obj.position, hoverTarget);
+          const displacement = this.scratchV3_3.subVectors(obj.position, hoverTarget);
           const force = displacement.multiplyScalar(-this.springStiffness);
-          force.sub(this.velocity.clone().multiplyScalar(this.springDamping));
+          force.addScaledVector(this.velocity, -this.springDamping);
 
-          this.velocity.add(force.multiplyScalar(safeDt));
-          obj.position.add(this.velocity.clone().multiplyScalar(safeDt));
+          this.velocity.addScaledVector(force, safeDt);
+          obj.position.addScaledVector(this.velocity, safeDt);
           
           entity.addComponent(PhysicsManipulation, { linearVelocity: [this.velocity.x, this.velocity.y, this.velocity.z] });
       }
@@ -938,12 +982,12 @@ export class JugnuSystem extends createSystem({
 
       if (this.interactionState !== 'Idle') {
           const tiltFactor = 0.5;
-          const tiltAxis = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), this.velocity);
+          const tiltAxis = this.scratchV3_1.crossVectors(this.scratchV3_2.set(0, 1, 0), this.velocity);
           const tiltAngle = Math.min(tiltAxis.length() * tiltFactor, Math.PI / 4);
           if (tiltAngle > 0.001) {
               tiltAxis.normalize();
-              const tiltQuat = new THREE.Quaternion().setFromAxisAngle(tiltAxis, tiltAngle);
-              obj.quaternion.premultiply(tiltQuat);
+              const tiltQuat = this.scratchQuat.setFromAxisAngle(tiltAxis, tiltAngle);
+              obj.quaternion.multiply(tiltQuat);
           }
       }
 
@@ -1058,16 +1102,14 @@ export class JugnuSystem extends createSystem({
             const isLeftPinching = this.getPinchData('left', leftTip);
             const isRightPinching = this.getPinchData('right', rightTip);
 
-            // Activation pinch must be close to Jugnu (within 0.25m)
+            // Activation pinch must be close to Jugnu (within 0.25m) - RESTRICTED TO LEFT PINCH ONLY
             let isPinchingNearJugnu = false;
             if (isLeftPinching && leftTip.distanceTo(activeJugnuPos) < 0.25) {
                 isPinchingNearJugnu = true;
-            } else if (isRightPinching && rightTip.distanceTo(activeJugnuPos) < 0.25) {
-                isPinchingNearJugnu = true;
             }
 
-            // Active hold check: any index pinch held anywhere keeping it open
-            const isAnyPinchHeld = isLeftPinching || isRightPinching;
+            // Active hold check: only left hand index pinch held anywhere keeps it open
+            const isAnyPinchHeld = isLeftPinching;
 
             if (!this.isCompassOpen) {
                 if (isPinchingNearJugnu) {
@@ -1118,20 +1160,32 @@ export class JugnuSystem extends createSystem({
 
     if (this.compassGroup) {
         if (this.isCompassOpen) {
-            this.compassGroup.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 10.0);
+            this.compassGroup.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
         } else {
-            this.compassGroup.scale.lerp(new THREE.Vector3(0, 0, 0), safeDt * 10.0);
+            this.compassGroup.scale.lerp(new THREE.Vector3(0, 0, 0), safeDt * 30.0);
             if (this.compassGroup.scale.x < 0.01 && this.compassGroup.visible) {
                 this.compassGroup.visible = false;
             }
+            this.isChatOpen = false;
+            this.isTutorialOpen = false;
+            this.isStadiumMenuOpen = false;
+            this.isDebugOpen = false;
+            this.lastOpenedTab = null;
         }
 
         if (this.compassGroup.visible && activeJugnuPos.lengthSq() > 0) {
+            // Calculate dynamic 'userRight' vector based on player head perspective
+            this.player.head.getWorldPosition(this.headPos);
+            const forward = this.scratchV3_1.subVectors(activeJugnuPos, this.headPos);
+            forward.y = 0;
+            forward.normalize();
+            const userRight = this.scratchV3_2.crossVectors(forward, this.scratchV3_3.set(0, 1, 0)).normalize();
+
             if (this.isGridLocked) {
                 if (!this.lockedCompassPos) {
                     this.lockedCompassPos = new THREE.Vector3().copy(activeJugnuPos);
-                    this.lockedCompassPos.y += 1.5 * activeJugnuModel!.scale.y + 0.041; // 5 cm closer to Jugnu (0.041 offset)
-                    this.player.head.getWorldPosition(this.headPos);
+                    this.lockedCompassPos.addScaledVector(userRight, 0.12);
+                    this.lockedCompassPos.y += 0.5 * activeJugnuModel!.scale.y; // Vertically center with Jugnu's body
                     
                     const tempObj = new THREE.Object3D();
                     tempObj.position.copy(this.lockedCompassPos);
@@ -1144,16 +1198,15 @@ export class JugnuSystem extends createSystem({
                 this.lockedCompassPos = null;
                 this.lockedCompassQuat = null;
                 this.compassGroup.position.copy(activeJugnuPos);
-                // Spawns very close to Jugnu almost touching the top edge (5 cm closer, using 0.041 instead of 0.091):
-                this.compassGroup.position.y += 1.5 * activeJugnuModel!.scale.y + 0.041;
+                this.compassGroup.position.addScaledVector(userRight, 0.12);
+                this.compassGroup.position.y += 0.5 * activeJugnuModel!.scale.y; // Vertically center with Jugnu's body
 
-                this.player.head.getWorldPosition(this.headPos);
                 this.compassGroup.lookAt(this.headPos);
             }
 
             if (this.compassNeedle) {
-                const worldNorth = new THREE.Vector3(0, 0, -1);
-                const localNorth = worldNorth.clone().applyQuaternion(this.compassGroup.quaternion.clone().invert());
+                const worldNorth = this.scratchV3_1.set(0, 0, -1);
+                const localNorth = worldNorth.applyQuaternion(this.scratchQuat.copy(this.compassGroup.quaternion).invert());
                 const angle = Math.atan2(localNorth.x, localNorth.y);
                 this.compassNeedle.rotation.z = -angle;
             }
@@ -1163,103 +1216,192 @@ export class JugnuSystem extends createSystem({
             }
 
 
-            // Multi-tab side-by-side slide math for Chat, Tutorial, Stadium Selector, and Debug
-            let openCards: string[] = [];
-            if (this.isChatOpen) openCards.push('CHAT');
-            if (this.isTutorialOpen) openCards.push('TUTORIAL');
-            if (this.isStadiumMenuOpen) openCards.push('STADIUM_SEL');
-            if (this.isDebugOpen) openCards.push('DEBUG');
-
-            let targetTranscriptX = 0.0;
-            let targetTutorialX = 0.0;
-            let targetStadiumMenuX = 0.0;
-            let targetDebugX = 0.0;
-
-            const tabSpacing = 0.27;
-            const numOpen = openCards.length;
-            openCards.forEach((card, idx) => {
-                const offset = (idx - (numOpen - 1) / 2) * tabSpacing;
-                if (card === 'CHAT') targetTranscriptX = offset;
-                if (card === 'TUTORIAL') targetTutorialX = offset;
-                if (card === 'STADIUM_SEL') targetStadiumMenuX = offset;
-                if (card === 'DEBUG') targetDebugX = offset;
-            });
-
-            // Smooth scaling & sliding transition for the Transcript card (slides vertically ABOVE the board)
-            if (this.compassChatCard) {
-                if (this.isChatOpen) {
-                    this.compassChatMat.opacity = THREE.MathUtils.lerp(this.compassChatMat.opacity, 0.95, safeDt * 8.0);
-                    this.compassChatCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 8.0);
-                    this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, targetTranscriptX, safeDt * 8.0);
-                    this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, 0.15, safeDt * 8.0); // Vertically on top
-                    this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 8.0);
-                } else {
-                    this.compassChatMat.opacity = THREE.MathUtils.lerp(this.compassChatMat.opacity, 0.0, safeDt * 8.0);
-                    this.compassChatCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 8.0);
-                    this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, 0.0, safeDt * 8.0);
-                    this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, -0.02, safeDt * 8.0);
-                    this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 8.0);
-                }
-            }
-
-            // Smooth scaling & sliding transition for the Tutorial card (slides vertically ABOVE the board)
-            if (this.compassTutorialCard) {
-                if (this.isTutorialOpen) {
-                    this.compassTutorialMat.opacity = THREE.MathUtils.lerp(this.compassTutorialMat.opacity, 0.95, safeDt * 8.0);
-                    this.compassTutorialCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 8.0);
-                    this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, targetTutorialX, safeDt * 8.0);
-                    this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, 0.15, safeDt * 8.0); // Vertically on top
-                    this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 8.0);
-                    
-                    // Reactive dynamic update matching user instructionStep
-                    this.redrawCompassTutorial(instructionStep);
-                } else {
-                    this.compassTutorialMat.opacity = THREE.MathUtils.lerp(this.compassTutorialMat.opacity, 0.0, safeDt * 8.0);
-                    this.compassTutorialCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 8.0);
-                    this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, 0.0, safeDt * 8.0);
-                    this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, -0.02, safeDt * 8.0);
-                    this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 8.0);
-                }
-            }
-
-            // Smooth scaling & sliding transition for the Debug Console card (slides vertically ABOVE the board)
-            if (this.compassDebugCard) {
-                if (this.isDebugOpen) {
-                    this.compassDebugMat.opacity = THREE.MathUtils.lerp(this.compassDebugMat.opacity, 0.95, safeDt * 8.0);
-                    this.compassDebugCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 8.0);
-                    this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, targetDebugX, safeDt * 8.0);
-                    this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, 0.15, safeDt * 8.0); // Vertically on top
-                    this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 8.0);
-                } else {
-                    this.compassDebugMat.opacity = THREE.MathUtils.lerp(this.compassDebugMat.opacity, 0.0, safeDt * 8.0);
-                    this.compassDebugCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 8.0);
-                    this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, 0.0, safeDt * 8.0);
-                    this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, -0.02, safeDt * 8.0);
-                    this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 8.0);
-                }
-            }
-
-            // Smooth scaling & sliding transition for the Stadium Selector card (slides vertically ABOVE the board)
-            if (this.compassStadiumCard) {
-                if (this.isStadiumMenuOpen) {
-                    this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.95, safeDt * 8.0);
-                    this.compassStadiumCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 8.0);
-                    this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, targetStadiumMenuX, safeDt * 8.0);
-                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, 0.15, safeDt * 8.0); // Vertically on top
-                    this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 8.0);
-                } else {
-                    this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.0, safeDt * 8.0);
-                    this.compassStadiumCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 8.0);
-                    this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, 0.0, safeDt * 8.0);
-                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, -0.02, safeDt * 8.0);
-                    this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 8.0);
-                }
-            }
-
+            // Query index finger positions at the top of the interaction block
             const leftIndexTip = new THREE.Vector3();
             const rightIndexTip = new THREE.Vector3();
             const hasLeft = this.getIndexData('left', leftIndexTip);
             const hasRight = this.getIndexData('right', rightIndexTip);
+
+            let openCards: string[] = [];
+            if (this.isChatOpen) openCards.push('CHAT');
+            if (this.isTutorialOpen) openCards.push('TUTORIAL');
+            if (this.isDebugOpen) openCards.push('DEBUG');
+
+            const numOpen = openCards.length;
+
+            // Swipe-to-scroll detection over the Compass board & Info Cards using the right index finger
+            if (hasRight && numOpen > 0) {
+                const localRightTip = this.scratchV3_1.copy(rightIndexTip).applyMatrix4(this.scratchMatrix.copy(this.compassGroup.matrixWorld).invert());
+                const isWithinSwipeZ = Math.abs(localRightTip.z) < 0.05; // 5cm hover depth
+                const isWithinSwipeX = localRightTip.x > -0.09 && localRightTip.x < 0.33; // Expanded horizontally to cover cards at x=0.21
+                const isWithinSwipeY = localRightTip.y > -0.20 && localRightTip.y < 0.20; // Expanded vertically for generous drag space
+
+                if (isWithinSwipeZ && isWithinSwipeX && isWithinSwipeY) {
+                    if (!this.isSwiping) {
+                        this.isSwiping = true;
+                        this.lastSwipeY = localRightTip.y;
+                        this.swipeAccumulatedY = 0.0;
+                        this.swipeLocked = false;
+                    } else {
+                        const deltaY = localRightTip.y - this.lastSwipeY;
+                        this.lastSwipeY = localRightTip.y;
+
+                        this.swipeAccumulatedY += Math.abs(deltaY);
+                        if (this.swipeAccumulatedY > 0.015) {
+                            this.swipeLocked = true; // Lock click interactions while dragging
+                        }
+
+                        if (this.swipeLocked) {
+                            // Apply 3x sensitivity multiplier for effort-free, smooth scrolling
+                            this.scrollY += deltaY * 3.0;
+                        }
+                    }
+                } else {
+                    this.isSwiping = false;
+                    this.swipeLocked = false; // Reset lock when finger leaves hover range
+                }
+            } else {
+                this.isSwiping = false;
+                this.swipeLocked = false; // Reset lock when right hand is lost/released
+            }
+
+            // Continuous scroll boundaries clamp and snapping behavior
+            const minScroll = numOpen > 0 ? -(numOpen - 1) * 0.20 : 0.0;
+            const maxScroll = 0.0;
+            if (!this.isSwiping) {
+                if (this.lastOpenedTab && openCards.includes(this.lastOpenedTab)) {
+                    // Auto-focus and smoothly slide the newly opened/selected tab card directly into focus
+                    const focusIdx = openCards.indexOf(this.lastOpenedTab);
+                    this.targetScrollY = -focusIdx * 0.20;
+                    this.scrollY = THREE.MathUtils.lerp(this.scrollY, this.targetScrollY, safeDt * 22.0);
+                    if (Math.abs(this.scrollY - this.targetScrollY) < 0.002) {
+                        this.scrollY = this.targetScrollY;
+                        this.lastOpenedTab = null; // Yield back control to free scrolling
+                    }
+                } else {
+                    const snapIndex = Math.round(-this.scrollY / 0.20);
+                    const clampedSnapIndex = Math.max(0, Math.min(numOpen - 1, snapIndex));
+                    this.targetScrollY = -clampedSnapIndex * 0.20;
+                    this.scrollY = THREE.MathUtils.lerp(this.scrollY, this.targetScrollY, safeDt * 15.0);
+
+                    if (clampedSnapIndex !== this.lastSnapIndex) {
+                        this.lastSnapIndex = clampedSnapIndex;
+                        // Provide subtle snap haptic feedback on the right hand controller
+                        const source = this.input.getPrimaryInputSource('right');
+                        if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
+                            source.gamepad.hapticActuators[0].pulse(0.4, 15);
+                        }
+                    }
+                }
+            } else {
+                // Apply slight elastic stretch/bounce room during swipe
+                this.scrollY = Math.max(minScroll - 0.05, Math.min(maxScroll + 0.05, this.scrollY));
+            }
+
+            let targetTranscriptX = 0.0;
+            let targetTranscriptY = -0.02;
+            let targetTutorialX = 0.0;
+            let targetTutorialY = -0.02;
+            let targetStadiumMenuX = 0.0;
+            let targetStadiumMenuY = -0.02;
+            let targetDebugX = 0.0;
+            let targetDebugY = -0.02;
+
+            if (this.isStadiumMenuOpen) {
+                targetStadiumMenuX = 0.0;
+                targetStadiumMenuY = 0.15;
+            }
+
+            const tabSpacing = 0.20; // Vertical stack spacing
+
+            openCards.forEach((card, idx) => {
+                const cardTargetY = 0.05 + idx * tabSpacing + this.scrollY;
+                const cardTargetX = 0.21; // Stacked vertically on the right side of compass board
+                
+                if (card === 'CHAT') {
+                    targetTranscriptX = cardTargetX;
+                    targetTranscriptY = cardTargetY;
+                }
+                if (card === 'TUTORIAL') {
+                    targetTutorialX = cardTargetX;
+                    targetTutorialY = cardTargetY;
+                }
+                if (card === 'DEBUG') {
+                    targetDebugX = cardTargetX;
+                    targetDebugY = cardTargetY;
+                }
+            });
+
+            // Smooth scaling & sliding transition for the Transcript card (slides vertically on the right side of the board)
+            if (this.compassChatCard) {
+                if (this.isChatOpen) {
+                    this.compassChatMat.opacity = THREE.MathUtils.lerp(this.compassChatMat.opacity, 0.95, safeDt * 30.0);
+                    this.compassChatCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
+                    this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, targetTranscriptX, safeDt * 30.0);
+                    this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, targetTranscriptY, safeDt * 30.0);
+                    this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 30.0);
+                } else {
+                    this.compassChatMat.opacity = THREE.MathUtils.lerp(this.compassChatMat.opacity, 0.0, safeDt * 30.0);
+                    this.compassChatCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
+                    this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, 0.0, safeDt * 30.0);
+                    this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, -0.02, safeDt * 30.0);
+                    this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 30.0);
+                }
+            }
+
+            // Smooth scaling & sliding transition for the Tutorial card (slides vertically on the right side of the board)
+            if (this.compassTutorialCard) {
+                if (this.isTutorialOpen) {
+                    this.compassTutorialMat.opacity = THREE.MathUtils.lerp(this.compassTutorialMat.opacity, 0.95, safeDt * 30.0);
+                    this.compassTutorialCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
+                    this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, targetTutorialX, safeDt * 30.0);
+                    this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, targetTutorialY, safeDt * 30.0);
+                    this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 30.0);
+                    
+                    // Reactive dynamic update matching user instructionStep
+                    this.redrawCompassTutorial(instructionStep);
+                } else {
+                    this.compassTutorialMat.opacity = THREE.MathUtils.lerp(this.compassTutorialMat.opacity, 0.0, safeDt * 30.0);
+                    this.compassTutorialCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
+                    this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, 0.0, safeDt * 30.0);
+                    this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, -0.02, safeDt * 30.0);
+                    this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 30.0);
+                }
+            }
+
+            // Smooth scaling & sliding transition for the Debug Console card (slides vertically on the right side of the board)
+            if (this.compassDebugCard) {
+                if (this.isDebugOpen) {
+                    this.compassDebugMat.opacity = THREE.MathUtils.lerp(this.compassDebugMat.opacity, 0.95, safeDt * 30.0);
+                    this.compassDebugCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
+                    this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, targetDebugX, safeDt * 30.0);
+                    this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, targetDebugY, safeDt * 30.0);
+                    this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 30.0);
+                } else {
+                    this.compassDebugMat.opacity = THREE.MathUtils.lerp(this.compassDebugMat.opacity, 0.0, safeDt * 30.0);
+                    this.compassDebugCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
+                    this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, 0.0, safeDt * 30.0);
+                    this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, -0.02, safeDt * 30.0);
+                    this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 30.0);
+                }
+            }
+
+            // Smooth scaling & sliding transition for the Stadium Selector card (slides vertically on the right side of the board)
+            if (this.compassStadiumCard) {
+                if (this.isStadiumMenuOpen) {
+                    this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.95, safeDt * 30.0);
+                    this.compassStadiumCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
+                    this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, targetStadiumMenuX, safeDt * 30.0);
+                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, targetStadiumMenuY, safeDt * 30.0);
+                    this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 30.0);
+                } else {
+                    this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.0, safeDt * 30.0);
+                    this.compassStadiumCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
+                    this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, 0.0, safeDt * 30.0);
+                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, -0.02, safeDt * 30.0);
+                    this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 30.0);
+                }
+            }
 
             let activeTip: THREE.Vector3 | null = null;
             if (hasLeft && hasRight) {
@@ -1275,7 +1417,7 @@ export class JugnuSystem extends createSystem({
             let currentHoverIdx = -1;
 
             if (activeTip) {
-                const localTip = activeTip.clone().applyMatrix4(this.compassGroup.matrixWorld.clone().invert());
+                const localTip = this.scratchV3_1.copy(activeTip).applyMatrix4(this.scratchMatrix.copy(this.compassGroup.matrixWorld).invert());
                 const isWithinHoverZ = Math.abs(localTip.z) < 0.025;
                 const isWithinBoundsX = localTip.x > -0.075 && localTip.x < 0.075;
                 const isWithinBoundsY = localTip.y > -0.0564 && localTip.y < 0.0564;
@@ -1292,7 +1434,7 @@ export class JugnuSystem extends createSystem({
                     currentHoverIdx = row * 3 + col;
                     const isPressed = Math.abs(localTip.z) < 0.014;
 
-                    if (isPressed && currentHoverIdx !== 4 && this.buttonCooldown <= 0.0) {
+                    if (isPressed && currentHoverIdx !== 4 && this.buttonCooldown <= 0.0 && !this.swipeLocked) {
                         this.buttonCooldown = 0.8;
                         const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
                         const source = this.input.getPrimaryInputSource(activeHand);
@@ -1307,7 +1449,7 @@ export class JugnuSystem extends createSystem({
 
             let hoveredStadiumOption = -1;
             if (this.isStadiumMenuOpen && activeTip && this.compassStadiumCard) {
-                const cardLocalTip = activeTip.clone().applyMatrix4(this.compassStadiumCard.matrixWorld.clone().invert());
+                const cardLocalTip = this.scratchV3_1.copy(activeTip).applyMatrix4(this.scratchMatrix.copy(this.compassStadiumCard.matrixWorld).invert());
                 const isWithinCardHoverZ = Math.abs(cardLocalTip.z) < 0.025;
                 const isWithinCardBoundsX = cardLocalTip.x > -0.12 && cardLocalTip.x < 0.12;
                 const isWithinCardBoundsY = cardLocalTip.y > -0.09 && cardLocalTip.y < 0.09;
@@ -1323,7 +1465,7 @@ export class JugnuSystem extends createSystem({
                     }
 
                     const isPressed = Math.abs(cardLocalTip.z) < 0.014;
-                    if (isPressed && hoveredStadiumOption !== -1 && this.buttonCooldown <= 0.0) {
+                    if (isPressed && hoveredStadiumOption !== -1 && this.buttonCooldown <= 0.0 && !this.swipeLocked) {
                         this.buttonCooldown = 0.8;
                         const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
                         const source = this.input.getPrimaryInputSource(activeHand);
@@ -1349,6 +1491,9 @@ export class JugnuSystem extends createSystem({
             }
         }
     }
+    
+    this.updateLeftHandTutorialThread(safeDt);
+    this.updateFireflies(safeDt);
   }
 
   private getIndexData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
@@ -1373,6 +1518,279 @@ export class JugnuSystem extends createSystem({
           return true;
       }
       return false;
+  }
+
+  private getJointWorldData(handedness: 'left' | 'right', jointName: string, posOut: THREE.Vector3): boolean {
+      const source = this.input.getPrimaryInputSource(handedness);
+      const frame = this.xrFrame;
+      if (!source || !source.hand || !frame) return false;
+
+      const joint = source.hand.get(jointName as any);
+      if (!joint) return false;
+
+      const refSpace = this.renderer.xr.getReferenceSpace();
+      if (!refSpace || typeof frame.getJointPose !== 'function') return false;
+
+      const pose = frame.getJointPose(joint, refSpace);
+
+      if (pose) {
+          const x = pose.transform.position.x;
+          const y = pose.transform.position.y;
+          const z = pose.transform.position.z;
+          posOut.set(x, y, z);
+          posOut.applyMatrix4(this.player.matrixWorld);
+          return true;
+      }
+      return false;
+  }
+
+  private initFireflies() {
+      const geo = new THREE.SphereGeometry(0.006, 4, 4); // Tiny 6mm low-poly sphere
+      const mat = new THREE.MeshBasicMaterial({
+          color: 0xdfff4f, // Soft glowing yellow-green
+          transparent: true,
+          opacity: 0.9,
+          depthWrite: false
+      });
+      
+      this.firefliesMesh = new THREE.InstancedMesh(geo, mat, this.maxFireflies);
+      this.firefliesMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      
+      const dummy = new THREE.Object3D();
+      
+      for (let i = 0; i < this.maxFireflies; i++) {
+          // Random positions within a 5m box centered around player
+          const pos = new THREE.Vector3(
+              (Math.random() - 0.5) * 5.0,
+              0.3 + Math.random() * 2.0,
+              (Math.random() - 0.5) * 5.0
+          );
+          
+          // Random drift velocities (very slow and gentle)
+          const vel = new THREE.Vector3(
+              (Math.random() - 0.5) * 0.15,
+              (Math.random() - 0.5) * 0.1,
+              (Math.random() - 0.5) * 0.15
+          );
+          
+          const baseScale = 0.6 + Math.random() * 0.8;
+          const flickerSpeed = 2.0 + Math.random() * 5.0;
+          const flickerOffset = Math.random() * Math.PI * 2.0;
+          
+          this.fireflyData.push({
+              pos,
+              vel,
+              baseScale,
+              flickerSpeed,
+              flickerOffset,
+              wanderTime: Math.random() * 2.0
+          });
+          
+          dummy.position.copy(pos);
+          dummy.scale.setScalar(baseScale);
+          dummy.updateMatrix();
+          this.firefliesMesh.setMatrixAt(i, dummy.matrix);
+      }
+      
+      this.world.createTransformEntity(this.firefliesMesh);
+  }
+
+  private updateFireflies(dt: number) {
+      const isDomainActive = !!(window as any).minimapTableVisible;
+      
+      if (isDomainActive) {
+          if (this.firefliesMesh.visible) {
+              this.firefliesMesh.visible = false;
+          }
+          return;
+      }
+      
+      if (!this.firefliesMesh.visible) {
+          this.firefliesMesh.visible = true;
+      }
+      
+      const dummy = new THREE.Object3D();
+      const playerPos = this.scratchV3_1;
+      this.player.head.getWorldPosition(playerPos);
+      playerPos.y = 1.0; // Center vertical anchor
+      
+      for (let i = 0; i < this.maxFireflies; i++) {
+          const f = this.fireflyData[i];
+          
+          // Gentle wander logic
+          f.wanderTime -= dt;
+          if (f.wanderTime <= 0) {
+              f.wanderTime = 1.0 + Math.random() * 3.0;
+              f.vel.x += (Math.random() - 0.5) * 0.05;
+              f.vel.y += (Math.random() - 0.5) * 0.03;
+              f.vel.z += (Math.random() - 0.5) * 0.05;
+              f.vel.clampLength(0.02, 0.12); // Keep them slow
+          }
+          
+          // Drift position
+          f.pos.addScaledVector(f.vel, dt);
+          
+          // Keep fireflies within a 3.5m radius from the player
+          const distToPlayer = f.pos.distanceTo(playerPos);
+          if (distToPlayer > 3.5) {
+              // Steer gently back
+              const steer = this.scratchV3_2.subVectors(playerPos, f.pos).normalize().multiplyScalar(0.04);
+              f.vel.add(steer);
+          }
+          
+          // Height constraints to prevent them clipping into floor
+          if (f.pos.y < 0.15) {
+              f.pos.y = 0.15;
+              f.vel.y *= -1;
+          } else if (f.pos.y > 2.5) {
+              f.pos.y = 2.5;
+              f.vel.y *= -1;
+          }
+          
+          // Organic breathing glow/flicker
+          const sinFactor = Math.sin(this.floatTime * f.flickerSpeed + f.flickerOffset);
+          const flickerScale = f.baseScale * (0.2 + 0.8 * Math.abs(sinFactor));
+          
+          dummy.position.copy(f.pos);
+          dummy.scale.setScalar(flickerScale);
+          dummy.updateMatrix();
+          this.firefliesMesh.setMatrixAt(i, dummy.matrix);
+      }
+      
+      this.firefliesMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  private initTutorialThread() {
+      // Cylinder with 1.5mm radius
+      const cylGeo = new THREE.CylinderGeometry(0.0015, 0.0015, 1.0, 8);
+      // Cyberpunk cyan glow material
+      const cylMat = new THREE.MeshBasicMaterial({
+          color: 0x00f3ff,
+          transparent: true,
+          opacity: 0.85,
+          depthWrite: false
+      });
+      this.tutorialThreadMesh = new THREE.Mesh(cylGeo, cylMat);
+      this.tutorialThreadMesh.visible = false;
+      this.world.createTransformEntity(this.tutorialThreadMesh);
+
+      this.tutorialThreadTextCard = this.createTutorialTextCard();
+      this.tutorialThreadTextCard.visible = false;
+      this.world.createTransformEntity(this.tutorialThreadTextCard);
+  }
+
+  private createTutorialTextCard(): THREE.Mesh {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d')!;
+
+      // Glassmorphic capsule background
+      ctx.fillStyle = 'rgba(10, 25, 40, 0.75)';
+      
+      const roundRect = (x: number, y: number, w: number, h: number, r: number) => {
+          ctx.beginPath();
+          ctx.moveTo(x + r, y);
+          ctx.arcTo(x + w, y, x + w, y + h, r);
+          ctx.arcTo(x + w, y + h, x, y + h, r);
+          ctx.arcTo(x, y + h, x, y, r);
+          ctx.arcTo(x, y, x + w, y, r);
+          ctx.closePath();
+      };
+      
+      // Cyberpunk glowing neon border
+      ctx.strokeStyle = '#00f3ff';
+      ctx.lineWidth = 3;
+      roundRect(4, 4, 248, 56, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      // Text with drop shadow
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 32px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#00f3ff';
+      ctx.shadowBlur = 10;
+      ctx.fillText('JUGNU', 128, 32);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      const mat = new THREE.MeshBasicMaterial({
+          map: texture,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide
+      });
+
+      const card = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.02), mat);
+      return card;
+  }
+
+  private updateLeftHandTutorialThread(dt: number) {
+      if (this.threadCooldownTimer > 0) {
+          this.threadCooldownTimer -= dt;
+          if (this.tutorialThreadMesh) this.tutorialThreadMesh.visible = false;
+          if (this.tutorialThreadTextCard) this.tutorialThreadTextCard.visible = false;
+          return;
+      }
+
+      const hasIndex = this.getJointWorldData('left', 'index-finger-tip', this.leftIndexTipWorld);
+      const hasThumb = this.getJointWorldData('left', 'thumb-tip', this.leftThumbTipWorld);
+
+      if (hasIndex && hasThumb) {
+          const distance = this.leftIndexTipWorld.distanceTo(this.leftThumbTipWorld);
+
+          if (distance >= 0.025) {
+              if (this.tutorialThreadMesh) this.tutorialThreadMesh.visible = true;
+              if (this.tutorialThreadTextCard) this.tutorialThreadTextCard.visible = true;
+
+              const center = this.scratchV3_1.addVectors(this.leftIndexTipWorld, this.leftThumbTipWorld).multiplyScalar(0.5);
+              
+              if (this.tutorialThreadMesh) {
+                  this.tutorialThreadMesh.position.copy(center);
+                  this.tutorialThreadMesh.scale.set(1, distance, 1);
+                  
+                  const direction = this.scratchV3_2.subVectors(this.leftThumbTipWorld, this.leftIndexTipWorld).normalize();
+                  this.tutorialThreadMesh.quaternion.setFromUnitVectors(this.scratchV3_3.set(0, 1, 0), direction);
+              }
+
+              if (this.tutorialThreadTextCard) {
+                  this.tutorialThreadTextCard.position.copy(center);
+                  
+                  const pulse = 1.0 + Math.sin(this.floatTime * 4.0) * 0.08;
+                  this.tutorialThreadTextCard.scale.set(pulse, pulse, pulse);
+
+                  // Calculate orientation: Lock normal to camera, Lock horizontal along thread
+                  const playerPos = this.scratchV3_2;
+                  this.player.head.getWorldPosition(playerPos);
+                  
+                  const normal = this.scratchV3_3.subVectors(playerPos, center).normalize();
+                  const dirX = this.scratchV3_2.subVectors(this.leftThumbTipWorld, this.leftIndexTipWorld).normalize();
+                  
+                  const dirY = new THREE.Vector3().crossVectors(normal, dirX).normalize();
+                  const orthoX = new THREE.Vector3().crossVectors(dirY, normal).normalize();
+                  
+                  const m = this.scratchMatrix;
+                  m.makeBasis(orthoX, dirY, normal);
+                  this.tutorialThreadTextCard.quaternion.setFromRotationMatrix(m);
+              }
+          } else {
+              if (this.tutorialThreadMesh) this.tutorialThreadMesh.visible = false;
+              if (this.tutorialThreadTextCard) this.tutorialThreadTextCard.visible = false;
+
+              if (!this.hasLeftPinchCompleted) {
+                  this.hasLeftPinchCompleted = true;
+                  console.log("[Tutorial] Left hand index & thumb pinch tutorial completed!");
+                  const source = this.input.getPrimaryInputSource('left');
+                  if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
+                      source.gamepad.hapticActuators[0].pulse(1.0, 100);
+                  }
+              }
+          }
+      } else {
+          if (this.tutorialThreadMesh) this.tutorialThreadMesh.visible = false;
+          if (this.tutorialThreadTextCard) this.tutorialThreadTextCard.visible = false;
+      }
   }
 
   private redrawCompassGrid(hoveredIdx: number) {
@@ -1777,6 +2195,7 @@ export class JugnuSystem extends createSystem({
           this.isChatOpen = !this.isChatOpen;
           title = this.isChatOpen ? "Transcript & Chat" : "Transcript & Chat";
           if (this.isChatOpen) {
+              this.lastOpenedTab = 'CHAT';
               this.redrawCompassChat();
               detail = "Dynamic Chat Panel slides behind Jugnu.\n\nStatus: ACTIVE VIEW.\nDisplays recent conversational transcripts and active debug telemetry log lines.";
           } else {
@@ -1791,6 +2210,7 @@ export class JugnuSystem extends createSystem({
           this.isTutorialOpen = !this.isTutorialOpen;
           title = this.isTutorialOpen ? "Holographic Tutorial" : "Holographic Tutorial";
           if (this.isTutorialOpen) {
+              this.lastOpenedTab = 'TUTORIAL';
               let currentStep = 0;
               for (const entity of this.queries.jugnu.entities) {
                   currentStep = entity.getValue(Jugnu, "instructionStep") as number;
@@ -1809,6 +2229,7 @@ export class JugnuSystem extends createSystem({
           this.isDebugOpen = !this.isDebugOpen;
           title = this.isDebugOpen ? "Debug Console" : "Debug Console";
           if (this.isDebugOpen) {
+              this.lastOpenedTab = 'DEBUG';
               this.redrawCompassDebug();
               detail = "Blue Cyberpunk Debug Console active behind Jugnu.\n\nStatus: ACTIVE VIEW.\nHooks to console log streams and shows realtime engine diagnostics.";
           } else {
@@ -1819,6 +2240,7 @@ export class JugnuSystem extends createSystem({
           this.isStadiumMenuOpen = !this.isStadiumMenuOpen;
           title = this.isStadiumMenuOpen ? "Stadium Selector" : "Stadium Selector";
           if (this.isStadiumMenuOpen) {
+              this.lastOpenedTab = 'STADIUM_SEL';
               this.redrawCompassStadiumMenu();
               detail = "Stadium Geometry Selector active.\n\nStatus: ACTIVE VIEW.\nSelect between Default, Berlin (Hollow Cylinder), and Inuit (Oval) geometries.";
           } else {
