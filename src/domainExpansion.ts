@@ -1,6 +1,7 @@
 import { createSystem, AssetManager } from "@iwsdk/core";
 import * as THREE from "three";
 import { Jugnu } from "./jugnu.js";
+import { JugnuAudioSynth } from "./audioSynth.js";
 
 interface PlayerMarker {
     id: string;
@@ -92,6 +93,8 @@ export class DomainExpansionSystem extends createSystem({
     jugnu: { required: [Jugnu] }
 }) {
     private isTableSpawned = false;
+    private prevTableSpawned = false;
+    private prevDomainActive = false;
     private targetTableScale = 0.0;
     private currentTableScale = 0.0;
 
@@ -1478,6 +1481,28 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     update(dt: number) {
+        // Table spawning transition sound
+        if (this.isTableSpawned !== this.prevTableSpawned) {
+            JugnuAudioSynth.resume();
+            if (this.isTableSpawned) {
+                JugnuAudioSynth.playCompassOpen();
+            } else {
+                JugnuAudioSynth.playCompassClose();
+            }
+            this.prevTableSpawned = this.isTableSpawned;
+        }
+
+        // Domain expansion transition sound
+        if (this.isDomainActive !== this.prevDomainActive) {
+            JugnuAudioSynth.resume();
+            if (this.isDomainActive) {
+                JugnuAudioSynth.playDomeExpand();
+            } else {
+                JugnuAudioSynth.playDomeCollapse();
+            }
+            this.prevDomainActive = this.isDomainActive;
+        }
+
         if (this.middlePinchCooldown > 0) {
             this.middlePinchCooldown -= dt;
         }
@@ -1487,6 +1512,7 @@ export class DomainExpansionSystem extends createSystem({
 
         const desiredStadium = (window as any).selectedStadiumType || 'default';
         if (this.currentStadiumType !== desiredStadium) {
+            JugnuAudioSynth.playMorph();
             this.setStadiumType(desiredStadium);
         }
 
@@ -4849,6 +4875,7 @@ export class DomainExpansionSystem extends createSystem({
         this.fireworkLaunchVelocities[slot * 3 + 1] = vy;
         this.fireworkLaunchVelocities[slot * 3 + 2] = vz;
         this.fireworkScale[slot] = scale;
+        JugnuAudioSynth.playFireworkLaunch();
     }
 
     private updateFireworks(dt: number) {
@@ -4890,6 +4917,7 @@ export class DomainExpansionSystem extends createSystem({
                         this.fireworkPhase[i] = 1; // Transition to burst phase
                         this.fireworkAge[i] = 0.0; // Reset age for particle lifecycle
                         this.fireworkMaxAge[i] = 0.7 + Math.random() * 0.4; // burst duration 0.7s to 1.1s
+                        JugnuAudioSynth.playFireworkBurst();
                         
                         // Capture coordinates of the burst center
                         this.fireworkPositions[i * 3 + 0] = px_curr;
@@ -5224,6 +5252,7 @@ export class DomainExpansionSystem extends createSystem({
                 this.sandboxBallVel.z *= RESTITUTION;
 
                 if (Math.abs(this.sandboxBallVel.y) > 0.02) {
+                    JugnuAudioSynth.playStadiumBounce();
                     this.triggerFirework(
                         this.sandboxBall.position.x, FLOOR_Y, this.sandboxBall.position.z, 
                         0xffaa00, 0.012, 0.0, 0.04, 0.0, 0.6
@@ -5249,6 +5278,7 @@ export class DomainExpansionSystem extends createSystem({
                     this.sandboxBall.position.z = nz * (R - 0.001);
 
                     if (this.sandboxBallVel.lengthSq() > 0.0005) {
+                        JugnuAudioSynth.playStadiumBounce();
                         this.triggerFirework(bx, this.sandboxBall.position.y, bz, 0x22d3ee, 0.012, 0.0, 0.03, 0.0, 0.6);
                     }
                 }
@@ -5270,6 +5300,7 @@ export class DomainExpansionSystem extends createSystem({
                     this.sandboxBall.position.z = bz * s;
 
                     if (this.sandboxBallVel.lengthSq() > 0.0005) {
+                        JugnuAudioSynth.playStadiumBounce();
                         this.triggerFirework(bx, this.sandboxBall.position.y, bz, 0xf97316, 0.012, 0.0, 0.03, 0.0, 0.6);
                     }
                 }
@@ -5287,6 +5318,7 @@ export class DomainExpansionSystem extends createSystem({
                     this.sandboxBall.position.z = nz * (R - 0.001);
 
                     if (this.sandboxBallVel.lengthSq() > 0.0005) {
+                        JugnuAudioSynth.playStadiumBounce();
                         this.triggerFirework(bx, this.sandboxBall.position.y, bz, 0xff0055, 0.012, 0.0, 0.03, 0.0, 0.6);
                     }
                 }
@@ -5583,6 +5615,7 @@ export class DomainExpansionSystem extends createSystem({
                 // Trigger localized mini sparkler burst on strong floor bounce
                 if (Math.abs(this.ballVelocity.y) > 0.04) {
                     const colHex = stType === 'berlin' ? 0x22d3ee : 0xf97316;
+                    JugnuAudioSynth.playStadiumBounce();
                     this.triggerFirework(this.activeBall.position.x, FLOOR_Y, this.activeBall.position.z, colHex);
                 }
 
@@ -5601,6 +5634,7 @@ export class DomainExpansionSystem extends createSystem({
                 if (dist >= R) {
                     // Trigger wall bounce sparkler
                     if (this.ballVelocity.lengthSq() > 0.001) {
+                        JugnuAudioSynth.playStadiumBounce();
                         this.triggerFirework(bx, this.activeBall.position.y, bz, 0x22d3ee);
                     }
                     
@@ -5621,6 +5655,7 @@ export class DomainExpansionSystem extends createSystem({
                 if (ellipseCheck >= 1.0) {
                     // Trigger wall bounce sparkler
                     if (this.ballVelocity.lengthSq() > 0.001) {
+                        JugnuAudioSynth.playStadiumBounce();
                         this.triggerFirework(bx, this.activeBall.position.y, bz, 0xf97316);
                     }
                     
@@ -6049,6 +6084,7 @@ export class DomainExpansionSystem extends createSystem({
                         this.cricketBatMesh.rotation.y = -Math.PI / 3;
                     }
                     // Trigger contact sparks
+                    JugnuAudioSynth.playStadiumBounce();
                     this.triggerFirework(0.0, 0.004, -0.035, 0xffa500);
                 }
             } else if (this.sportSequencePhase === 1) {
@@ -6121,6 +6157,7 @@ export class DomainExpansionSystem extends createSystem({
                     this.goalWiggleTime = 0.0;
                     this.wigglingGoalNet = this.goal1NetMesh;
                     // Sparkler celebration inside net
+                    JugnuAudioSynth.playNetSwish();
                     this.triggerFirework(0.0, 0.005, 0.048, 0x22d3ee);
                 }
             } else if (this.sportSequencePhase === 2) {
@@ -6189,6 +6226,7 @@ export class DomainExpansionSystem extends createSystem({
                         (rim.material as THREE.MeshBasicMaterial).color.setHex(0xff3300); // flashing crimson red rim
                     }
                     // Trigger sparks inside rim
+                    JugnuAudioSynth.playNetSwish();
                     this.triggerFirework(0.0, 0.013, 0.041, 0xf97316);
                 }
             } else if (this.sportSequencePhase === 2) {

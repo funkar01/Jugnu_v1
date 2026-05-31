@@ -7,6 +7,7 @@ import {
   AudioUtils,
 } from "@iwsdk/core";
 import { Jugnu, TranscriptUI } from "./jugnu.js";
+import { JugnuAudioSynth } from "./audioSynth.js";
 import * as THREE from "three";
 
 // Helper to recursively traverse and find specific virtual object labels in Three.js hierarchies
@@ -138,6 +139,10 @@ export class ObjectDetectionSystem extends createSystem({
   private toggleScanning() {
     this.isScanning = !this.isScanning;
     this.gestureCooldown = 1.5; // Cooldown to prevent instant bouncing
+
+    // Resume and play synthesized scanner sweep sound
+    JugnuAudioSynth.resume();
+    JugnuAudioSynth.playScannerSweep();
 
     // 1. Play spatial sound effect via AudioUtils (SDK standard) with HTML5 fallback
     try {

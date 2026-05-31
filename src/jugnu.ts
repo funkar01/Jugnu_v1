@@ -8,6 +8,7 @@ import * as THREE from "three";
 const BACKEND_URL = ((import.meta as any).env.VITE_BACKEND_URL as string) || "/api/gemini";
 
 import { JugnuInstructionBoard } from "./JugnuInstructionBoard.js";
+import { JugnuAudioSynth } from "./audioSynth.js";
 
 export const Jugnu = createComponent("Jugnu", { instructionStep: { type: "Int8", default: 0 } });
 export const TranscriptUI = createComponent("TranscriptUI", {});
@@ -88,6 +89,7 @@ export class JugnuSystem extends createSystem({
 
   // Compass UI State
   private isCompassOpen = false;
+  private prevCompassOpen = false;
   private isGridLocked = false;
   private compassGroup!: THREE.Group;
   private compassNeedle!: THREE.Mesh;
@@ -221,6 +223,7 @@ export class JugnuSystem extends createSystem({
 
     // Handle Click
     this.queries.jugnuClicked.subscribe("qualify", async (entity) => {
+      JugnuAudioSynth.resume();
       this.interactDecay = 8.0; 
       
       const jugModel = entity.object3D as JugnuV3Model;
@@ -307,6 +310,7 @@ export class JugnuSystem extends createSystem({
   }
 
   handleKeyDown(e: KeyboardEvent) {
+      JugnuAudioSynth.resume();
       if (e.key.toLowerCase() === 'q') {
           let newIdx = this.currentExpressionIndex - 1;
           if (newIdx < 0) newIdx = this.expressionList.length - 1;
@@ -333,6 +337,7 @@ export class JugnuSystem extends createSystem({
      try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         this.isListening = true;
+        JugnuAudioSynth.playListeningStart();
         this.updateTranscriptUI("Listening...", "");
         
         this.audioChunks = [];
@@ -349,6 +354,7 @@ export class JugnuSystem extends createSystem({
         this.mediaRecorder.onstop = async () => {
            this.isListening = false;
            this.isProcessingAudio = true;
+           JugnuAudioSynth.playListeningProcessing();
            this.updateTranscriptUI("Processing Audio...", "Thinking...");
 
            stream.getTracks().forEach(track => track.stop());
@@ -537,6 +543,16 @@ export class JugnuSystem extends createSystem({
   update(dt: number) {
     this.floatTime += dt;
     
+    // Check compass transition sound
+    if (this.isCompassOpen !== this.prevCompassOpen) {
+        if (this.isCompassOpen) {
+            JugnuAudioSynth.playCompassOpen();
+        } else {
+            JugnuAudioSynth.playCompassClose();
+        }
+        this.prevCompassOpen = this.isCompassOpen;
+    }
+    
     // Room Loading Block
     if (this.interactionState === 'WaitingForRoom') {
         const isXR = (this.renderer.xr as any).isPresenting;
@@ -681,6 +697,8 @@ export class JugnuSystem extends createSystem({
             
             const dist = activeJugnuPos.distanceTo(activeTip);
             if (this.alwaysAttractOnPinch || dist < this.attractionRadius) {
+                JugnuAudioSynth.resume();
+                JugnuAudioSynth.playPinch();
                 this.interactionState = 'LerpingToHand';
                 this.attachedHand = activeHand;
                 this.startPos.copy(activeJugnuPos);
@@ -714,6 +732,7 @@ export class JugnuSystem extends createSystem({
             if (this.handVelocity.lengthSq() > 1.0) {
                 this.interactionState = 'Idle';
                 this.throwTimer = 3.0; 
+                JugnuAudioSynth.playThrow();
                 this.queries.jugnu.entities.forEach(entity => {
                     if (!entity.object3D) return;
                     this.basePositions.set(entity, entity.object3D.position.clone());
@@ -726,6 +745,7 @@ export class JugnuSystem extends createSystem({
             } else {
                 this.interactionState = 'Anchored';
                 this.centerPos.copy(currentTip);
+                JugnuAudioSynth.playRelease();
                 this.queries.jugnu.entities.forEach(entity => {
                     const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
                     if (currentState !== PhysicsState.Kinematic) {
@@ -760,6 +780,7 @@ export class JugnuSystem extends createSystem({
             if (this.handVelocity.lengthSq() > 1.0) {
                 this.interactionState = 'Idle';
                 this.throwTimer = 3.0; 
+                JugnuAudioSynth.playThrow();
                 this.queries.jugnu.entities.forEach(entity => {
                     if (!entity.object3D) return;
                     this.basePositions.set(entity, entity.object3D.position.clone());
@@ -772,6 +793,7 @@ export class JugnuSystem extends createSystem({
             } else {
                 this.interactionState = 'Anchored';
                 this.centerPos.copy(currentTip);
+                JugnuAudioSynth.playRelease();
                 this.queries.jugnu.entities.forEach(entity => {
                     const currentState = entity.hasComponent(PhysicsBody) ? entity.getValue(PhysicsBody, 'state') : null;
                     if (currentState !== PhysicsState.Kinematic) {
@@ -1291,6 +1313,7 @@ export class JugnuSystem extends createSystem({
                         if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
                             source.gamepad.hapticActuators[0].pulse(0.4, 15);
                         }
+                        JugnuAudioSynth.playUIHover();
                     }
                 }
             } else {
@@ -1441,6 +1464,7 @@ export class JugnuSystem extends createSystem({
                         if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
                             source.gamepad.hapticActuators[0].pulse(0.8, 50);
                         }
+                        JugnuAudioSynth.playUIClick();
                         this.activeCompassTileIndex = currentHoverIdx;
                         this.handleCompassTileClick(currentHoverIdx);
                     }
@@ -1472,6 +1496,7 @@ export class JugnuSystem extends createSystem({
                         if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
                             source.gamepad.hapticActuators[0].pulse(0.85, 50);
                         }
+                        JugnuAudioSynth.playUIClick();
 
                         const choices: ('default' | 'berlin' | 'inuit')[] = ['default', 'berlin', 'inuit'];
                         this.selectedStadium = choices[hoveredStadiumOption];
@@ -1487,6 +1512,9 @@ export class JugnuSystem extends createSystem({
 
             if (currentHoverIdx !== this.hoveredCellIndex) {
                 this.hoveredCellIndex = currentHoverIdx;
+                if (currentHoverIdx !== -1) {
+                    JugnuAudioSynth.playUIHover();
+                }
                 this.redrawCompassGrid(currentHoverIdx);
             }
         }
