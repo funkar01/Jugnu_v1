@@ -96,3 +96,199 @@
   - `[x]` Migrated spatial audio chime trigger to utilize `AudioUtils.createOneShot` (SDK standard) with safe HTML5 fallback
   - `[x]` Run typescript type verification (`npx tsc --noEmit`)
   - `[x]` Verify production build (`npm run build`)
+- `[x]` Mixed Reality Compass System Integration
+  - `[x]` Implemented index finger pinch timer tracking inside `src/jugnu.ts`
+  - `[x]` Created circular/square glassmorphic UI locked on top of Jugnu
+  - `[x]` Engineered real-time 3D compass rose pointing absolute North (world `-Z`) inside center tile
+  - `[x]` Rendered 8 interactive custom action tiles on high-res CanvasTextures
+  - `[x]` Constructed a sliding glassmorphic details panel behind the 3x3 grid
+  - `[x]` Implemented proximity index-finger poke checks and haptic controller feedback
+  - `[x]` Wired up action handlers (Tutorial, Minimap desk toggle, Mood Cycle, ambient FX, Exit session, Reset position)
+  - `[x]` Programmed billboarding lookAt and position locking
+  - `[x]` Validated clean typescript compile (`npx tsc --noEmit`) and successful client build (`npm run build`)
+- `[x]` Mixed Reality Compass System Refinements (Current Run)
+  - `[x]` Restore and re-inject missing compass UI code in `src/jugnu.ts`
+  - `[x]` Fix 2-second auto-fade bug: compass remains open indefinitely as long as any index pinch is held
+  - `[x]` Elevate compass position to spawn close to Jugnu's head using a dynamic y-offset based on scale
+  - `[x]` Increase compass board size by 30% to dimensions 0.104m x 0.078m
+  - `[x]` Raise vertical spawning height by exactly 10 cm more (eliminating hand crossover occlusion)
+  - `[x]` Enable rock-solid rigid spatial anchoring when lock is engaged (completely disabling spring and float noise)
+  - `[x]` Implement a dynamic Transcript & Debug Chat tab in the grid (Cell 0) that slides/scales behind Jugnu and the compass layer
+  - `[x]` Render 12 scrolling lines of active system/user/jugnu conversation history on the chat card
+  - `[x]` Decouple and remove physical transcriptBoard and debugBoard meshes from main room environment in `src/index.ts`
+  - `[x]` Upscale the compass board by 20% to dimensions 0.125m x 0.094m and align poke raycast boundaries
+  - `[x]` Bring compass UI 5 cm closer to Jugnu's top visual boundary (offset 0.091)
+  - `[x]` Completely disable grabs and spring transitions in locked mode to prevent anchored panels from wiggling or drifting
+  - `[x]` Embed a blue-bordered cyberpunk Debug Console card (Cell 5) behind Jugnu alongside the orange Transcript card
+  - `[x]` Implement dynamic side-by-side sliding math when both Transcript and Debug cards are active
+  - `[x]` Run static typecheck `npx tsc --noEmit` and confirm clean compilation
+  - `[x]` Build the production client bundle using `npm run build`
+- `[x]` MR Compass UI Final Adjustments (Zero-Drift & 20% Upscale)
+  - `[x]` Implement perfect zero-drift spatial lock (freezing position AND orientation/billboarding on spot)
+  - `[x]` Expand the Compass UI board by 20% to `0.15m x 0.1128m` and info card to `0.15m x 0.0744m`
+  - `[x]` Scale up finger poke bounding box and column/row raycast partition lines proportionally
+  - `[x]` Reduce vertical height offset to `0.041` (dynamic clearance spawning 5 cm closer to Jugnu)
+  - `[x]` Replace 3x3 grid `MOOD` icon with cyberpunk terminal `DEBUG` tile (index 5)
+  - `[x]` Draw custom vector terminal prompt `>_` inside the grid canvas for `DEBUG` tile
+  - `[x]` Hook `DEBUG` tile to toggle the cyberpunk blue debug console backplane panel
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`)
+  - `[x]` Run production build bundling (`npm run build`)
+- `[x]` MR Compass UI Spatial & Depth Overhaul (Final)
+  - `[x]` Re-engineer tabs to slide vertically above the compass board (`y = 0.15m` on Y-axis) when opened
+  - `[x]` Emplace 3D semi-transparent emissive orange Torus ring in the center grid, tilted at 45° X-axis/15° Y-axis to clip beautifully through the UI plane
+  - `[x]` Add real-time diagnostic spin to the tilted 3D ring inside the update loop
+  - `[x]` Strip out the outer roundRect grid border, leaving a clean borderless outline with only internal grid partition lines
+  - `[x]` Confirm zero-error static type safety check (`npx tsc --noEmit`)
+  - `[x]` Confirm zero-error client production bundle compilation (`npm run build`)
+- `[x]` MR Compass UI Tutorial Tab Integration & Jitter Fix (Release)
+  - `[x]` Replace Search (GUIDE) icon with dedicated book-themed TUTORIAL tile (index 2)
+  - `[x]` Initialize Tutorial mesh card, canvas, texture, and materials inside initCompassUI()
+  - `[x]` Program dynamic 3-tab layout spacing manager inside the update loop (Chat, Tutorial, Debug)
+  - `[x]` Implement redrawCompassTutorial(step) with dynamic vector art illustrations for pinch and wrist buttons
+  - `[x]` Keep Tutorial screen fully reactive to live step updates of the user's progress
+  - `[x]` Fix Jugnu locked growth bug: lock scale strictly to `0.03` when spatial lock is active
+  - `[x]` Run static type verification check `npx tsc --noEmit`
+  - `[x]` Run Vite client production compilation `npm run build`
+- `[x]` Stadium Minimap Scale Glitch & Visibility Integration (Build)
+  - `[x]` Publish `(window as any).minimapTableScale` and `(window as any).minimapTableVisible` dynamically from `src/domainExpansion.ts`
+  - `[x]` Dynamically hide Jugnu companion avatar (`obj.visible = false`) when minimap scale >= 2.0 to prevent occlusion Z-fighting
+  - `[x]` Smoothly retract/shrink the Compass UI (`isCompassOpen = false`) when the threshold is breached
+  - `[x]` Bypass all index pinch summon gestures while maximum scale is active to prevent accidental UI spawning inside geometry
+  - `[x]` Automatically scale/deactivate all existing floating trail particles instantly when maximum scale is activated
+  - `[x]` Cleanly restore Jugnu visibility and summon gestures when the minimap is scaled back down or closed
+  - `[x]` Strictly preserve Jugnu scale at exactly `0.03` when grid-locked, bypassing all listen/process audio pulsing to fix growth jitters
+  - `[x]` Run TypeScript validation check `npx tsc --noEmit` and confirm zero errors
+  - `[x]` Compile production bundle via `npm run build` and ensure successful build
+- `[x]` Compass UI Overhaul & Two-Handed Interactions
+  - `[x]` Restrict Jugnu summoning and grab interactions to left hand pinch only
+  - `[x]` Reposition Compass UI board on the right side of Jugnu
+  - `[x]` Stack active tabs vertically on the right side of the Compass board
+  - `[x]` Implement right index finger swipe-to-scroll gesture tracking
+  - `[x]` Integrate scrolling clamping & haptic snap feedback
+  - `[x]` Verify static type safety (`npx tsc --noEmit`)
+  - `[x]` Verify client production build (`npm run build`)
+- `[x]` Havok WASM Physics Crash Fix
+  - `[x]` Remove crash-prone TriMesh physics shape addition from `RoomVisualizerSystem` meshes
+  - `[x]` Synchronize `PhysicsShape` and `PhysicsBody` lifecycle during Jugnu state transitions in `src/jugnu.ts`
+  - `[x]` Prevent deallocated shape index re-use and frame-by-frame component recreation
+  - `[x]` Verify clean static typecheck (`npx tsc --noEmit`)
+  - `[x]` Verify successful client production bundle compilation (`npm run build`)
+- `[x]` Compass Info Tabs Spawning and Proximity Resolution
+  - `[x]` Remove obsolete index pinch safeguard blocks from `src/jugnu.ts`
+  - `[x]` Resolve hand-proximity blockage (`distanceTo(tablePos) < 0.35`) near the open minimap table desk
+  - `[x]` Restore full, non-blocked index pinch summoning of the Compass and active vertical info cards
+  - `[x]` Verify static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Compass Tab Subsystem Overhaul & Smooth Auto-Focus snapping
+  - `[x]` Reset and close all active tab states (Chat, Tutorial, Stadium Selector, Debug) when the Compass UI is closed
+  - `[x]` Fix the permanent swipe-locked click lockout bug by resetting `swipeLocked` when swiping ends/releases
+  - `[x]` Increase vertical swipe-to-scroll sensitivity by 3x for effort-free, responsive scrolling within the backing board
+  - `[x]` Implement dynamic auto-focus LERP snapping that immediately slides the newly opened tab card directly into center focus
+  - `[x]` Verify clean static typecheck (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Compass Lock Escape & Swiping Boundary Alignment Fixes
+  - `[x]` Restrict LOCK ESCAPE trigger strictly to the left hand index pinch (preventing right index pinches from closing Compass/attracting Jugnu)
+  - `[x]` Expand vertical card swiping detection boundary horizontally (from `0.09` to `0.33` local coordinates) to fully encompass the stacked vertical cards at `x=0.21`
+  - `[x]` Expand vertical card swiping detection boundary vertically (from `0.07` to `0.20`) and depth-wise (to `0.05` Z-clearance) for large, forgiving hand gesture space
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Compass UI Proximity & Deadzone Scroll Refinements
+  - `[x]` Reduce `userRight` offset from `0.18` to `0.12` to bring Compass snuggly closer to Jugnu
+  - `[x]` Increase vertical scroll deadzone threshold to `0.015` (1.5cm of deliberate drag travel)
+  - `[x]` Freeze vertical stack scrolling until `swipeLocked` is engaged (exceeding deadzone) to eliminate drift while hovering
+  - `[x]` Add `!this.swipeLocked` check to the stadium selector interaction to prevent accidental selection during drag
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Compass UI Layout Specialization
+  - `[x]` Exclude the Stadium Selector (`STADIUM_SEL`) card from the right-side vertical scrolling stack
+  - `[x]` Hardcode the Stadium Selector map card to spawn centered directly above the Compass menu (`targetStadiumMenuX = 0.0`, `targetStadiumMenuY = 0.15`)
+  - `[x]` Keep all other active cards (Chat, Tutorial, Debug) in the sliding vertical stack on the right side of the Compass menu
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Left Hand Pinch Tutorial Overlay
+  - `[x]` Implement reusable generic `getJointWorldData` helper function to query hand joint positions in world coordinates
+  - `[x]` Initialize holographic cyberpunk glowing cyan tutorial cylinder thread (`tutorialThreadMesh`) and add via ECS transform registration
+  - `[x]` Render capsule-styled glassmorphic canvas sprite (`tutorialThreadTextSprite`) with "JUGNU" text always billboarding towards the user
+  - `[x]` Program breathing neon scale pulse effect (`Math.sin(floatTime * 4.0)`) on the text sprite at the exact middle of the thread
+  - `[x]` Connect fingertips in real-time, stretch/shrink dynamically, and implement one-time completion haptic vibration check when distance < 2.5cm
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` AR Space Glowing Fireflies & Zero-GC Engine Optimizations
+  - `[x]` Construct highly optimized instanced firefly particle system (`firefliesMesh`) rendering 120 fireflies in a single draw call
+  - `[x]` Program organic soft-glowing firefly mesh material (`0xdfff4f` yellow-green) with dynamic floor and ceiling height boundaries
+  - `[x]` Design gentle random-walk wander drifting with player head distance soft-tether clamping (radius 3.5m)
+  - `[x]` Implement dynamic domain sphere detection that hides the fireflies instantly (`visible = false`) when inside Domain expansion
+  - `[x]` Eliminate all Vector3, Quaternion, and Matrix4 object allocations in the active spring physics update loop, utilizing pre-allocated class-level scratch variables
+  - `[x]` Replace redundant `.clone()` operations with high-performance `addScaledVector()` and `subVectors()` operations to completely remove GC pressure
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Compass Summon Lock-Escape Hold Safeguard & Spatial Text Orientation
+  - `[x]` Implement a 1.5-second held-pinch safeguard check (`lockEscapeTimer`) during locked Compass UI modes to prevent accidental lock escapes
+  - `[x]` Transition `tutorialThreadTextSprite` to a high-fidelity 3D text plane (`tutorialThreadTextCard`)
+  - `[x]` Program spatial orientation math aligning the JUGNU card's horizontal (X) axis with the fingertips thread, projecting its surface normal directly to the player's head
+  - `[x]` Hide both the thread and text card completely when fingertips pinch together (distance < 2.5cm)
+  - `[x]` Implement a 5-second release hide cooldown (`threadCooldownTimer`) that suppresses the thread when Jugnu is released or thrown from hand
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Berlin Map Olympiastadion GLB Asset Integration
+  - `[x]` Copy `Olympiastadion.glb` from `C:\Users\SSD\Pictures\Jugnu\Olympiastadion.glb` to public GLTF folder `public/gltf/Olympiastadion/Olympiastadion.glb`
+  - `[x]` Register new `olympiastadion` asset in `src/index.ts` AssetRegistry
+  - `[x]` Load, clone, and auto-scale the high-resolution Olympiastadion GLB model dynamically inside `setStadiumType` in `src/domainExpansion.ts`
+  - `[x]` Traverse child meshes of the Olympiastadion model and recursively apply realistic PBR materials, shadows, and neon grid floor highlights
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Interactive Holographic Fireworks Particle System Celebration
+  - `[x]` Construct highly optimized, Zero-GC instanced particle system (`fireworksMesh`) with a capacity of 400 concurrent particles (4 bursts of 100 particles)
+  - `[x]` Set up Additive blending and depth-write disabled standard basic material for bright glowing sci-fi hologram aesthetics
+  - `[x]` Implement `triggerFirework(x, y, z, color)` method using round-robin slot allocation and random spherical/upward velocity distributions
+  - `[x]` Integrate dynamic celebrations inside `setStadiumType` triggering multi-burst fireworks on stadium switches
+  - `[x]` Wire localized particle sparks on floor and wall bounces in Euler physics ball tracking (Berlin and Inuit map modes)
+  - `[x]` Wire event-driven contact sparkler (at bat hit, `t = 0.25`) and grand border fireworks (at landing, `t = 1.0`) on Bezier spline trajectories (Default mode)
+  - `[x]` Verify zero static type checking or bundling warnings in production client builds
+- `[x]` AR Stadium Banner Adjustments
+  - `[x]` Scale AR billboard banner width and height down by 40% (to 0.108m x 0.0688m)
+  - `[x]` Bring dynamic vertical float center down by 4cm (from 0.215m to 0.175m) for comfortable eye clearance
+- `[x]` Upgraded 3D Fireworks & Manual Button Trigger
+  - `[x]` Place glowing magenta `FIREWORKS` button on roof arc right next to `CLEAR`
+  - `[x]` **[Ultimate Capacity Expansion]** Doubled active slots to 24 and particles per firework to 350, rendering up to **8,400 concurrent instanced particles** in a single zero-GC draw call, pushing Quest 3 hardware to its spectacular limits
+  - `[x]` Upgrade particle physics to full 3D spherical bursts, multi-tiered speed rings, multi-colored secondary/accent palettes, and high-frequency shimmering twinkling crackle decay
+  - `[x]` **[GPU Optimization]** Shrunk base particle geometry to a crisp 1mm cube (`0.001m`) and adjusted instance scales to 1.0mm-1.3mm, providing a beautiful fine-point glowing mist that completely eliminates chunky artifacts and runs at solid 90fps without melting the GPU
+  - `[x]` **[Sequential Rocket Phase & Custom Travel]** Built two-phase shell physics with customizable vertical flight travel height (`targetHeight` array): particles launch as a tight rocket tracer tracer and travel a custom height before bursting
+  - `[x]` **[4-Stage Pyrotechnic Show Sequence]** Programmed automated choreographed sequence state machine in `update()` triggered by the `FIREWORKS` button:
+    1. **Stage 1 (0.0s to 4.5s) - Staggered Rim Climbers**: Launches one rocket every 0.5 seconds clockwise from all 10 circular roof rim points
+    2. **Stage 2 (5.5s) - Cross-Pitch Dual Rockets**: Shoots 2 high-density gold/cyan opposite rockets (North/South) exploding high above the pitch
+    3. **Stage 3 (6.5s) - Quad Corner Rockets**: Shoots 4 cardinal rockets simultaneously exploding in cardinal colors
+    4. **Stage 4 (7.5s) - The Grand Finale**: Launches all 10 rim rockets simultaneously, PLUS a colossal center tracer shooting high up to 6.5cm directly from the pitch center, creating an interlocking dome of shimmering embers
+  - `[x]` **[Spatial Rim Layout]** Repositioned celebratory and manual fireworks along the outer roof rim circle (radius 0.096m, height 0.095m) for all stadium types (Wankhede, Olympiastadion, Inuit oval)
+  - `[x]` **[Billboard Replacement]** Connected dynamic `areFireworksActive()` check to fade the AR Billboard completely to 0.0 opacity while fireworks are playing, restoring it cleanly when they finish
+  - `[x]` Validate type safety check (`npx tsc --noEmit`) and compile production bundle successfully
+- `[x]` Holographic Fireworks Max Settings Upgrade (Current Run)
+  - `[x]` Declared pre-allocated `fireworkLaunchVelocities` and `fireworkScale` buffers in `src/domainExpansion.ts` to maintain high-efficiency Zero-GC update cycles
+  - `[x]` Refactored `triggerFirework()` signature to accept custom 3D velocities and burst scales
+  - `[x]` Rewrote `updateFireworks()` physics loop to project climbing rockets along 3D trajectories and scale burst velocities and visual particle sizes proportionally
+  - `[x]` Overhauled choreographed 4-stage show sequence to support complex angled pyrotechnic staging:
+    - **Stage 1 (Rim Climbers):** 10 staggered climbers angled inward towards pitch center
+    - **Stage 2 (Cross-Pitch Crossing):** North/South opposite crossing rockets meeting over center field
+    - **Stage 3 (Cardinal Blossoming):** 4 quad cardinal corner rockets blossoming outward
+    - **Stage 4 (Grand Finale):** 10 rim rockets blossoming outward simultaneously, plus a colossal golden shell climbing 2.5x-3x higher (17.5cm local height) and bursting at a massive 2.5x scale multiplier
+  - `[x]` Successfully compiled client production bundle via `npm run build` with zero errors
+- `[x]` Volumetric Weather, Physical Sandbox Ball, & Tactical Core Deck (TCD) (Current Run)
+  - `[x]` Added `tcdVisible`, `tcdLauncherButton`, `weatherMesh`, `sandboxBall`, and associated pre-allocated buffers inside `src/domainExpansion.ts` for a strict Zero-GC engine
+  - `[x]` Traversed GLTF stadium scenes recursively to dynamically cache `stands` and `floodlights` materials
+  - `[x]` Constructed TCD Hexagonal Launcher on the roof rim and the floating 7-button Glass backplane Command Panel
+  - `[x]` Built the Volumetric Weather System: animates 400 rain/dust particles, cycles weather states, and drives synchronized wireframe-stands sheet lightning flash bursts
+  - `[x]` Programmed the Flick Sandbox Ball: handles index-finger grabs, derivatives velocity calculations, and Euler physics bounces with localized contact sparks
+  - `[x]` Wired up TCD panel hover dwell tracking (1.2s to trigger actions) and Y-axis billboarding to face the user
+  - `[x]` Successfully compiled client production bundle via `npm run build` with zero errors
+- `[x]` Olympiastadion Goal Posts & Weather/TCD Polish (Current Run)
+  - `[x]` Built procedural glowing holographic football goal posts (`createGoalPost()`) with cyan wireframe nets
+  - `[x]` Queried `field`/`grass` meshes recursively in `setStadiumType()` and dynamically aligned goal posts to the pitch boundaries
+  - `[x]` Reduced base rain drop BoxGeometry bounds by 50% to `0.0003 x 0.0025 x 0.0003`
+  - `[x]` Sized snow/neon-dust flakes down by 50% (`1.0 x 0.2 x 1.0` instance scale) and turned snow particles to pure white
+  - `[x]` Implemented `setWeatherMode(mode)` helper with velocity resetting buffer updates, resolving slow particle drift leakages in subsequent rain cycles
+  - `[x]` Lowered TCD backplane opacity from `0.92` to `0.45` to match the glassmorphic transparent tabs of the compass menu
+  - `[x]` Cut TCD launcher and grid buttons progress dwell timers from `1.0s` / `1.2s` to a snappy `0.5s` hold
+  - `[x]` Successfully compiled client production bundle via `npm run build` with zero errors
+- `[x]` 3D Sport Sequences & Celebration Engine (Current Run)
+  - `[x]` Implement `createBasketballHoop()` to procedurally generate holographic orange rims, glass backboards, and cybernetic nets
+  - `[x]` Initialize Cricket stumps and swinging bat meshes dynamically in `initSportSequenceSystem()`
+  - `[x]` Position and attach basketball hoops to Inuit arena elliptical boundaries inside `setStadiumType()`
+  - `[x]` Rename TCD button index 3 to 'Play SEQ' and draw with auto-scaled font canvas drawing
+  - `[x]` Script the choreographed Sports Sequence trajectories (bowled delivery, swing, parabolic Bezier Six flight, soccer kick goal, basketball fast-dribble, and high slam dunk)
+  - `[x]` Integrate damped sine net wiggling wiggles and red rim flash updates inside the update thread
+  - `[x]` Implement bouncy glass celebration card `sportCelebrationCard` rendering glowing vector text ("SIX!!!", "GOAL!!!", "DUNK!!!")
+  - `[x]` Hide standard matchup scoreboard during celebration and automatically trigger staged pyrotechnics show
+  - `[x]` Resolve static type safety checks (`npx tsc --noEmit`) with zero warnings
+  - `[x]` Compile client production bundle successfully (`npm run build`) in 9.24s
+

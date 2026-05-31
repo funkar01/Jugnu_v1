@@ -89,6 +89,11 @@ const assets: AssetManifest = {
     type: AssetType.GLTF,
     priority: "critical",
   },
+  olympiastadion: {
+    url: "./gltf/Olympiastadion/Olympiastadion.glb",
+    type: AssetType.GLTF,
+    priority: "critical",
+  },
   iplCam1: {
     url: "./Domains/IPLfinal (1).png",
     type: AssetType.Texture,
@@ -119,6 +124,32 @@ const assets: AssetManifest = {
     type: AssetType.Texture,
     priority: "critical",
   },
+  // ── Berlin (Football) 360 panoramas — 6 views ───────────────────────────
+  berlin360_1: { url: "./360Videos/Berlin_01.png", type: AssetType.Texture, priority: "critical" },
+  berlin360_2: { url: "./360Videos/Berlin_02.png", type: AssetType.Texture, priority: "critical" },
+  berlin360_3: { url: "./360Videos/Berlin_03.png", type: AssetType.Texture, priority: "critical" },
+  berlin360_4: { url: "./360Videos/Berlin_04.png", type: AssetType.Texture, priority: "critical" },
+  berlin360_5: { url: "./360Videos/Berlin_05.png", type: AssetType.Texture, priority: "critical" },
+  berlin360_6: { url: "./360Videos/Berlin_06.png", type: AssetType.Texture, priority: "critical" },
+  berlin360_1_thumb: { url: "./360Videos/Berlin_01_thumb.jpg", type: AssetType.Texture, priority: "background" },
+  berlin360_2_thumb: { url: "./360Videos/Berlin_02_thumb.jpg", type: AssetType.Texture, priority: "background" },
+  berlin360_3_thumb: { url: "./360Videos/Berlin_03_thumb.jpg", type: AssetType.Texture, priority: "background" },
+  berlin360_4_thumb: { url: "./360Videos/Berlin_04_thumb.jpg", type: AssetType.Texture, priority: "background" },
+  berlin360_5_thumb: { url: "./360Videos/Berlin_05_thumb.jpg", type: AssetType.Texture, priority: "background" },
+  berlin360_6_thumb: { url: "./360Videos/Berlin_06_thumb.jpg", type: AssetType.Texture, priority: "background" },
+  // ── Inuit/LA (Basketball) 360 panoramas — 6 views ───────────────────────
+  inuit360_1: { url: "./360Videos/Inuit_01.png", type: AssetType.Texture, priority: "critical" },
+  inuit360_2: { url: "./360Videos/Inuit_02.png", type: AssetType.Texture, priority: "critical" },
+  inuit360_3: { url: "./360Videos/Inuit_03.png", type: AssetType.Texture, priority: "critical" },
+  inuit360_4: { url: "./360Videos/Inuit_04.png", type: AssetType.Texture, priority: "critical" },
+  inuit360_5: { url: "./360Videos/Inuit_05.png", type: AssetType.Texture, priority: "critical" },
+  inuit360_6: { url: "./360Videos/Inuit_06.png", type: AssetType.Texture, priority: "critical" },
+  inuit360_1_thumb: { url: "./360Videos/Inuit_01_thumb.jpg", type: AssetType.Texture, priority: "background" },
+  inuit360_2_thumb: { url: "./360Videos/Inuit_02_thumb.jpg", type: AssetType.Texture, priority: "background" },
+  inuit360_3_thumb: { url: "./360Videos/Inuit_03_thumb.jpg", type: AssetType.Texture, priority: "background" },
+  inuit360_4_thumb: { url: "./360Videos/Inuit_04_thumb.jpg", type: AssetType.Texture, priority: "background" },
+  inuit360_5_thumb: { url: "./360Videos/Inuit_05_thumb.jpg", type: AssetType.Texture, priority: "background" },
+  inuit360_6_thumb: { url: "./360Videos/Inuit_06_thumb.jpg", type: AssetType.Texture, priority: "background" },
   // RCB Player Cards (IPL 2026 Final) — full squad
   rcbKohli:       { url: "./RCBCards/RCB_Name_VIRAT KOHLI.jpeg",        type: AssetType.Texture, priority: "background" },
   rcbPatidar:     { url: "./RCBCards/RCB_Name_RAJAT PATIDAR.jpeg",      type: AssetType.Texture, priority: "background" },
@@ -250,18 +281,16 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   world.createTransformEntity(juguModel)
     .addComponent(Interactable)
     .addComponent(Jugnu)
-    .addComponent(PhysicsBody, {
-      state: PhysicsState.Dynamic,
-      gravityFactor: 1.0,
-      linearDamping: 0.1,
-      angularDamping: 0.1,
-    })
     .addComponent(PhysicsShape, {
       shape: PhysicsShapeType.Sphere,
-      dimensions: [0.15, 0.15, 0.15],
+      dimensions: [0.15, 0.0, 0.0],
       restitution: 0.95,
       friction: 0.05,
       density: 1.0
+    })
+    .addComponent(PhysicsBody, {
+      state: PhysicsState.Kinematic,
+      gravityFactor: 0.0,
     });
 
   // Hide the glowing green physics box helper
@@ -274,6 +303,8 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   }
   */
 
+  // Removed from physical space to be embedded inside the Compass UI as tabs
+  /*
   const transcriptBoard = new JugnuTranscriptBoard();
   transcriptBoard.position.set(1.0, deskTopY + 0.5, -1.0);
   transcriptBoard.rotation.y = -Math.PI / 8; // Angled slightly towards the user
@@ -286,6 +317,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     debugBoard.rotation.y = Math.PI / 8; // Angled slightly towards the user (mirrors transcript board)
     world.createTransformEntity(debugBoard);
   }
+  */
 
 
 
