@@ -61,6 +61,41 @@
   - `[x]` Scaled down `cardGroup` meshes by 50% in `src/domainExpansion.ts`
   - `[x]` Added match stats UI billboard ring above the Wankhede Stadium roof rim
   - `[x]` Implemented pinch/poke scaling tap-to-activate interaction for full-frame banners
+- `[x]` Object Detection Feasibility Analysis for Quest 3 / IWSDK
+  - `[x]` Investigated WebXR camera-access spec support on Meta Quest Browser
+  - `[x]` Reviewed standard Web API `getUserMedia` constraints on passthrough feeds
+  - `[x]` Analyzed IWSDK Scene Understanding and `semanticLabel` capabilities
+  - `[x]` Documented findings and alternative system-level architectures
+- `[x]` Gesture-Triggered Spatial Object Detection Scanner
+  - `[x]` Created custom joint-distance peace sign gesture tracking for both hands
+  - `[x]` Built holographic neon box highlighters and billboarding text HUD labels
+  - `[x]` Configured audio chime and speech synthesis voice output on scanner toggle
+  - `[x]` Registered system in `src/index.ts` and successfully verified production builds
+- `[x]` Volumetric Bounding Box & Telemetry HUD Screen Revisions
+  - `[x]` Refined gesture heuristics to wrist-relative queries to improve Quest 3 tracking
+  - `[x]` Upgraded 1px lines to glowing volumetric bounding box meshes (solid + wireframe)
+  - `[x]` Implemented a real-time floating sci-fi Scanner HUD panel with scanline sweeper and live targets checklist
+- `[x]` Failsafe Audio Playback & AR Text legibility Fixes
+  - `[x]` Configured absolute dynamic URL path resolution to force audio playbacks on Quest 3
+  - `[x]` Implemented double-pass text outlining (dark stroke backing + color fills) to prevent bright washouts in MR
+  - `[x]` Expanded HUD layout dimensions to 42x42cm and optimized center-left viewing offset
+- `[x]` Gesture Trigger Shift to Single Hand (Left or Right)
+  - `[x]` Updated gesture tracking updates loop condition to trigger with (left || right) peace symbols
+  - `[x]` Modified transcript UI telemetry labels to reflect single-hand triggering support
+- `[x]` ECS Entity Registration & Lifecycle Fixes
+  - `[x]` Swapped all direct three.js scene additions for `world.createTransformEntity` calls to enable WebXR visibility
+  - `[x]` Upgraded active highlighters map to cache box and label entities
+  - `[x]` Shifted cleanups and sweep collections to use failsafe `entity.dispose()` / `entity.destroy()` logic
+- `[x]` Object Detection Gesture & Bounding Box Overhaul (Trigger and Visibility Bug Fixes)
+  - `[x]` Refactored `isPeaceSign` to use relative distance calculations (scale-independent, robust for different hand sizes)
+  - `[x]` Added controller squeeze button fallback (Grip pressed on either controller for 0.4s) to trigger object detection scanner
+  - `[x]` Solved invisible/NaN bounding boxes for meshes by temporarily forcing visibility to `true` during `Box3.setFromObject` calculation
+  - `[x]` Integrated fallback position/dimensions if bounds calculations return NaN or zero sizes
+  - `[x]` Improved plane labeling by classifying `XRPlane` orientation (Wall for vertical, floor/ceiling/table for horizontal depending on height)
+  - `[x]` Fixed text mirroring on labels and HUD by applying `rotateY(Math.PI)` after `lookAt` orientation sync
+  - `[x]` Migrated spatial audio chime trigger to utilize `AudioUtils.createOneShot` (SDK standard) with safe HTML5 fallback
+  - `[x]` Run typescript type verification (`npx tsc --noEmit`)
+  - `[x]` Verify production build (`npm run build`)
 - `[x]` Mixed Reality Compass System Integration
   - `[x]` Implemented index finger pinch timer tracking inside `src/jugnu.ts`
   - `[x]` Created circular/square glassmorphic UI locked on top of Jugnu
