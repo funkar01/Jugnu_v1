@@ -187,3 +187,9 @@
   - `[x]` Hide both the thread and text card completely when fingertips pinch together (distance < 2.5cm)
   - `[x]` Implement a 5-second release hide cooldown (`threadCooldownTimer`) that suppresses the thread when Jugnu is released or thrown from hand
   - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Berlin Map Olympiastadion GLB Asset Integration
+  - `[x]` Copy `Olympiastadion.glb` from `C:\Users\SSD\Pictures\Jugnu\Olympiastadion.glb` to public GLTF folder `public/gltf/Olympiastadion/Olympiastadion.glb`
+  - `[x]` Register new `olympiastadion` asset in `src/index.ts` AssetRegistry
+  - `[x]` Load, clone, and auto-scale the high-resolution Olympiastadion GLB model dynamically inside `setStadiumType` in `src/domainExpansion.ts`
+  - `[x]` Traverse child meshes of the Olympiastadion model and recursively apply realistic PBR materials, shadows, and neon grid floor highlights
+  - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)

@@ -88,6 +88,11 @@ const assets: AssetManifest = {
     type: AssetType.GLTF,
     priority: "critical",
   },
+  olympiastadion: {
+    url: "./gltf/Olympiastadion/Olympiastadion.glb",
+    type: AssetType.GLTF,
+    priority: "critical",
+  },
   iplCam1: {
     url: "./Domains/IPLfinal (1).png",
     type: AssetType.Texture,

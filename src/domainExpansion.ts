@@ -1077,49 +1077,55 @@ export class DomainExpansionSystem extends createSystem({
         if (stadiumType === 'berlin' && !this.berlinMesh) {
             const berlinGroup = new THREE.Group();
             
-            // Hollow Cylinder wall (openEnded: true)
-            const cylinderGeo = new THREE.CylinderGeometry(0.096, 0.096, 0.095, 64, 1, true);
-            cylinderGeo.translate(0, 0.095 / 2, 0);
-            const berlinMat = new THREE.MeshStandardMaterial({
-                color: 0x22d3ee,
-                roughness: 0.1,
-                metalness: 0.8,
-                transparent: true,
-                opacity: 0.35,
-                side: THREE.DoubleSide,
-                depthWrite: false
-            });
-            const cylinderWall = new THREE.Mesh(cylinderGeo, berlinMat);
-            berlinGroup.add(cylinderWall);
+            const berlinAsset = AssetManager.getGLTF("olympiastadion");
+            if (berlinAsset) {
+                const mesh = berlinAsset.scene.clone();
+                
+                // Measure bounding box to scale it correctly to fit the map (0.24m diameter)
+                const box = new THREE.Box3().setFromObject(mesh);
+                const size = new THREE.Vector3();
+                box.getSize(size);
+                
+                const maxDim = Math.max(size.x, size.z);
+                const berlinScale = 0.24 / (maxDim || 1.0);
+                mesh.scale.setScalar(berlinScale);
+                mesh.position.set(0, -0.002, 0);
+                berlinGroup.add(mesh);
+                
+                // Enable shadows and apply realistic stadium materials
+                mesh.traverse((child: any) => {
+                    if (child instanceof THREE.Mesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                        
+                        const name = child.name.toLowerCase();
+                        const parentName = child.parent ? child.parent.name.toLowerCase() : "";
+                        
+                        if (Array.isArray(child.material)) {
+                            child.material = child.material.map((m: any) => applyStadiumMaterial(m, name, parentName));
+                        } else {
+                            child.material = applyStadiumMaterial(child.material, name, parentName);
+                        }
+                    }
+                });
+            } else {
+                // Procedural Fallback Cylinder wall (openEnded: true)
+                const cylinderGeo = new THREE.CylinderGeometry(0.096, 0.096, 0.095, 64, 1, true);
+                cylinderGeo.translate(0, 0.095 / 2, 0);
+                const berlinMat = new THREE.MeshStandardMaterial({
+                    color: 0x22d3ee,
+                    roughness: 0.1,
+                    metalness: 0.8,
+                    transparent: true,
+                    opacity: 0.35,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                });
+                const cylinderWall = new THREE.Mesh(cylinderGeo, berlinMat);
+                berlinGroup.add(cylinderWall);
+            }
 
-            // Top neon ring
-            const topRingGeo = new THREE.TorusGeometry(0.096, 0.0012, 8, 64);
-            topRingGeo.rotateX(Math.PI / 2);
-            topRingGeo.translate(0, 0.095, 0);
-            const ringMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.8 });
-            const topRing = new THREE.Mesh(topRingGeo, ringMat);
-            berlinGroup.add(topRing);
-
-            // Bottom neon ring
-            const bottomRingGeo = new THREE.TorusGeometry(0.096, 0.0012, 8, 64);
-            bottomRingGeo.rotateX(Math.PI / 2);
-            bottomRingGeo.translate(0, 0.002, 0);
-            const bottomRing = new THREE.Mesh(bottomRingGeo, ringMat);
-            berlinGroup.add(bottomRing);
-
-            // Grid floor
-            const floorGeo = new THREE.PlaneGeometry(0.192, 0.192);
-            floorGeo.rotateX(-Math.PI / 2);
-            const floorMat = new THREE.MeshBasicMaterial({
-                color: 0x051525,
-                transparent: true,
-                opacity: 0.8,
-                side: THREE.DoubleSide
-            });
-            const floorMesh = new THREE.Mesh(floorGeo, floorMat);
-            floorMesh.position.y = 0.001;
-            berlinGroup.add(floorMesh);
-
+            // Grid floor & anchor helper
             const gridHelper = new THREE.GridHelper(0.192, 10, 0x22d3ee, 0x114466);
             gridHelper.position.y = 0.0015;
             berlinGroup.add(gridHelper);
