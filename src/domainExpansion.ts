@@ -225,7 +225,7 @@ export class DomainExpansionSystem extends createSystem({
     private trackingButtons: THREE.Mesh[] = [];
     private buttonMats: THREE.MeshBasicMaterial[] = [];
     private buttonLabels: THREE.Mesh[] = [];
-    private buttonPinchProgress: number[] = [0.0, 0.0, 0.0, 0.0];
+    private buttonPinchProgress: number[] = [0.0, 0.0, 0.0, 0.0, 0.0];
     private scoreDisplayMeshes: THREE.Mesh[] = [];
     // Roof arc parameters (in table-local space)
     private readonly ROOF_Y = 0.095;      // Height of stadium roof rim
@@ -237,6 +237,100 @@ export class DomainExpansionSystem extends createSystem({
     private inuitMesh: THREE.Mesh | null = null;
     private ballVelocity = new THREE.Vector3(0.04, 0.03, 0.05);
     private lastBubbleSkinStadium: string = 'default'; // tracks which stadium the bubbles were last skinned for
+
+    // Highly Optimized, Zero-GC Holographic Fireworks System
+    private fireworksMesh!: THREE.InstancedMesh;
+    private readonly MAX_FIREWORKS = 24;
+    private readonly PARTICLES_PER_FIREWORK = 350;
+    private fireworkActive = new Uint8Array(24);
+    private fireworkAge = new Float32Array(24);
+    private fireworkMaxAge = new Float32Array(24);
+    private fireworkPositions = new Float32Array(24 * 3);
+    private fireworkColors = new Uint32Array(24);
+    private particleVelocities = new Float32Array(8400 * 3);
+    private particleOffsets = new Float32Array(8400 * 3);
+    private particleColors = new Uint32Array(8400);
+    private fireworkPhase = new Uint8Array(24); // 0 = rocket rising, 1 = burst
+    private fireworkLaunchY = new Float32Array(24); // initial launch height
+    private fireworkTargetHeight = new Float32Array(24); // vertical flight height before burst
+    private fireworkLaunchVelocities = new Float32Array(24 * 3); // 3D launch velocity vector (vx, vy, vz)
+    private fireworkScale = new Float32Array(24); // individual burst scale multiplier
+    private fireworkSeqTimer = -1.0; // manual fireworks sequence state
+    private fireworkSeqIndex = 0;    // sequential index of manual firework
+    private fireworkDummy = new THREE.Object3D();
+    private fireworkColorObj = new THREE.Color();
+
+    // Volumetric Weather System
+    private weatherMesh!: THREE.InstancedMesh;
+    private readonly MAX_WEATHER_PARTICLES = 400;
+    private weatherMode: 'off' | 'rain' | 'neon_dust' = 'off';
+    private weatherPositions = new Float32Array(400 * 3);
+    private weatherVelocities = new Float32Array(400 * 3);
+    private weatherColors = new Uint32Array(400);
+    private isLightningStriking = false;
+    private lightningStrikeDuration = 0.0;
+    private lightningTimer = 0.0;
+    private lightningNextStrikeTime = 6.0;
+    private standsOriginalColors: { mat: THREE.MeshStandardMaterial, wireframe: boolean, emissiveHex: number, emissiveIntensity: number }[] = [];
+    private floodlightOriginalColors: { mat: THREE.MeshStandardMaterial, emissiveHex: number, emissiveIntensity: number }[] = [];
+
+    // Flick-to-Bounce Sandbox Ball System
+    private sandboxBall!: THREE.Mesh;
+    private isSandboxBallActive = false;
+    private isSandboxBallGrabbed = false;
+    private sandboxBallVel = new THREE.Vector3();
+    private lastGrabPos = new THREE.Vector3();
+    private isLeftPinchActive = false;
+    private isRightPinchActive = false;
+
+    // Choreographed Sport Sequences & AR Props
+    private isSportSequenceActive = false;
+    private sportSequenceTime = 0.0;
+    private sportSequencePhase = 0; // 0 = prep, 1 = strike/flight, 2 = score/contact, 3 = card reveal
+    private sportPropsGroup!: THREE.Group;
+    private sequenceBall!: THREE.Mesh;
+    private sequenceBallTrail!: THREE.Line;
+    private sequenceBallPoints: THREE.Vector3[] = [];
+    
+    // Cricket Wankhede props
+    private cricketBatMesh!: THREE.Group;
+    private cricketStumpsMesh!: THREE.Group;
+    
+    // Football Goal posts (Berlin references)
+    private berlinGoal1: THREE.Group | null = null;
+    private berlinGoal2: THREE.Group | null = null;
+    private goal1NetMesh: THREE.LineSegments | null = null;
+    private goal2NetMesh: THREE.LineSegments | null = null;
+    private goalWiggleTime = 0.0;
+    private isGoalWiggling = false;
+    private wigglingGoalNet: THREE.LineSegments | null = null;
+    
+    // Basketball Inuit hoops
+    private basketballHoop1: THREE.Group | null = null;
+    private basketballHoop2: THREE.Group | null = null;
+    private hoop1NetMesh: THREE.LineSegments | null = null;
+    private hoop2NetMesh: THREE.LineSegments | null = null;
+    private hoopWiggleTime = 0.0;
+    private isHoopWiggling = false;
+    private wigglingHoopNet: THREE.LineSegments | null = null;
+    
+    // AR Celebration overlay
+    private sportCelebrationCard!: THREE.Group;
+    private sportCelebrationCardMat!: THREE.MeshBasicMaterial;
+    private sportCelebrationTexture!: THREE.CanvasTexture;
+    private celebrationCardCanvas!: HTMLCanvasElement;
+    private celebrationCardCtx!: CanvasRenderingContext2D;
+
+    // Tactical Core Deck (TCD) Menu System
+    private tcdVisible = false;
+    private tcdPanelGroup!: THREE.Group;
+    private tcdLauncherButton!: THREE.Mesh;
+    private tcdLauncherMat!: THREE.MeshBasicMaterial;
+    private tcdLauncherPinchProgress = 0.0;
+    private tcdButtons: THREE.Mesh[] = [];
+    private tcdButtonMats: THREE.MeshBasicMaterial[] = [];
+    private tcdButtonLabels: THREE.Mesh[] = [];
+    private tcdButtonHoverTimes = new Float32Array(7); // 7 buttons
 
     // Per-stadium domain key/name tables
     private readonly DOMAIN_KEYS_DEFAULT  = ["mivVideo","iplCam2","iplCam3","iplCam4","iplCam5","iplCam6"];
@@ -543,8 +637,7 @@ export class DomainExpansionSystem extends createSystem({
                     }
                 }
             });
-
-            // Volumetric-style cyan SpotLight pointing directly at the central pitch removed as per request
+            this.collectStadiumMaterials(this.stadiumMesh);
 
             // Measure bounding box to scale it correctly to fit the map
             const box = new THREE.Box3().setFromObject(this.stadiumMesh);
@@ -832,7 +925,10 @@ export class DomainExpansionSystem extends createSystem({
         
         // Initialize Ball Tracking & Interactive Sixes Buttons on the tactical deck
         this.initBallTracking();
+        this.initWeatherSystem();
+        this.initSandboxBall();
         this.initTrackingButtons();
+        this.initSportSequenceSystem();
 
         // Initialize Left Wrist Button
         const wristBtnGeom = new THREE.SphereGeometry(0.015, 16, 16);
@@ -1092,7 +1188,8 @@ export class DomainExpansionSystem extends createSystem({
                 mesh.position.set(0, -0.002, 0);
                 berlinGroup.add(mesh);
                 
-                // Enable shadows and apply realistic stadium materials
+                // Find field mesh and attach football goal posts at opposite ends
+                let fieldMesh: THREE.Mesh | null = null;
                 mesh.traverse((child: any) => {
                     if (child instanceof THREE.Mesh) {
                         child.castShadow = true;
@@ -1106,8 +1203,53 @@ export class DomainExpansionSystem extends createSystem({
                         } else {
                             child.material = applyStadiumMaterial(child.material, name, parentName);
                         }
+
+                        if (name.includes('field') || name.includes('grass') || name.includes('pitch')) {
+                            fieldMesh = child;
+                        }
                     }
                 });
+
+                if (fieldMesh) {
+                    const goal1 = this.createGoalPost();
+                    const goal2 = this.createGoalPost();
+                    this.berlinGoal1 = goal1;
+                    this.berlinGoal2 = goal2;
+                    this.goal1NetMesh = goal1.children[3] as THREE.LineSegments;
+                    this.goal2NetMesh = goal2.children[3] as THREE.LineSegments;
+
+                    (fieldMesh as THREE.Mesh).geometry.computeBoundingBox();
+                    const bbox = (fieldMesh as THREE.Mesh).geometry.boundingBox;
+                    if (bbox) {
+                        const fSize = new THREE.Vector3();
+                        bbox.getSize(fSize);
+                        const fCenter = new THREE.Vector3();
+                        bbox.getCenter(fCenter);
+
+                        // Position goal posts at local boundaries along the major axis
+                        if (fSize.z > fSize.x) {
+                            goal1.position.set(fCenter.x, fCenter.y, fCenter.z + fSize.z * 0.44);
+                            goal1.rotation.y = Math.PI; // Face inward
+
+                            goal2.position.set(fCenter.x, fCenter.y, fCenter.z - fSize.z * 0.44);
+                            goal2.rotation.y = 0; // Face inward
+                        } else {
+                            goal1.position.set(fCenter.x + fSize.x * 0.44, fCenter.y, fCenter.z);
+                            goal1.rotation.y = -Math.PI / 2; // Face inward
+
+                            goal2.position.set(fCenter.x - fSize.x * 0.44, fCenter.y, fCenter.z);
+                            goal2.rotation.y = Math.PI / 2; // Face inward
+                        }
+                    } else {
+                        goal1.position.set(0.0, 0.002, 0.05);
+                        goal2.position.set(0.0, 0.002, -0.05);
+                        goal1.rotation.y = Math.PI;
+                    }
+
+                    mesh.add(goal1, goal2);
+                    console.log("[BerlinStadium] Holographic goal posts attached to field boundaries!");
+                }
+                this.collectStadiumMaterials(mesh);
             } else {
                 // Procedural Fallback Cylinder wall (openEnded: true)
                 const cylinderGeo = new THREE.CylinderGeometry(0.096, 0.096, 0.095, 64, 1, true);
@@ -1222,6 +1364,22 @@ export class DomainExpansionSystem extends createSystem({
             gridHelper.position.y = 0.0015;
             inuitGroup.add(gridHelper);
 
+            // Procedurally generate two glowing NBA basketball hoops
+            const hoop1 = this.createBasketballHoop();
+            hoop1.position.set(0.0, 0.002, 0.045);
+            hoop1.rotation.y = Math.PI; // Face inward
+            
+            const hoop2 = this.createBasketballHoop();
+            hoop2.position.set(0.0, 0.002, -0.045);
+            hoop2.rotation.y = 0; // Face inward
+
+            inuitGroup.add(hoop1, hoop2);
+            
+            this.basketballHoop1 = hoop1;
+            this.basketballHoop2 = hoop2;
+            this.hoop1NetMesh = (hoop1 as any).netMesh;
+            this.hoop2NetMesh = (hoop2 as any).netMesh;
+
             this.inuitMesh = inuitGroup as any;
             this.tableGroup.add(this.inuitMesh!);
         }
@@ -1296,6 +1454,27 @@ export class DomainExpansionSystem extends createSystem({
             pinLabelMat.map = newTex;
             pinLabelMat.needsUpdate = true;
         }
+
+        // 7. Trigger celebratory fireworks on the outer circle of the top part of the stadium
+        const stColors = stadiumType === 'berlin' ? [0x22d3ee, 0xffaa00, 0xff33aa]
+                       : stadiumType === 'inuit'  ? [0xf97316, 0x00ffff, 0xffff00]
+                       : [0xff6600, 0x00ff66, 0x00aaff];
+
+        // Trigger 3 fireworks spaced out along the roof rim circle
+        for (let i = 0; i < 3; i++) {
+            const angle = (i * Math.PI * 2) / 3;
+            this.triggerFirework(
+                Math.sin(angle) * this.ROOF_RADIUS,
+                this.ROOF_Y + 0.015,
+                Math.cos(angle) * this.ROOF_RADIUS,
+                stColors[i]
+            );
+        }
+
+        // Toggle visibility of the cricket props based on stadium selection
+        if (this.sportPropsGroup) {
+            this.sportPropsGroup.visible = (stadiumType === 'default');
+        }
     }
 
     update(dt: number) {
@@ -1327,8 +1506,8 @@ export class DomainExpansionSystem extends createSystem({
         // Update Floating AR TV Billboard (Floating and facing the player head)
         if (this.arBillboard && this.tableGroup.visible) {
             this.arFloatTime += dt;
-            // Float up and down gently around Y = 0.115
-            const yOffset = 0.115 + Math.sin(this.arFloatTime * 2.5) * 0.006;
+            // Float up and down gently around Y = 0.175 (brought down by 4cm)
+            const yOffset = 0.175 + Math.sin(this.arFloatTime * 2.5) * 0.006;
             this.arBillboard.position.y = yOffset;
 
             // Make the billboard face the player's head on Y-axis
@@ -2147,24 +2326,31 @@ export class DomainExpansionSystem extends createSystem({
                 this.locationPin.visible = firstMat.opacity > 0.01;
             }
 
-            // Scale-gated fade-out for AR TV Billboard: vanishes smoothly as we scale the stadium up
+            // Scale-gated fade-out for AR TV Billboard: vanishes smoothly as we scale the stadium up, or when fireworks play
             if (this.arBillboard) {
+                const areFireworksPlaying = this.areFireworksActive();
                 this.arBillboard.traverse((child) => {
                     if (child instanceof THREE.Mesh) {
                         const mat = child.material as THREE.Material;
                         if (mat && mat.transparent) {
                             const defOpacity = child.userData.defaultOpacity ?? 0.8;
-                            const targetOpacity = defOpacity * fadeFactor;
+                            const targetOpacity = areFireworksPlaying ? 0.0 : (defOpacity * fadeFactor);
                             mat.opacity += (targetOpacity - mat.opacity) * dt * 8.0;
                         }
                     }
                 });
                 
                 // Hide/show the billboard entirely based on opacity to save draw calls
-                if (this.arBillboard.children[1] instanceof THREE.Mesh) {
-                    const firstMat = this.arBillboard.children[1].material as THREE.Material;
-                    this.arBillboard.visible = firstMat.opacity > 0.01;
-                }
+                let maxOpacity = 0.0;
+                this.arBillboard.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        const mat = child.material as THREE.Material;
+                        if (mat && mat.transparent) {
+                            maxOpacity = Math.max(maxOpacity, mat.opacity);
+                        }
+                    }
+                });
+                this.arBillboard.visible = maxOpacity > 0.01;
             }
 
             // 7. Holographic Close "X" Button Billboard & Poke check
@@ -2219,6 +2405,134 @@ export class DomainExpansionSystem extends createSystem({
 
             // 8. Update Ball Tracking and Interactive Buttons
             this.updateBallTracking(dt);
+
+            // Update Manual Fireworks Sequence (Staged Pyrotechnic Show)
+            if (this.fireworkSeqTimer >= 0.0) {
+                this.fireworkSeqTimer += dt;
+                
+                // Steps 0 to 9: Clockwise rim staggered climbers (0.5 second delays)
+                if (this.fireworkSeqIndex < 10) {
+                    if (this.fireworkSeqTimer >= this.fireworkSeqIndex * 0.5) {
+                        const idx = this.fireworkSeqIndex;
+                        const angle = (idx * Math.PI * 2) / 10;
+                        const fx = Math.sin(angle) * this.ROOF_RADIUS;
+                        const fy = this.ROOF_Y + 0.005;
+                        const fz = Math.cos(angle) * this.ROOF_RADIUS;
+                        
+                        const colors = [0xff0055, 0x00ffff, 0xffff00, 0xff3300, 0x00ff66, 0xff00ff, 0xffaa00, 0x00aaff];
+                        const col = colors[Math.floor(Math.random() * colors.length)];
+                        
+                        // Climbs inward towards pitch center
+                        this.triggerFirework(
+                            fx, fy, fz, col, 
+                            0.02,                      // targetHeight
+                            -Math.sin(angle) * 0.025,  // vx
+                            0.085,                     // vy
+                            -Math.cos(angle) * 0.025,  // vz
+                            1.0                        // scale
+                        );
+                        this.fireworkSeqIndex++;
+                    }
+                } else if (this.fireworkSeqIndex === 10) {
+                    // Step 10: 1.0s after staggered climbers (Time = 5.5s), launch dual cross-pitch crossing rockets!
+                    if (this.fireworkSeqTimer >= 5.5) {
+                        const colors = [0x00ffff, 0xffaa00]; // Cyan & Gold opposites
+                        
+                        // Point 0 (north) - angled South
+                        const fx0 = 0.0;
+                        const fz0 = this.ROOF_RADIUS;
+                        this.triggerFirework(
+                            fx0, this.ROOF_Y + 0.005, fz0, colors[0], 
+                            0.035,  // targetHeight
+                            0.0,    // vx
+                            0.085,  // vy
+                            -0.045, // vz (pointing south)
+                            1.5     // scale
+                        );
+                        
+                        // Point 5 (south) - angled North
+                        const fx5 = 0.0;
+                        const fz5 = -this.ROOF_RADIUS;
+                        this.triggerFirework(
+                            fx5, this.ROOF_Y + 0.005, fz5, colors[1], 
+                            0.035,  // targetHeight
+                            0.0,    // vx
+                            0.085,  // vy
+                            0.045,  // vz (pointing north)
+                            1.5     // scale
+                        );
+                        
+                        this.fireworkSeqIndex++;
+                    }
+                } else if (this.fireworkSeqIndex === 11) {
+                    // Step 11: 1.0s later (Time = 6.5s), launch quad corner rockets (cardinals) blossoming outward!
+                    if (this.fireworkSeqTimer >= 6.5) {
+                        const colors = [0xff0055, 0x00ff66, 0xffaa00, 0x00aaff];
+                        const cardinalAngles = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+                        
+                        cardinalAngles.forEach((angle, i) => {
+                            const fx = Math.sin(angle) * this.ROOF_RADIUS;
+                            const fy = this.ROOF_Y + 0.005;
+                            const fz = Math.cos(angle) * this.ROOF_RADIUS;
+                            
+                            this.triggerFirework(
+                                fx, fy, fz, colors[i], 
+                                0.045,                   // targetHeight
+                                Math.sin(angle) * 0.035,  // vx
+                                0.08,                    // vy
+                                Math.cos(angle) * 0.035,  // vz
+                                1.8                      // scale
+                            );
+                        });
+                        
+                        this.fireworkSeqIndex++;
+                    }
+                } else if (this.fireworkSeqIndex === 12) {
+                    // Step 12: Grand Finale (Time = 7.5s) - All 10 points on the rim + Colossal Center tracer!
+                    if (this.fireworkSeqTimer >= 7.5) {
+                        const colors = [0xff0055, 0x00ffff, 0xffff00, 0xff3300, 0x00ff66, 0xff00ff, 0xffaa00, 0x00aaff];
+                        
+                        // Launch all 10 rim points simultaneously, slightly outward blossoming
+                        for (let i = 0; i < 10; i++) {
+                            const angle = (i * Math.PI * 2) / 10;
+                            const fx = Math.sin(angle) * this.ROOF_RADIUS;
+                            const fy = this.ROOF_Y + 0.005;
+                            const fz = Math.cos(angle) * this.ROOF_RADIUS;
+                            const col = colors[Math.floor(Math.random() * colors.length)];
+                            
+                            this.triggerFirework(
+                                fx, fy, fz, col, 
+                                0.025,                   // targetHeight
+                                Math.sin(angle) * 0.015,  // vx
+                                0.09,                    // vy
+                                Math.cos(angle) * 0.015,  // vz
+                                1.3                      // scale
+                            );
+                        }
+                        
+                        // Launch Colossal center gold tracer from the pitch center, traveling up 2.5x-3x higher (17.5cm!)
+                        this.triggerFirework(
+                            0.0, 0.008, 0.0, 0xffd700, 
+                            0.175,  // targetHeight
+                            0.0,    // vx
+                            0.12,   // vy (majestic climb speed)
+                            0.0,    // vz
+                            2.5     // scale (2.5x larger burst)
+                        ); 
+                        
+                        // Complete sequence
+                        this.fireworkSeqTimer = -1.0;
+                        this.fireworkSeqIndex = 0;
+                        console.log("[BallTracking] Manual fireworks Grand Finale sequence complete!");
+                    }
+                }
+            }
+
+            this.updateFireworks(dt);
+            this.updateWeather(dt);
+            this.updateSandboxBall(dt);
+            this.updateSportSequence(dt);
+            this.updateNetsWiggling(dt);
             // Buttons now use index-finger hover — pass index tip positions
             this.updateTrackingButtons(
                 leftIndexPinchPos,
@@ -2231,6 +2545,24 @@ export class DomainExpansionSystem extends createSystem({
             // Table is closed: hide close button instantly
             this.xButton.visible = false;
             this.xButton.scale.setScalar(0.01);
+            this.isSportSequenceActive = false;
+            if (this.sportCelebrationCard) this.sportCelebrationCard.visible = false;
+            if (this.sequenceBall) this.sequenceBall.visible = false;
+            if (this.sequenceBallTrail) this.sequenceBallTrail.visible = false;
+            if (this.arBillboard) this.arBillboard.visible = true; // Restore scoreboard
+            this.fireworkSeqTimer = -1.0; // Reset active sequence
+            this.fireworkSeqIndex = 0;
+            if (this.fireworkActive) {
+                for (let i = 0; i < this.MAX_FIREWORKS; i++) {
+                    this.fireworkActive[i] = 0;
+                }
+            }
+            this.weatherMode = 'off';
+            if (this.weatherMesh) this.weatherMesh.visible = false;
+            this.isSandboxBallActive = false;
+            if (this.sandboxBall) this.sandboxBall.visible = false;
+            this.tcdVisible = false;
+            if (this.tcdPanelGroup) this.tcdPanelGroup.visible = false;
         }
 
         // --- Immersive 360° Dome expansion cinematic transitions ---
@@ -3302,9 +3634,9 @@ export class DomainExpansionSystem extends createSystem({
 
     private initARBillboard() {
         this.arBillboard = new THREE.Group();
-        this.arBillboard.position.set(0, 0.115, 0); 
+        this.arBillboard.position.set(0, 0.175, 0); // Spawning at 0.175m (brought down by 4cm)
 
-        const bannerGeom = new THREE.PlaneGeometry(0.18, 0.1146);
+        const bannerGeom = new THREE.PlaneGeometry(0.108, 0.0688);
         const bannerMat = new THREE.MeshBasicMaterial({ 
             transparent: true, 
             side: THREE.DoubleSide,
@@ -4062,86 +4394,1039 @@ export class DomainExpansionSystem extends createSystem({
         });
         this.ballTrail = new THREE.Line(trailGeom, trailMat);
         this.tableGroup.add(this.ballTrail);
+
+        // 3. Holographic Fireworks Particle System
+        this.initFireworks();
+    }
+
+    private initFireworks() {
+        const totalParticles = this.MAX_FIREWORKS * this.PARTICLES_PER_FIREWORK;
+        
+        // Re-initialize arrays dynamically to match constant values
+        this.fireworkActive = new Uint8Array(this.MAX_FIREWORKS);
+        this.fireworkAge = new Float32Array(this.MAX_FIREWORKS);
+        this.fireworkMaxAge = new Float32Array(this.MAX_FIREWORKS);
+        this.fireworkPositions = new Float32Array(this.MAX_FIREWORKS * 3);
+        this.fireworkColors = new Uint32Array(this.MAX_FIREWORKS);
+        this.particleVelocities = new Float32Array(totalParticles * 3);
+        this.particleOffsets = new Float32Array(totalParticles * 3);
+        this.particleColors = new Uint32Array(totalParticles);
+        this.fireworkPhase = new Uint8Array(this.MAX_FIREWORKS);
+        this.fireworkLaunchY = new Float32Array(this.MAX_FIREWORKS);
+        this.fireworkTargetHeight = new Float32Array(this.MAX_FIREWORKS);
+        this.fireworkLaunchVelocities = new Float32Array(this.MAX_FIREWORKS * 3);
+        this.fireworkScale = new Float32Array(this.MAX_FIREWORKS);
+
+        // Defined as tiny 1mm geometry for dense point/mist resolution
+        const particleGeom = new THREE.BoxGeometry(0.001, 0.001, 0.001);
+        const particleMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        this.fireworksMesh = new THREE.InstancedMesh(particleGeom, particleMat, totalParticles);
+        this.fireworksMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        if (this.fireworksMesh.instanceColor) {
+            this.fireworksMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+        }
+
+        // Initialize all matrices to scale = 0 so they don't render initially
+        const dummy = new THREE.Object3D();
+        dummy.scale.setScalar(0);
+        dummy.updateMatrix();
+        const white = new THREE.Color(0xffffff);
+        for (let i = 0; i < totalParticles; i++) {
+            this.fireworksMesh.setMatrixAt(i, dummy.matrix);
+            this.fireworksMesh.setColorAt(i, white);
+            this.particleColors[i] = 0xffffff;
+        }
+
+        if (this.fireworksMesh.instanceColor) {
+            this.fireworksMesh.instanceColor.needsUpdate = true;
+        }
+        this.tableGroup.add(this.fireworksMesh);
+    }
+
+    private collectStadiumMaterials(mesh: THREE.Object3D) {
+        mesh.traverse((child: any) => {
+            if (child instanceof THREE.Mesh) {
+                const name = child.name.toLowerCase();
+                const parentName = child.parent ? child.parent.name.toLowerCase() : "";
+                
+                const mats = Array.isArray(child.material) ? child.material : [child.material];
+                mats.forEach((mat) => {
+                    if (mat instanceof THREE.MeshStandardMaterial) {
+                        if (name.includes('stands') || name.includes('seating') || name.includes('seats') || parentName.includes('stands') || parentName.includes('seating') || parentName.includes('seats')) {
+                            if (!this.standsOriginalColors.find(x => x.mat === mat)) {
+                                this.standsOriginalColors.push({
+                                    mat: mat,
+                                    wireframe: mat.wireframe,
+                                    emissiveHex: mat.emissive.getHex(),
+                                    emissiveIntensity: mat.emissiveIntensity
+                                });
+                            }
+                        }
+                        if (name.includes('floodlight') || name.includes('light') || parentName.includes('floodlight') || parentName.includes('light')) {
+                            if (!this.floodlightOriginalColors.find(x => x.mat === mat)) {
+                                this.floodlightOriginalColors.push({
+                                    mat: mat,
+                                    emissiveHex: mat.emissive.getHex(),
+                                    emissiveIntensity: mat.emissiveIntensity
+                                });
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    private initWeatherSystem() {
+        // Rain particle box geometry (very thin vertical lines)
+        const rainGeom = new THREE.BoxGeometry(0.0003, 0.0025, 0.0003);
+        const rainMat = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        this.weatherMesh = new THREE.InstancedMesh(rainGeom, rainMat, this.MAX_WEATHER_PARTICLES);
+        this.weatherMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        if (this.weatherMesh.instanceColor) {
+            this.weatherMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+        }
+        this.weatherMesh.visible = false;
+        this.tableGroup.add(this.weatherMesh);
+
+        const dummy = new THREE.Object3D();
+        const white = new THREE.Color(0xffffff);
+        for (let i = 0; i < this.MAX_WEATHER_PARTICLES; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const r = Math.random() * 0.13;
+            const px = Math.cos(angle) * r;
+            const py = Math.random() * 0.16 + 0.009;
+            const pz = Math.sin(angle) * r;
+
+            this.weatherPositions[i * 3 + 0] = px;
+            this.weatherPositions[i * 3 + 1] = py;
+            this.weatherPositions[i * 3 + 2] = pz;
+
+            this.weatherVelocities[i * 3 + 0] = (Math.random() - 0.5) * 0.005;
+            this.weatherVelocities[i * 3 + 1] = -0.15 - Math.random() * 0.1;
+            this.weatherVelocities[i * 3 + 2] = (Math.random() - 0.5) * 0.005;
+
+            dummy.position.set(px, py, pz);
+            dummy.scale.setScalar(0); // hide initially
+            dummy.updateMatrix();
+            this.weatherMesh.setMatrixAt(i, dummy.matrix);
+            this.weatherMesh.setColorAt(i, white);
+            this.weatherColors[i] = 0x00ffff;
+        }
+        this.weatherMesh.instanceMatrix.needsUpdate = true;
+        if (this.weatherMesh.instanceColor) {
+            this.weatherMesh.instanceColor.needsUpdate = true;
+        }
+    }
+
+    private setWeatherMode(mode: 'off' | 'rain' | 'neon_dust') {
+        this.weatherMode = mode;
+        if (mode === 'off') {
+            if (this.weatherMesh) this.weatherMesh.visible = false;
+            return;
+        }
+
+        if (this.weatherMesh) {
+            this.weatherMesh.visible = true;
+            const white = new THREE.Color(0xffffff);
+            const cyan = new THREE.Color(0x00ffff);
+
+            for (let i = 0; i < this.MAX_WEATHER_PARTICLES; i++) {
+                if (mode === 'rain') {
+                    // Rain drops: fast vertical falling speed
+                    this.weatherVelocities[i * 3 + 0] = (Math.random() - 0.5) * 0.005;
+                    this.weatherVelocities[i * 3 + 1] = -0.15 - Math.random() * 0.1;
+                    this.weatherVelocities[i * 3 + 2] = (Math.random() - 0.5) * 0.005;
+                    this.weatherMesh.setColorAt(i, cyan);
+                } else {
+                    // Neon dust (Snow): slow horizontal swirling
+                    this.weatherVelocities[i * 3 + 0] = (Math.random() - 0.5) * 0.01;
+                    this.weatherVelocities[i * 3 + 1] = -0.015 - Math.random() * 0.01; // slow drift
+                    this.weatherVelocities[i * 3 + 2] = (Math.random() - 0.5) * 0.01;
+                    this.weatherMesh.setColorAt(i, white);
+                }
+            }
+
+            if (this.weatherMesh.instanceColor) {
+                this.weatherMesh.instanceColor.needsUpdate = true;
+            }
+        }
+    }
+
+    private initSandboxBall() {
+        const ballGeom = new THREE.SphereGeometry(0.005, 16, 16);
+        const ballMat = new THREE.MeshBasicMaterial({
+            color: 0xff5500,
+            transparent: true,
+            opacity: 0.95
+        });
+        this.sandboxBall = new THREE.Mesh(ballGeom, ballMat);
+        this.sandboxBall.position.set(0.0, 0.009, 0.0);
+        this.sandboxBall.visible = false;
+        this.tableGroup.add(this.sandboxBall);
+
+        // Add a glowing halo ring to the sandbox ball
+        const haloGeom = new THREE.RingGeometry(0.006, 0.008, 16);
+        const haloMat = new THREE.MeshBasicMaterial({
+            color: 0xffaa00,
+            transparent: true,
+            opacity: 0.5,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const halo = new THREE.Mesh(haloGeom, haloMat);
+        halo.rotation.x = -Math.PI / 2;
+        this.sandboxBall.add(halo);
+    }
+
+    private createGoalPost(): THREE.Group {
+        const group = new THREE.Group();
+        
+        // Standard goal post dimensions at stadium local scale:
+        // Width: 0.016m (1.6cm), Height: 0.008m (0.8cm)
+        const postMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.9,
+            depthWrite: false
+        });
+        
+        // Vertical post cylinders: radius 0.5mm, height 8mm
+        const postGeom = new THREE.CylinderGeometry(0.0005, 0.0005, 0.008, 8);
+        // Horizontal crossbar cylinder: radius 0.5mm, length 16mm
+        const crossbarGeom = new THREE.CylinderGeometry(0.0005, 0.0005, 0.016, 8);
+        
+        const leftPost = new THREE.Mesh(postGeom, postMat);
+        leftPost.position.set(-0.008, 0.004, 0.0);
+        
+        const rightPost = new THREE.Mesh(postGeom, postMat);
+        rightPost.position.set(0.008, 0.004, 0.0);
+        
+        const crossbar = new THREE.Mesh(crossbarGeom, postMat);
+        crossbar.rotation.z = Math.PI / 2;
+        crossbar.position.set(0.0, 0.008, 0.0);
+        
+        // Dynamic glowing neon cyan wireframe net!
+        const netGeom = new THREE.BoxGeometry(0.016, 0.008, 0.006);
+        const netWire = new THREE.EdgesGeometry(netGeom);
+        const netMat = new THREE.LineBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.45
+        });
+        const netMesh = new THREE.LineSegments(netWire, netMat);
+        netMesh.position.set(0.0, 0.004, -0.003); // extend backward
+        
+        group.add(leftPost, rightPost, crossbar, netMesh);
+        return group;
+    }
+
+    private createBasketballHoop(): THREE.Group {
+        const group = new THREE.Group();
+        
+        // Post support (slender, tilted)
+        const postGeom = new THREE.CylinderGeometry(0.0005, 0.0005, 0.016, 8);
+        const postMat = new THREE.MeshBasicMaterial({ color: 0x1f2937 });
+        const post = new THREE.Mesh(postGeom, postMat);
+        post.position.set(0, 0.008, -0.003);
+        post.rotation.x = -Math.PI / 16;
+        group.add(post);
+
+        // Backboard: glass board
+        const boardGeom = new THREE.BoxGeometry(0.015, 0.009, 0.0006);
+        const boardMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.5,
+            depthWrite: false
+        });
+        const board = new THREE.Mesh(boardGeom, boardMat);
+        board.position.set(0, 0.015, -0.002);
+        group.add(board);
+
+        // Backboard orange border outline
+        const boardBorderGeom = new THREE.EdgesGeometry(boardGeom);
+        const boardBorderMat = new THREE.LineBasicMaterial({ color: 0xf97316 });
+        const boardBorder = new THREE.LineSegments(boardBorderGeom, boardBorderMat);
+        boardBorder.position.copy(board.position);
+        group.add(boardBorder);
+
+        // Rim: neon orange ring Torus
+        const rimGeom = new THREE.TorusGeometry(0.0025, 0.0002, 8, 16);
+        const rimMat = new THREE.MeshBasicMaterial({ color: 0xf97316 });
+        const rim = new THREE.Mesh(rimGeom, rimMat);
+        rim.rotation.x = Math.PI / 2;
+        rim.position.set(0, 0.0125, 0.001);
+        group.add(rim);
+
+        // Net: cyber cyan wireframe net
+        const netGeom = new THREE.CylinderGeometry(0.0025, 0.0015, 0.004, 12, 1, true);
+        const netWire = new THREE.EdgesGeometry(netGeom);
+        const netMat = new THREE.LineBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.65
+        });
+        const netMesh = new THREE.LineSegments(netWire, netMat);
+        netMesh.position.set(0, 0.0105, 0.001);
+        group.add(netMesh);
+
+        // Reference internal meshes
+        (group as any).netMesh = netMesh;
+        (group as any).rimMesh = rim;
+
+        return group;
+    }
+
+    private initSportSequenceSystem() {
+        // Create parent group for sports sequences props
+        this.sportPropsGroup = new THREE.Group();
+        this.tableGroup.add(this.sportPropsGroup);
+
+        // --- 1. CRICKET PROPS (default) ---
+        // Neon green Wickets/Stumps group
+        const stumpsGroup = new THREE.Group();
+        const stumpGeom = new THREE.CylinderGeometry(0.0002, 0.0002, 0.006, 8);
+        const stumpMat = new THREE.MeshBasicMaterial({
+            color: 0x00ff66,
+            transparent: true,
+            opacity: 0.85
+        });
+        const s1 = new THREE.Mesh(stumpGeom, stumpMat); s1.position.set(-0.0012, 0.003, 0);
+        const s2 = new THREE.Mesh(stumpGeom, stumpMat); s2.position.set(0, 0.003, 0);
+        const s3 = new THREE.Mesh(stumpGeom, stumpMat); s3.position.set(0.0012, 0.003, 0);
+        // Bail on top
+        const bailGeom = new THREE.BoxGeometry(0.003, 0.0002, 0.0002);
+        const bail = new THREE.Mesh(bailGeom, stumpMat); bail.position.set(0, 0.006, 0);
+        stumpsGroup.add(s1, s2, s3, bail);
+        stumpsGroup.position.set(0, 0.001, -0.045);
+        this.cricketStumpsMesh = stumpsGroup;
+        this.sportPropsGroup.add(this.cricketStumpsMesh);
+
+        // Neon gold wooden bat group
+        const batGroup = new THREE.Group();
+        const bladeGeom = new THREE.BoxGeometry(0.0015, 0.007, 0.0004);
+        const bladeMat = new THREE.MeshStandardMaterial({
+            color: 0xe2af37,
+            roughness: 0.25,
+            metalness: 0.1
+        });
+        const blade = new THREE.Mesh(bladeGeom, bladeMat);
+        blade.position.y = 0.0035;
+        const handleGeom = new THREE.CylinderGeometry(0.0002, 0.0002, 0.003, 8);
+        const handleMat = new THREE.MeshBasicMaterial({ color: 0x333333 });
+        const handle = new THREE.Mesh(handleGeom, handleMat);
+        handle.position.y = 0.0085;
+        batGroup.add(blade, handle);
+        batGroup.position.set(0, 0.001, -0.035);
+        this.cricketBatMesh = batGroup;
+        this.sportPropsGroup.add(this.cricketBatMesh);
+
+        // --- 2. SEQUENCE BALL & TRAIL ---
+        const ballGeom = new THREE.SphereGeometry(0.002, 16, 16);
+        const ballMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.0,
+            depthWrite: false
+        });
+        this.sequenceBall = new THREE.Mesh(ballGeom, ballMat);
+        this.sequenceBall.visible = false;
+        this.tableGroup.add(this.sequenceBall);
+
+        const trailGeom = new THREE.BufferGeometry();
+        const trailMat = new THREE.LineBasicMaterial({
+            color: 0xff00ff,
+            transparent: true,
+            opacity: 0.0,
+            linewidth: 3,
+            depthWrite: false
+        });
+        this.sequenceBallTrail = new THREE.Line(trailGeom, trailMat);
+        this.sequenceBallTrail.visible = false;
+        this.tableGroup.add(this.sequenceBallTrail);
+
+        // --- 3. DYNAMIC AR CELEBRATION BANNERS ---
+        this.sportCelebrationCard = new THREE.Group();
+        this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.075, 0.0);
+        this.sportCelebrationCard.visible = false;
+        this.tableGroup.add(this.sportCelebrationCard);
+
+        // Glass backing card
+        const cardBackGeom = new THREE.BoxGeometry(0.09, 0.045, 0.002);
+        const cardBackMat = new THREE.MeshBasicMaterial({
+            color: 0x030712,
+            transparent: true,
+            opacity: 0.65,
+            depthWrite: false
+        });
+        const cardBack = new THREE.Mesh(cardBackGeom, cardBackMat);
+        this.sportCelebrationCard.add(cardBack);
+
+        // Glowing border outline
+        const cardBorderGeom = new THREE.EdgesGeometry(cardBackGeom);
+        const cardBorderMat = new THREE.LineBasicMaterial({ color: 0xff00ff, linewidth: 2 });
+        const cardBorder = new THREE.LineSegments(cardBorderGeom, cardBorderMat);
+        this.sportCelebrationCard.add(cardBorder);
+
+        // Draw Canvas texture
+        this.celebrationCardCanvas = document.createElement('canvas');
+        this.celebrationCardCanvas.width = 256;
+        this.celebrationCardCanvas.height = 128;
+        this.celebrationCardCtx = this.celebrationCardCanvas.getContext('2d')!;
+        
+        this.sportCelebrationTexture = new THREE.CanvasTexture(this.celebrationCardCanvas);
+        this.sportCelebrationTexture.colorSpace = THREE.SRGBColorSpace;
+        
+        this.sportCelebrationCardMat = new THREE.MeshBasicMaterial({
+            map: this.sportCelebrationTexture,
+            transparent: true,
+            opacity: 0.95,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        
+        const cardPlaneGeom = new THREE.PlaneGeometry(0.088, 0.043);
+        const cardPlane = new THREE.Mesh(cardPlaneGeom, this.sportCelebrationCardMat);
+        cardPlane.position.z = 0.0015;
+        this.sportCelebrationCard.add(cardPlane);
+    }
+
+    private triggerFirework(
+        x: number,
+        y: number,
+        z: number,
+        colorHex: number,
+        targetHeight: number = 0.02,
+        vx: number = 0.0,
+        vy: number = 0.09,
+        vz: number = 0.0,
+        scale: number = 1.0
+    ) {
+        let slot = -1;
+        for (let i = 0; i < this.MAX_FIREWORKS; i++) {
+            if (this.fireworkActive[i] === 0) {
+                slot = i;
+                break;
+            }
+        }
+
+        if (slot === -1) {
+            let oldestVal = -1;
+            let oldestSlot = 0;
+            for (let i = 0; i < this.MAX_FIREWORKS; i++) {
+                if (this.fireworkAge[i] > oldestVal) {
+                    oldestVal = this.fireworkAge[i];
+                    oldestSlot = i;
+                }
+            }
+            slot = oldestSlot;
+        }
+
+        this.fireworkActive[slot] = 1;
+        this.fireworkAge[slot] = 0.0;
+        this.fireworkPhase[slot] = 0; // Starts as rising rocket shell (fizzing ball)
+        this.fireworkLaunchY[slot] = y;
+        this.fireworkTargetHeight[slot] = targetHeight;
+        this.fireworkPositions[slot * 3 + 0] = x;
+        this.fireworkPositions[slot * 3 + 1] = y;
+        this.fireworkPositions[slot * 3 + 2] = z;
+        this.fireworkColors[slot] = colorHex;
+        this.fireworkLaunchVelocities[slot * 3 + 0] = vx;
+        this.fireworkLaunchVelocities[slot * 3 + 1] = vy;
+        this.fireworkLaunchVelocities[slot * 3 + 2] = vz;
+        this.fireworkScale[slot] = scale;
+    }
+
+    private updateFireworks(dt: number) {
+        if (!this.fireworksMesh) return;
+
+        let needsMatrixUpdate = false;
+        let needsColorUpdate = false;
+
+        const GRAVITY = 0.05; // gentle downward gravity in burst phase
+        const DRAG = Math.pow(0.93, dt * 90); // atmospheric friction drag for fine mist expansion
+
+        for (let i = 0; i < this.MAX_FIREWORKS; i++) {
+            const startPIdx = i * this.PARTICLES_PER_FIREWORK;
+
+            if (this.fireworkActive[i] === 1) {
+                this.fireworkAge[i] += dt;
+                const age = this.fireworkAge[i];
+
+                if (this.fireworkPhase[i] === 0) {
+                    // ─── PHASE 0: RISING ROCKET tracer (fizzing ball) ───
+                    const originX = this.fireworkPositions[i * 3 + 0];
+                    const originY = this.fireworkPositions[i * 3 + 1];
+                    const originZ = this.fireworkPositions[i * 3 + 2];
+                    const vx = this.fireworkLaunchVelocities[i * 3 + 0];
+                    const vy = this.fireworkLaunchVelocities[i * 3 + 1];
+                    const vz = this.fireworkLaunchVelocities[i * 3 + 2];
+
+                    // Project coordinates along the 3D launch velocity vector
+                    const px_curr = originX + vx * age;
+                    const py_curr = originY + vy * age;
+                    const pz_curr = originZ + vz * age;
+
+                    // Calculate total travel distance
+                    const travelDist = Math.sqrt((vx * age) ** 2 + (vy * age) ** 2 + (vz * age) ** 2);
+                    const threshold = this.fireworkTargetHeight[i];
+
+                    // Burst after exactly targetHeight meters of travel distance
+                    if (travelDist >= threshold) {
+                        this.fireworkPhase[i] = 1; // Transition to burst phase
+                        this.fireworkAge[i] = 0.0; // Reset age for particle lifecycle
+                        this.fireworkMaxAge[i] = 0.7 + Math.random() * 0.4; // burst duration 0.7s to 1.1s
+                        
+                        // Capture coordinates of the burst center
+                        this.fireworkPositions[i * 3 + 0] = px_curr;
+                        this.fireworkPositions[i * 3 + 1] = py_curr;
+                        this.fireworkPositions[i * 3 + 2] = pz_curr;
+                        const colorHex = this.fireworkColors[i];
+
+                        // Define beautiful secondary/accent particle colors for maximum realism
+                        const colors = [0xff0055, 0x00ffff, 0xffff00, 0xff3300, 0x00ff66, 0xff00ff, 0xffaa00, 0x00aaff];
+
+                        // Generate spherical velocities for all particles originating at burst center
+                        for (let j = 0; j < this.PARTICLES_PER_FIREWORK; j++) {
+                            const pIdx = startPIdx + j;
+                            
+                            // Reset offsets at center
+                            this.particleOffsets[pIdx * 3 + 0] = 0;
+                            this.particleOffsets[pIdx * 3 + 1] = 0;
+                            this.particleOffsets[pIdx * 3 + 2] = 0;
+
+                            const theta = Math.random() * Math.PI * 2;
+                            const phi = Math.acos(Math.random() * 2.0 - 1.0); // full sphere distribution
+                            
+                            // Fine density: spread particles like high-speed mist
+                            const isOuterShell = Math.random() > 0.35;
+                            const baseSpeed = isOuterShell ? (0.065 + Math.random() * 0.04) : (0.02 + Math.random() * 0.03);
+                            
+                            // Scale the particle velocity speed by the firework's burst scale multiplier
+                            const fScale = this.fireworkScale[i];
+                            const speed = baseSpeed * (0.8 + Math.random() * 0.4) * fScale; // chaotic dispersion
+
+                            this.particleVelocities[pIdx * 3 + 0] = speed * Math.sin(phi) * Math.cos(theta);
+                            this.particleVelocities[pIdx * 3 + 1] = speed * Math.cos(phi);
+                            this.particleVelocities[pIdx * 3 + 2] = speed * Math.sin(phi) * Math.sin(theta);
+
+                            // Staggered complementary palette styling
+                            let pCol = colorHex;
+                            if (Math.random() > 0.5) {
+                                if (colorHex === 0xff6600) pCol = 0xff00ff;
+                                else if (colorHex === 0xffff00) pCol = 0xff3300;
+                                else if (colorHex === 0x00ff66) pCol = 0x00ffff;
+                                else if (colorHex === 0xff3333) pCol = 0xffaa00;
+                                else {
+                                    pCol = colors[Math.floor(Math.random() * colors.length)];
+                                }
+                            }
+                            this.particleColors[pIdx] = pCol;
+                        }
+                    } else {
+                        // Render tight, fizzing rocket tracer shell (dense bundle of tiny particles)
+                        const colorHex = this.fireworkColors[i];
+                        this.fireworkColorObj.setHex(colorHex);
+
+                        for (let j = 0; j < this.PARTICLES_PER_FIREWORK; j++) {
+                            const pIdx = startPIdx + j;
+                            
+                            // Fizzing noise (2.0mm radius max)
+                            const theta = Math.random() * Math.PI * 2;
+                            const r = Math.random() * 0.002; 
+                            const px = px_curr + Math.cos(theta) * r;
+                            const py = py_curr + (Math.random() - 0.5) * 0.002;
+                            const pz = pz_curr + Math.sin(theta) * r;
+
+                            this.fireworkDummy.position.set(px, py, pz);
+                            // Rocket particles are tiny (1.2mm scale relative to 1mm geometry)
+                            const scale = 1.2 * (0.8 + Math.random() * 0.4);
+                            this.fireworkDummy.scale.setScalar(scale);
+                            this.fireworkDummy.updateMatrix();
+
+                            this.fireworksMesh.setMatrixAt(pIdx, this.fireworkDummy.matrix);
+                            this.fireworksMesh.setColorAt(pIdx, this.fireworkColorObj);
+                        }
+                        needsMatrixUpdate = true;
+                        needsColorUpdate = true;
+                    }
+                } else {
+                    // ─── PHASE 1: BURST SHOWER ───
+                    const maxAge = this.fireworkMaxAge[i];
+
+                    if (age >= maxAge) {
+                        this.fireworkActive[i] = 0;
+                        this.fireworkDummy.scale.setScalar(0);
+                        this.fireworkDummy.updateMatrix();
+                        for (let j = 0; j < this.PARTICLES_PER_FIREWORK; j++) {
+                            this.fireworksMesh.setMatrixAt(startPIdx + j, this.fireworkDummy.matrix);
+                        }
+                        needsMatrixUpdate = true;
+                    } else {
+                        const t = age / maxAge;
+                        const originX = this.fireworkPositions[i * 3 + 0];
+                        const originY = this.fireworkPositions[i * 3 + 1];
+                        const originZ = this.fireworkPositions[i * 3 + 2];
+                        const fScale = this.fireworkScale[i];
+
+                        for (let j = 0; j < this.PARTICLES_PER_FIREWORK; j++) {
+                            const pIdx = startPIdx + j;
+
+                            // Physics
+                            this.particleVelocities[pIdx * 3 + 1] -= GRAVITY * dt;
+                            this.particleVelocities[pIdx * 3 + 0] *= DRAG;
+                            this.particleVelocities[pIdx * 3 + 1] *= DRAG;
+                            this.particleVelocities[pIdx * 3 + 2] *= DRAG;
+
+                            this.particleOffsets[pIdx * 3 + 0] += this.particleVelocities[pIdx * 3 + 0] * dt;
+                            this.particleOffsets[pIdx * 3 + 1] += this.particleVelocities[pIdx * 3 + 1] * dt;
+                            this.particleOffsets[pIdx * 3 + 2] += this.particleVelocities[pIdx * 3 + 2] * dt;
+
+                            const px = originX + this.particleOffsets[pIdx * 3 + 0];
+                            const py = originY + this.particleOffsets[pIdx * 3 + 1];
+                            const pz = originZ + this.particleOffsets[pIdx * 3 + 2];
+
+                            this.fireworkDummy.position.set(px, py, pz);
+                            
+                            // Fine mist rendering: apply scale multiplier to physical particle scale
+                            const scaleVar = 0.8 + (j % 4) * 0.15; // 0.8 to 1.25
+                            const scale = 1.0 * (1.0 - t) * scaleVar * Math.min(1.5, fScale); 
+                            this.fireworkDummy.scale.setScalar(scale);
+                            this.fireworkDummy.updateMatrix();
+
+                            this.fireworkColorObj.setHex(this.particleColors[pIdx]);
+                            
+                            let intensity = 1.0 - t;
+                            if (t > 0.4) {
+                                // Shimmering/twinkling crackle frequency
+                                const shimmer = Math.sin(age * 65.0 + j * 23.0) * 0.5 + 0.5;
+                                intensity *= shimmer;
+                            }
+                            this.fireworkColorObj.multiplyScalar(intensity);
+
+                            this.fireworksMesh.setMatrixAt(pIdx, this.fireworkDummy.matrix);
+                            this.fireworksMesh.setColorAt(pIdx, this.fireworkColorObj);
+                        }
+                        needsMatrixUpdate = true;
+                        needsColorUpdate = true;
+                    }
+                }
+            }
+        }
+
+        if (needsMatrixUpdate) {
+            this.fireworksMesh.instanceMatrix.needsUpdate = true;
+        }
+        if (needsColorUpdate && this.fireworksMesh.instanceColor) {
+            this.fireworksMesh.instanceColor.needsUpdate = true;
+        }
+    }
+
+    private updateWeather(dt: number) {
+        if (!this.weatherMesh) return;
+
+        if (this.weatherMode === 'off') {
+            if (this.weatherMesh.visible) {
+                this.weatherMesh.visible = false;
+                if (this.isLightningStriking) {
+                    this.isLightningStriking = false;
+                    this.standsOriginalColors.forEach(c => {
+                        c.mat.wireframe = c.wireframe;
+                        c.mat.emissive.setHex(c.emissiveHex);
+                        c.mat.emissiveIntensity = c.emissiveIntensity;
+                    });
+                    this.floodlightOriginalColors.forEach(c => {
+                        c.mat.emissive.setHex(c.emissiveHex);
+                        c.mat.emissiveIntensity = c.emissiveIntensity;
+                    });
+                }
+            }
+            return;
+        }
+
+        this.weatherMesh.visible = true;
+        this.lightningTimer += dt;
+
+        // --- Handle Sheet Lightning flash cycle ---
+        if (this.lightningTimer >= this.lightningNextStrikeTime) {
+            this.lightningTimer = 0.0;
+            this.isLightningStriking = true;
+            this.lightningStrikeDuration = 0.15; // flash lasts 150ms
+            this.lightningNextStrikeTime = 6.0 + Math.random() * 8.0;
+
+            this.floodlightOriginalColors.forEach(c => {
+                c.mat.emissive.setHex(0x00ffff);
+                c.mat.emissiveIntensity = 5.0;
+            });
+            this.standsOriginalColors.forEach(c => {
+                c.mat.wireframe = true;
+                c.mat.emissive.setHex(0x00aaff);
+                c.mat.emissiveIntensity = 2.5;
+            });
+        }
+
+        if (this.isLightningStriking) {
+            this.lightningStrikeDuration -= dt;
+            if (this.lightningStrikeDuration <= 0.0) {
+                this.isLightningStriking = false;
+                this.floodlightOriginalColors.forEach(c => {
+                    c.mat.emissive.setHex(c.emissiveHex);
+                    c.mat.emissiveIntensity = c.emissiveIntensity;
+                });
+                this.standsOriginalColors.forEach(c => {
+                    c.mat.wireframe = c.wireframe;
+                    c.mat.emissive.setHex(c.emissiveHex);
+                    c.mat.emissiveIntensity = c.emissiveIntensity;
+                });
+            }
+        }
+
+        // --- Animate falling/drifting instanced weather particles ---
+        const dummy = new THREE.Object3D();
+        const cyan = new THREE.Color(0x00ffff);
+        const colorObj = new THREE.Color();
+        const dustColors = [0xff00ff, 0x00ffff, 0xffaa00]; // Magenta, Cyan, Gold dust
+
+        for (let i = 0; i < this.MAX_WEATHER_PARTICLES; i++) {
+            let px = this.weatherPositions[i * 3 + 0];
+            let py = this.weatherPositions[i * 3 + 1];
+            let pz = this.weatherPositions[i * 3 + 2];
+
+            const vx = this.weatherVelocities[i * 3 + 0];
+            const vy = this.weatherVelocities[i * 3 + 1];
+            const vz = this.weatherVelocities[i * 3 + 2];
+
+            px += vx * dt;
+            py += vy * dt;
+            pz += vz * dt;
+
+            if (py <= 0.009) {
+                py = 0.16 + Math.random() * 0.02;
+                const angle = Math.random() * Math.PI * 2;
+                const r = Math.random() * 0.13;
+                px = Math.cos(angle) * r;
+                pz = Math.sin(angle) * r;
+            }
+
+            this.weatherPositions[i * 3 + 0] = px;
+            this.weatherPositions[i * 3 + 1] = py;
+            this.weatherPositions[i * 3 + 2] = pz;
+
+            dummy.position.set(px, py, pz);
+
+            if (this.weatherMode === 'rain') {
+                dummy.scale.set(1.0, 1.0, 1.0);
+                dummy.updateMatrix();
+                this.weatherMesh.setMatrixAt(i, dummy.matrix);
+                this.weatherMesh.setColorAt(i, cyan);
+            } else if (this.weatherMode === 'neon_dust') {
+                this.weatherVelocities[i * 3 + 0] = Math.sin(this.radarTime * 2.0 + i) * 0.02;
+                this.weatherVelocities[i * 3 + 1] = -0.015 - Math.random() * 0.01;
+                this.weatherVelocities[i * 3 + 2] = Math.cos(this.radarTime * 2.0 + i) * 0.02;
+
+                dummy.scale.set(1.0, 0.2, 1.0); // 50% smaller (was 2.0, 0.4, 2.0)
+                dummy.updateMatrix();
+                this.weatherMesh.setMatrixAt(i, dummy.matrix);
+                
+                colorObj.setHex(0xffffff); // Pure white snow
+                this.weatherMesh.setColorAt(i, colorObj);
+            }
+        }
+
+        this.weatherMesh.instanceMatrix.needsUpdate = true;
+        if (this.weatherMesh.instanceColor) {
+            this.weatherMesh.instanceColor.needsUpdate = true;
+        }
+    }
+
+    private updateSandboxBall(dt: number) {
+        if (!this.isSandboxBallActive) {
+            this.sandboxBall.visible = false;
+            return;
+        }
+
+        this.sandboxBall.visible = true;
+
+        const leftTip = new THREE.Vector3();
+        const rightTip = new THREE.Vector3();
+        const leftPinch = this.getIndexPinchData('left', leftTip);
+        const rightPinch = this.getIndexPinchData('right', rightTip);
+
+        const ballWorldPos = new THREE.Vector3();
+        this.sandboxBall.getWorldPosition(ballWorldPos);
+
+        // --- Grabbing state check ---
+        if (!this.isSandboxBallGrabbed) {
+            let grabHand: 'left' | 'right' | null = null;
+            if (leftPinch && leftTip.distanceTo(ballWorldPos) < 0.04) {
+                grabHand = 'left';
+            } else if (rightPinch && rightTip.distanceTo(ballWorldPos) < 0.04) {
+                grabHand = 'right';
+            }
+
+            if (grabHand) {
+                this.isSandboxBallGrabbed = true;
+                this.lastGrabPos.copy(grabHand === 'left' ? leftTip : rightTip);
+                this.sandboxBallVel.set(0, 0, 0);
+            }
+        }
+
+        if (this.isSandboxBallGrabbed) {
+            const isLeftGrab = leftPinch && leftTip.distanceTo(ballWorldPos) < 0.08;
+            const isRightGrab = rightPinch && rightTip.distanceTo(ballWorldPos) < 0.08;
+            
+            if (!isLeftGrab && !isRightGrab) {
+                this.isSandboxBallGrabbed = false;
+                this.sandboxBallVel.multiplyScalar(1.4);
+            } else {
+                const targetHandPos = isLeftGrab ? leftTip : rightTip;
+                const localHandPos = targetHandPos.clone().applyMatrix4(this.tableGroup.matrixWorld.clone().invert());
+                
+                const instVel = new THREE.Vector3().subVectors(localHandPos, this.sandboxBall.position).multiplyScalar(1.0 / Math.max(dt, 0.001));
+                this.sandboxBallVel.lerp(instVel, 0.35);
+
+                this.sandboxBall.position.copy(localHandPos);
+                
+                const halo = this.sandboxBall.children[0];
+                if (halo) halo.rotation.z += dt * 5.0;
+            }
+        } else {
+            // --- Euler physics simulation ---
+            const GRAVITY = 0.45;
+            const FLOOR_Y = 0.009;
+            const RESTITUTION = 0.65;
+            const DAMPING = Math.pow(0.992, dt * 90);
+
+            this.sandboxBallVel.y -= GRAVITY * dt;
+            this.sandboxBallVel.multiplyScalar(DAMPING);
+
+            this.sandboxBall.position.addScaledVector(this.sandboxBallVel, dt);
+
+            // --- Bound Bouncing solver ---
+            if (this.sandboxBall.position.y <= FLOOR_Y) {
+                this.sandboxBall.position.y = FLOOR_Y;
+                this.sandboxBallVel.y = Math.abs(this.sandboxBallVel.y) * RESTITUTION;
+                this.sandboxBallVel.x *= RESTITUTION;
+                this.sandboxBallVel.z *= RESTITUTION;
+
+                if (Math.abs(this.sandboxBallVel.y) > 0.02) {
+                    this.triggerFirework(
+                        this.sandboxBall.position.x, FLOOR_Y, this.sandboxBall.position.z, 
+                        0xffaa00, 0.012, 0.0, 0.04, 0.0, 0.6
+                    );
+                }
+            }
+
+            const bx = this.sandboxBall.position.x;
+            const bz = this.sandboxBall.position.z;
+            const stType = this.currentStadiumType;
+
+            if (stType === 'berlin') {
+                const R = 0.13;
+                const dist = Math.sqrt(bx * bx + bz * bz);
+                if (dist >= R) {
+                    const nx = bx / dist;
+                    const nz = bz / dist;
+                    const dot = this.sandboxBallVel.x * nx + this.sandboxBallVel.z * nz;
+                    this.sandboxBallVel.x -= 2 * dot * nx * RESTITUTION;
+                    this.sandboxBallVel.z -= 2 * dot * nz * RESTITUTION;
+
+                    this.sandboxBall.position.x = nx * (R - 0.001);
+                    this.sandboxBall.position.z = nz * (R - 0.001);
+
+                    if (this.sandboxBallVel.lengthSq() > 0.0005) {
+                        this.triggerFirework(bx, this.sandboxBall.position.y, bz, 0x22d3ee, 0.012, 0.0, 0.03, 0.0, 0.6);
+                    }
+                }
+            } else if (stType === 'inuit') {
+                const RX = 0.14, RZ = 0.11;
+                const ellipse = (bx * bx) / (RX * RX) + (bz * bz) / (RZ * RZ);
+                if (ellipse >= 1.0) {
+                    const nx = (2 * bx) / (RX * RX);
+                    const nz = (2 * bz) / (RZ * RZ);
+                    const len = Math.sqrt(nx * nx + nz * nz) || 1.0;
+                    const nnx = nx / len;
+                    const nnz = nz / len;
+                    const dot = this.sandboxBallVel.x * nnx + this.sandboxBallVel.z * nnz;
+                    this.sandboxBallVel.x -= 2 * dot * nnx * RESTITUTION;
+                    this.sandboxBallVel.z -= 2 * dot * nnz * RESTITUTION;
+
+                    const s = 0.999 / Math.sqrt(ellipse);
+                    this.sandboxBall.position.x = bx * s;
+                    this.sandboxBall.position.z = bz * s;
+
+                    if (this.sandboxBallVel.lengthSq() > 0.0005) {
+                        this.triggerFirework(bx, this.sandboxBall.position.y, bz, 0xf97316, 0.012, 0.0, 0.03, 0.0, 0.6);
+                    }
+                }
+            } else {
+                const R = 0.12;
+                const dist = Math.sqrt(bx * bx + bz * bz);
+                if (dist >= R) {
+                    const nx = bx / dist;
+                    const nz = bz / dist;
+                    const dot = this.sandboxBallVel.x * nx + this.sandboxBallVel.z * nz;
+                    this.sandboxBallVel.x -= 2 * dot * nx * RESTITUTION;
+                    this.sandboxBallVel.z -= 2 * dot * nz * RESTITUTION;
+
+                    this.sandboxBall.position.x = nx * (R - 0.001);
+                    this.sandboxBall.position.z = nz * (R - 0.001);
+
+                    if (this.sandboxBallVel.lengthSq() > 0.0005) {
+                        this.triggerFirework(bx, this.sandboxBall.position.y, bz, 0xff0055, 0.012, 0.0, 0.03, 0.0, 0.6);
+                    }
+                }
+            }
+        }
     }
 
     private initTrackingButtons() {
-        // ─── Stadium Roof Arc – SixHoloview Buttons ───────────────────────────
-        // 4 action buttons curved along the inner roof rim of the stadium.
-        // The arc spans ~110° centred on the "back" of the stadium (angle = -Math.PI/2 = top of map).
-        // Buttons face inward (toward pitch centre) so the user can read them from above.
-        const buttonInfo = [
-            { label: "SIX: KOHLI",  color: 0xff6600 },
-            { label: "SIX: SHARMA", color: 0xffff00 },
-            { label: "SIX: SCOOP",  color: 0x00ff66 },
-            { label: "CLEAR",       color: 0xff3333 }
+        // --- 1. CORE DOCK Hexagonal/Cylinder Launcher Button on Stadium Rim ---
+        // Placed at the front-center of the roof rim (angle = 0)
+        const launcherGroup = new THREE.Group();
+        launcherGroup.position.set(0.0, this.ROOF_Y, this.ROOF_RADIUS);
+        launcherGroup.rotation.y = Math.PI; // Face the player
+        this.tableGroup.add(launcherGroup);
+
+        const launcherGeom = new THREE.CylinderGeometry(0.01, 0.01, 0.004, 32);
+        this.tcdLauncherMat = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.55,
+            depthWrite: false
+        });
+        this.tcdLauncherButton = new THREE.Mesh(launcherGeom, this.tcdLauncherMat);
+        this.tcdLauncherButton.rotation.x = Math.PI / 2; // Lie flat/tilted on rim
+        launcherGroup.add(this.tcdLauncherButton);
+
+        // Glowing Canvas Label on launcher
+        const launchCanvas = document.createElement('canvas');
+        launchCanvas.width = 192;
+        launchCanvas.height = 64;
+        const lCtx = launchCanvas.getContext('2d')!;
+        lCtx.clearRect(0, 0, 192, 64);
+        lCtx.fillStyle = 'rgba(2, 6, 26, 0.94)';
+        lCtx.fillRect(0, 0, 192, 64);
+        lCtx.strokeStyle = '#00ffff';
+        lCtx.lineWidth = 5;
+        lCtx.strokeRect(3, 3, 186, 58);
+        lCtx.fillStyle = '#ffffff';
+        lCtx.font = 'bold 20px monospace';
+        lCtx.textAlign = 'center';
+        lCtx.textBaseline = 'middle';
+        lCtx.fillText("CORE DOCK", 96, 32);
+
+        const lTex = new THREE.CanvasTexture(launchCanvas);
+        lTex.colorSpace = THREE.SRGBColorSpace;
+        lTex.needsUpdate = true;
+
+        const lLabelGeom = new THREE.PlaneGeometry(0.02, 0.0075);
+        const lLabelMat = new THREE.MeshBasicMaterial({
+            map: lTex,
+            transparent: true,
+            opacity: 0.95,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const lLabelMesh = new THREE.Mesh(lLabelGeom, lLabelMat);
+        lLabelMesh.position.set(0.0, 0.006, 0.002);
+        launcherGroup.add(lLabelMesh);
+
+        // --- 2. Floating TCD Command Dock Panel Group ---
+        this.tcdPanelGroup = new THREE.Group();
+        this.tcdPanelGroup.position.set(0.0, this.ROOF_Y + 0.045, this.ROOF_RADIUS);
+        this.tcdPanelGroup.visible = false;
+        this.tableGroup.add(this.tcdPanelGroup);
+
+        // Obsidian glass backing plane
+        const backplaneGeom = new THREE.BoxGeometry(0.096, 0.065, 0.002);
+        const backplaneMat = new THREE.MeshBasicMaterial({
+            color: 0x030712,
+            transparent: true,
+            opacity: 0.45,
+            depthWrite: false
+        });
+        const backplane = new THREE.Mesh(backplaneGeom, backplaneMat);
+        this.tcdPanelGroup.add(backplane);
+
+        // Glowing cyan outline border
+        const borderGeom = new THREE.EdgesGeometry(backplaneGeom);
+        const borderMat = new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 2 });
+        const border = new THREE.LineSegments(borderGeom, borderMat);
+        this.tcdPanelGroup.add(border);
+
+        // --- 3. Grid of 7 TCD Action Buttons ---
+        const tcdButtonConfigs = [
+            { label: "KOHLI",  color: 0x00ffff,  x: -0.026, y: 0.016 },
+            { label: "SHARMA", color: 0xffff00,  x: 0.0,    y: 0.016 },
+            { label: "SCOOP",  color: 0x00ff66,  x: 0.026,  y: 0.016 },
+            { label: "Play SEQ", color: 0xff00ff,  x: -0.026, y: 0.001 },
+            { label: "STORM",  color: 0x6366f1,  x: 0.0,    y: 0.001 },
+            { label: "FLICK",  color: 0xff5500,  x: 0.026,  y: 0.001 },
+            { label: "CLEAR",  color: 0xff3333,  x: 0.0,    y: -0.014 }
         ];
 
-        const numButtons = buttonInfo.length;
-        // Arc spans 110°, centred at angle 0 (positive-Z axis of the table)
-        const arcSpan    = Math.PI * (110 / 180);
-        const arcCenter  = 0; // face the front of the stadium
-        const arcStart   = arcCenter - arcSpan / 2;
-        const arcStep    = arcSpan / (numButtons - 1);
+        const btnGeom = new THREE.BoxGeometry(0.022, 0.011, 0.003);
 
-        // Thin curved button geometry (flat box, small depth)
-        const btnGeom = new THREE.BoxGeometry(0.022, 0.004, 0.008);
-
-        buttonInfo.forEach((b, i) => {
-            const angle = arcStart + i * arcStep;
-
-            // Place on roof rim, pointing inward
-            const bx = Math.sin(angle) * this.ROOF_RADIUS;
-            const bz = Math.cos(angle) * this.ROOF_RADIUS;
-
+        tcdButtonConfigs.forEach((cfg, idx) => {
             const btnGroup = new THREE.Group();
-            btnGroup.position.set(bx, this.ROOF_Y, bz);
-            // Rotate the group so the button faces the centre (inward)
-            btnGroup.rotation.y = angle + Math.PI; // face pitch centre
-            this.tableGroup.add(btnGroup);
+            btnGroup.position.set(cfg.x, cfg.y, 0.002);
+            this.tcdPanelGroup.add(btnGroup);
 
-            // Glowing glass plate
             const bMat = new THREE.MeshBasicMaterial({
-                color: b.color,
+                color: cfg.color,
                 transparent: true,
                 opacity: 0.55,
                 depthWrite: false
             });
             const btnMesh = new THREE.Mesh(btnGeom, bMat);
             btnGroup.add(btnMesh);
-            this.trackingButtons.push(btnMesh);
-            this.buttonMats.push(bMat);
+            this.tcdButtons.push(btnMesh);
+            this.tcdButtonMats.push(bMat);
 
-            // Canvas Text Label rendered on the outward face of the button
+            // Canvas Text Label
             const canvas = document.createElement('canvas');
-            canvas.width = 192;
+            canvas.width = 128;
             canvas.height = 64;
             const ctx = canvas.getContext('2d')!;
-            ctx.clearRect(0, 0, 192, 64);
-
-            ctx.fillStyle = 'rgba(3, 3, 15, 0.92)';
-            ctx.fillRect(0, 0, 192, 64);
-
-            const hexStr = b.color === 0xff6600 ? '#ff6600' :
-                           b.color === 0xffff00 ? '#ffff00' :
-                           b.color === 0x00ff66 ? '#00ff66' : '#ff3333';
+            ctx.clearRect(0, 0, 128, 64);
+            ctx.fillStyle = 'rgba(2, 6, 26, 0.94)';
+            ctx.fillRect(0, 0, 128, 64);
+            
+            const hexStr = '#' + cfg.color.toString(16).padStart(6, '0');
             ctx.strokeStyle = hexStr;
-            ctx.lineWidth = 5;
-            ctx.strokeRect(3, 3, 186, 58);
+            ctx.lineWidth = 4;
+            ctx.strokeRect(2, 2, 124, 60);
 
-            ctx.shadowColor = hexStr;
-            ctx.shadowBlur = 10;
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 22px monospace';
+            if (cfg.label.length > 6) {
+                ctx.font = 'bold 15px monospace';
+            } else {
+                ctx.font = 'bold 20px monospace';
+            }
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(b.label, 96, 32);
+            ctx.fillText(cfg.label, 64, 32);
 
             const tex = new THREE.CanvasTexture(canvas);
             tex.colorSpace = THREE.SRGBColorSpace;
             tex.needsUpdate = true;
 
-            // Label panel sits just inside the button, tilted slightly outward for readability
-            const labelGeom = new THREE.PlaneGeometry(0.022, 0.007);
+            const labelGeom = new THREE.PlaneGeometry(0.02, 0.009);
             const labelMat = new THREE.MeshBasicMaterial({
                 map: tex,
                 transparent: true,
@@ -4150,10 +5435,9 @@ export class DomainExpansionSystem extends createSystem({
                 depthWrite: false
             });
             const labelMesh = new THREE.Mesh(labelGeom, labelMat);
-            // Float label 8mm above button on the same plane
-            labelMesh.position.set(0, 0.008, 0);
+            labelMesh.position.set(0.0, 0.0, 0.0025);
             btnGroup.add(labelMesh);
-            this.buttonLabels.push(labelMesh);
+            this.tcdButtonLabels.push(labelMesh);
         });
 
         // ─── 3D Score Display – curved arc beside the buttons ─────────────────
@@ -4200,6 +5484,20 @@ export class DomainExpansionSystem extends createSystem({
         });
     }
 
+    private areFireworksActive(): boolean {
+        if (!this.fireworkActive) return false;
+        for (let i = 0; i < this.MAX_FIREWORKS; i++) {
+            if (this.fireworkActive[i] === 1) return true;
+        }
+        return false;
+    }
+
+    private triggerManualFireworks() {
+        console.log("[BallTracking] Manual fireworks sequence started!");
+        this.fireworkSeqTimer = 0.0; // Starts sequential timer update loop
+        this.fireworkSeqIndex = 0;   // Staged at index 0
+    }
+
     private triggerSixAnimation(index: number) {
         if (index === 3) {
             // Clear / Reset
@@ -4210,6 +5508,12 @@ export class DomainExpansionSystem extends createSystem({
             this.trailPoints = [];
             this.ballTrail.geometry.setFromPoints([]);
             console.log("[BallTracking] Active tracking animations cleared!");
+            return;
+        }
+
+        if (index === 4) {
+            // Trigger manual fireworks!
+            this.triggerManualFireworks();
             return;
         }
 
@@ -4275,6 +5579,13 @@ export class DomainExpansionSystem extends createSystem({
             // Floor bounce
             if (this.activeBall.position.y <= FLOOR_Y) {
                 this.activeBall.position.y = FLOOR_Y;
+                
+                // Trigger localized mini sparkler burst on strong floor bounce
+                if (Math.abs(this.ballVelocity.y) > 0.04) {
+                    const colHex = stType === 'berlin' ? 0x22d3ee : 0xf97316;
+                    this.triggerFirework(this.activeBall.position.x, FLOOR_Y, this.activeBall.position.z, colHex);
+                }
+
                 this.ballVelocity.y = Math.abs(this.ballVelocity.y) * RESTITUTION;
                 this.ballVelocity.x *= RESTITUTION;
                 this.ballVelocity.z *= RESTITUTION;
@@ -4288,6 +5599,11 @@ export class DomainExpansionSystem extends createSystem({
                 const R = 0.13;
                 const dist = Math.sqrt(bx * bx + bz * bz);
                 if (dist >= R) {
+                    // Trigger wall bounce sparkler
+                    if (this.ballVelocity.lengthSq() > 0.001) {
+                        this.triggerFirework(bx, this.activeBall.position.y, bz, 0x22d3ee);
+                    }
+                    
                     // Reflect velocity off the cylindrical wall normal
                     const nx = bx / dist;
                     const nz = bz / dist;
@@ -4303,6 +5619,11 @@ export class DomainExpansionSystem extends createSystem({
                 const RX = 0.14, RZ = 0.11;
                 const ellipseCheck = (bx * bx) / (RX * RX) + (bz * bz) / (RZ * RZ);
                 if (ellipseCheck >= 1.0) {
+                    // Trigger wall bounce sparkler
+                    if (this.ballVelocity.lengthSq() > 0.001) {
+                        this.triggerFirework(bx, this.activeBall.position.y, bz, 0xf97316);
+                    }
+                    
                     // Approximate normal from gradient of ellipse equation
                     const nx = (2 * bx) / (RX * RX);
                     const nz = (2 * bz) / (RZ * RZ);
@@ -4335,21 +5656,24 @@ export class DomainExpansionSystem extends createSystem({
         }
 
         // ── Default stadium: original Bezier spline path ─────────────────────
+        const prevT = this.ballAnimT;
         const speed = 0.36; // 1.0 / 2.8s
         this.ballAnimT += dt * speed;
 
+        let hasWrapped = false;
         if (this.ballAnimT >= 1.0) {
             this.ballAnimT = 0.0;
             this.trailPoints = []; // Reset trail for next loop
+            hasWrapped = true;
         }
 
         const t = this.ballAnimT;
 
         // Calculate positions
-        let start = new THREE.Vector3();
-        let hitPos = new THREE.Vector3();
-        let landing = new THREE.Vector3();
-        let ballPos = new THREE.Vector3();
+        const start = new THREE.Vector3();
+        const hitPos = new THREE.Vector3();
+        const landing = new THREE.Vector3();
+        const ballPos = new THREE.Vector3();
 
         if (this.currentSixIndex === 0) {
             // Kohli Straight Six over Long-On (Forward-Left direction)
@@ -4413,6 +5737,20 @@ export class DomainExpansionSystem extends createSystem({
             }
         }
 
+        // Trigger celebratory fireworks on bat hit (t = 0.25) and boundary landing (t = 1.0)
+        const crossedHit = (prevT < 0.25 && (t >= 0.25 || hasWrapped));
+        const crossedLanding = hasWrapped;
+
+        const colors = { default: [0xff6600, 0xffff00, 0x00ff66], berlin: [0x22d3ee], inuit: [0xf97316] };
+        const col = colors.default[this.currentSixIndex] || 0xff6600;
+
+        if (crossedHit) {
+            this.triggerFirework(hitPos.x, hitPos.y, hitPos.z, col);
+        }
+        if (crossedLanding) {
+            this.triggerFirework(landing.x, landing.y, landing.z, col);
+        }
+
         // Set active ball position
         this.activeBall.position.copy(ballPos);
 
@@ -4438,58 +5776,531 @@ export class DomainExpansionSystem extends createSystem({
         hasRight: boolean,
         dt: number
     ) {
+        if (!this.tcdLauncherButton) return;
+
         const btnWorldPos = new THREE.Vector3();
+        
+        // --- 1. Update CORE DOCK Launcher Button ---
+        this.tcdLauncherButton.getWorldPosition(btnWorldPos);
+        let distL = Infinity;
+        let distR = Infinity;
+        if (hasLeft) distL = leftIndexPos.distanceTo(btnWorldPos);
+        if (hasRight) distR = rightIndexPos.distanceTo(btnWorldPos);
 
-        for (let i = 0; i < this.trackingButtons.length; i++) {
-            const btn = this.trackingButtons[i];
-            btn.getWorldPosition(btnWorldPos);
+        const isLauncherHovered = distL < 0.025 || distR < 0.025;
+        const targetLauncherOpacity = isLauncherHovered ? 0.97 : 0.55;
+        this.tcdLauncherMat.opacity += (targetLauncherOpacity - this.tcdLauncherMat.opacity) * 10.0 * dt;
 
-            let distToLeft  = Infinity;
-            let distToRight = Infinity;
-            if (hasLeft)  distToLeft  = leftIndexPos.distanceTo(btnWorldPos);
-            if (hasRight) distToRight = rightIndexPos.distanceTo(btnWorldPos);
+        if (isLauncherHovered) {
+            this.tcdLauncherPinchProgress += dt;
+            if (this.tcdLauncherPinchProgress > 0.5) this.tcdLauncherPinchProgress = 0.5;
 
-            // Hover threshold: index finger tip within 2.5 cm of the button
-            const isHovered = distToLeft < 0.025 || distToRight < 0.025;
+            const chargeRatio = this.tcdLauncherPinchProgress / 0.5;
+            // Visual stretch & micro-vibration as charge indicators
+            this.tcdLauncherButton.scale.set(1.0 + chargeRatio * 0.4, 1.0 + chargeRatio * 1.5, 1.0 + chargeRatio * 0.4);
+            this.tcdLauncherButton.position.y = Math.sin(this.radarTime * 50.0) * 0.0006 * chargeRatio;
 
-            // Glow feedback — brighter when hovered
-            const targetOpacity = isHovered ? 0.97 : 0.55;
-            this.buttonMats[i].opacity += (targetOpacity - this.buttonMats[i].opacity) * 10.0 * dt;
+            if (this.tcdLauncherPinchProgress >= 0.5 && this.menuToggleCooldown <= 0.0) {
+                this.menuToggleCooldown = 0.8;
+                this.tcdLauncherPinchProgress = 0.0;
 
-            if (isHovered) {
-                // Accumulate hover dwell time (2-second hold to activate)
-                this.buttonPinchProgress[i] += dt;
-                if (this.buttonPinchProgress[i] > 2.0) {
-                    this.buttonPinchProgress[i] = 2.0;
+                // Toggle visibility
+                this.tcdVisible = !this.tcdVisible;
+                this.tcdPanelGroup.visible = this.tcdVisible;
+
+                // Click shockwave visual scale burst
+                this.tcdLauncherButton.scale.set(1.4, 0.4, 1.4);
+            }
+        } else {
+            this.tcdLauncherPinchProgress -= dt * 2.0;
+            if (this.tcdLauncherPinchProgress < 0.0) this.tcdLauncherPinchProgress = 0.0;
+
+            this.tcdLauncherButton.scale.x += (1.0 - this.tcdLauncherButton.scale.x) * 10.0 * dt;
+            this.tcdLauncherButton.scale.y += (1.0 - this.tcdLauncherButton.scale.y) * 10.0 * dt;
+            this.tcdLauncherButton.scale.z += (1.0 - this.tcdLauncherButton.scale.z) * 10.0 * dt;
+            this.tcdLauncherButton.position.y += (0.0 - this.tcdLauncherButton.position.y) * 10.0 * dt;
+        }
+
+        // --- 2. Update TCD Panel LookAt Billboarding ---
+        if (this.tcdVisible && this.tcdPanelGroup) {
+            const lPos = new THREE.Vector3();
+            this.tcdLauncherButton.getWorldPosition(lPos);
+            const localLPos = lPos.applyMatrix4(this.tableGroup.matrixWorld.clone().invert());
+            this.tcdPanelGroup.position.set(localLPos.x, localLPos.y + 0.045, localLPos.z);
+
+            if (this.player && this.player.head) {
+                const headPos = new THREE.Vector3();
+                this.player.head.getWorldPosition(headPos);
+
+                const panelWorldPos = new THREE.Vector3();
+                this.tcdPanelGroup.getWorldPosition(panelWorldPos);
+
+                const targetPos = headPos.clone();
+                targetPos.y = panelWorldPos.y;
+
+                const toHead = new THREE.Vector3().subVectors(targetPos, panelWorldPos).normalize();
+                const localToHead = toHead.clone().applyQuaternion(this.tableGroup.quaternion.clone().invert());
+
+                const angle = Math.atan2(localToHead.x, localToHead.z);
+                this.tcdPanelGroup.rotation.y = angle;
+            }
+
+            // --- 3. Raycast Dwell Updates for 7 Dock Buttons ---
+            for (let i = 0; i < this.tcdButtons.length; i++) {
+                const btn = this.tcdButtons[i];
+                btn.getWorldPosition(btnWorldPos);
+
+                let distToLeft = Infinity;
+                let distToRight = Infinity;
+                if (hasLeft) distToLeft = leftIndexPos.distanceTo(btnWorldPos);
+                if (hasRight) distToRight = rightIndexPos.distanceTo(btnWorldPos);
+
+                const isHovered = distToLeft < 0.02 || distToRight < 0.02; // Tight 2.0 cm hover radius
+                const targetOpacity = isHovered ? 0.95 : 0.55;
+                this.tcdButtonMats[i].opacity += (targetOpacity - this.tcdButtonMats[i].opacity) * 10.0 * dt;
+
+                if (isHovered) {
+                    this.tcdButtonHoverTimes[i] += dt;
+                    if (this.tcdButtonHoverTimes[i] > 0.5) this.tcdButtonHoverTimes[i] = 0.5; // 0.5s dwell hold
+
+                    const ratio = this.tcdButtonHoverTimes[i] / 0.5;
+                    btn.scale.set(1.0 + ratio * 0.2, 1.0 + ratio * 1.5, 1.0 + ratio * 0.2);
+                    btn.position.z = 0.002 + Math.sin(this.radarTime * 60.0) * 0.0005 * ratio;
+
+                    if (this.tcdButtonHoverTimes[i] >= 0.5 && this.menuToggleCooldown <= 0.0) {
+                        this.menuToggleCooldown = 0.8;
+                        this.tcdButtonHoverTimes[i] = 0.0;
+
+                        // Visual squeeze click feedback
+                        btn.scale.set(1.2, 0.4, 1.2);
+
+                        // Trigger actions
+                        if (i === 0) this.triggerSixAnimation(0);      // KOHLI
+                        else if (i === 1) this.triggerSixAnimation(1); // SHARMA
+                        else if (i === 2) this.triggerSixAnimation(2); // SCOOP
+                        else if (i === 3) this.triggerSportSequence(); // Play SEQ
+                        else if (i === 4) {
+                            // Cycle weather Mode: off -> rain -> neon_dust -> off
+                            if (this.weatherMode === 'off') this.setWeatherMode('rain');
+                            else if (this.weatherMode === 'rain') this.setWeatherMode('neon_dust');
+                            else this.setWeatherMode('off');
+                            console.log(`[TCD] Weather cycled to: ${this.weatherMode}`);
+                        } else if (i === 5) {
+                            // Toggle Flick Sandbox Ball
+                            this.isSandboxBallActive = !this.isSandboxBallActive;
+                            if (this.isSandboxBallActive) {
+                                this.sandboxBall.position.set(0.0, 0.06, 0.0); // drop from 6cm height
+                                this.sandboxBallVel.set(0, 0, 0);
+                            }
+                            console.log(`[TCD] Sandbox Physics Ball active: ${this.isSandboxBallActive}`);
+                        } else if (i === 6) {
+                            // CLEAR/Reset all
+                            this.triggerSixAnimation(3);
+                            this.isSandboxBallActive = false;
+                            this.setWeatherMode('off');
+                            this.isSportSequenceActive = false;
+                            if (this.sportCelebrationCard) this.sportCelebrationCard.visible = false;
+                            if (this.sequenceBall) this.sequenceBall.visible = false;
+                            if (this.sequenceBallTrail) this.sequenceBallTrail.visible = false;
+                            if (this.arBillboard) this.arBillboard.visible = true; // Restore scoreboard
+                            console.log("[TCD] All animations, physics, and weather systems cleared!");
+                        }
+                    }
+                } else {
+                    this.tcdButtonHoverTimes[i] -= dt * 2.0;
+                    if (this.tcdButtonHoverTimes[i] < 0.0) this.tcdButtonHoverTimes[i] = 0.0;
+
+                    btn.scale.x += (1.0 - btn.scale.x) * 10.0 * dt;
+                    btn.scale.y += (1.0 - btn.scale.y) * 10.0 * dt;
+                    btn.scale.z += (1.0 - btn.scale.z) * 10.0 * dt;
+                    btn.position.z += (0.002 - btn.position.z) * 10.0 * dt;
+                }
+            }
+        }
+    }
+
+    private triggerSportSequence() {
+        if (this.isSportSequenceActive) return;
+
+        console.log(`[SportSequence] Triggered sequence for: ${this.currentStadiumType}`);
+        this.isSportSequenceActive = true;
+        this.sportSequenceTime = 0.0;
+        this.sportSequencePhase = 0;
+        this.sequenceBallPoints = [];
+
+        // Clear existing trails
+        this.sequenceBallTrail.geometry.setFromPoints([]);
+
+        // Make ball and trail visible, reset sequence ball positions
+        this.sequenceBall.visible = true;
+        this.sequenceBallTrail.visible = true;
+        (this.sequenceBall.material as THREE.MeshBasicMaterial).opacity = 1.0;
+        (this.sequenceBallTrail.material as THREE.LineBasicMaterial).opacity = 0.95;
+
+        // Reset bat swing rotation in case it was left rotated
+        if (this.cricketBatMesh) {
+            this.cricketBatMesh.rotation.set(0, 0, 0);
+        }
+
+        const stType = this.currentStadiumType;
+        if (stType === 'default') {
+            // Cricket: Ball starts at bowler's release position
+            this.sequenceBall.position.set(0.0, 0.015, 0.045);
+            (this.sequenceBall.material as THREE.MeshBasicMaterial).color.setHex(0xff3333); // Red cricket ball
+            (this.sequenceBallTrail.material as THREE.LineBasicMaterial).color.setHex(0xffaa00);
+        } else if (stType === 'berlin') {
+            // Soccer: Ball starts on pitch center
+            this.sequenceBall.position.set(0.0, 0.003, 0.0);
+            (this.sequenceBall.material as THREE.MeshBasicMaterial).color.setHex(0xffffff); // White soccer ball
+            (this.sequenceBallTrail.material as THREE.LineBasicMaterial).color.setHex(0x22d3ee);
+        } else {
+            // Basketball (Inuit): Ball starts at dribbling baseline
+            this.sequenceBall.position.set(0.03, 0.015, 0.0);
+            (this.sequenceBall.material as THREE.MeshBasicMaterial).color.setHex(0xf97316); // Orange basketball
+            (this.sequenceBallTrail.material as THREE.LineBasicMaterial).color.setHex(0xffff00);
+        }
+
+        // --- DRAW AR CELEBRATION TEXT TO CANVAS ---
+        const canvas = this.celebrationCardCanvas;
+        const ctx = this.celebrationCardCtx;
+        ctx.clearRect(0, 0, 256, 128);
+
+        // Cyberpunk translucent glass panel background drawing
+        ctx.fillStyle = 'rgba(10, 15, 45, 0.9)';
+        ctx.fillRect(0, 0, 256, 128);
+
+        // Harmonious, tailored, rich HSL styling gradients
+        const grad = ctx.createLinearGradient(0, 0, 256, 0);
+        let textVal = "";
+        let borderStroke = "";
+
+        if (stType === 'default') {
+            grad.addColorStop(0, '#f43f5e'); // Pink
+            grad.addColorStop(1, '#eab308'); // Gold
+            textVal = "SIX!!!";
+            borderStroke = '#f43f5e';
+        } else if (stType === 'berlin') {
+            grad.addColorStop(0, '#06b6d4'); // Cyan
+            grad.addColorStop(1, '#ffffff'); // White
+            textVal = "GOAL!!!";
+            borderStroke = '#06b6d4';
+        } else {
+            grad.addColorStop(0, '#f97316'); // Orange
+            grad.addColorStop(1, '#fbbf24'); // Yellow Fire
+            textVal = "DUNK!!!";
+            borderStroke = '#f97316';
+        }
+
+        // Draw glowing borders
+        ctx.strokeStyle = borderStroke;
+        ctx.lineWidth = 6;
+        ctx.strokeRect(4, 4, 248, 120);
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(8, 8, 240, 112);
+
+        // Draw main glowing text
+        ctx.fillStyle = grad;
+        ctx.shadowColor = borderStroke;
+        ctx.shadowBlur = 15;
+        ctx.font = 'bold italic 48px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(textVal, 128, 64);
+        
+        ctx.shadowBlur = 0; // reset shadow
+
+        this.sportCelebrationTexture.needsUpdate = true;
+        this.sportCelebrationCard.scale.set(0.001, 0.001, 0.001); // start tiny for bounce scaling animation
+        this.sportCelebrationCard.visible = false;
+    }
+
+    private updateSportSequence(dt: number) {
+        if (!this.isSportSequenceActive) return;
+
+        this.sportSequenceTime += dt;
+        const time = this.sportSequenceTime;
+        const stType = this.currentStadiumType;
+
+        // Hide main AR matchup scoreboard to make way for the sport celebration card
+        if (this.arBillboard) {
+            this.arBillboard.visible = false;
+        }
+
+        // --- 1. CRICKET CHOREOGRAPHY SEQUENCE ---
+        if (stType === 'default') {
+            if (this.sportSequencePhase === 0) {
+                // Phase 0: Pitch delivery (0.0s - 0.5s)
+                const t = Math.min(time / 0.5, 1.0);
+                // Ball rolls/flies towards the bat at (0, 0.004, -0.035)
+                const startX = 0.0, startY = 0.015, startZ = 0.045;
+                const endX = 0.0, endY = 0.004, endZ = -0.035;
+                this.sequenceBall.position.set(
+                    startX + (endX - startX) * t,
+                    startY + (endY - startY) * t - 0.005 * Math.sin(t * Math.PI), // slight dip
+                    startZ + (endZ - startZ) * t
+                );
+
+                if (time >= 0.5) {
+                    this.sportSequencePhase = 1;
+                    // Snappy bat swing swing feedback
+                    if (this.cricketBatMesh) {
+                        this.cricketBatMesh.rotation.y = -Math.PI / 3;
+                    }
+                    // Trigger contact sparks
+                    this.triggerFirework(0.0, 0.004, -0.035, 0xffa500);
+                }
+            } else if (this.sportSequencePhase === 1) {
+                // Phase 1: High parabolic flight out of bounds (0.5s - 1.6s)
+                const flightT = Math.min((time - 0.5) / 1.1, 1.0);
+                
+                // Parabolic Bezier Curve: Bat -> High Peak -> Landing out of bounds
+                const x0 = 0.0, y0 = 0.004, z0 = -0.035;
+                const x1 = 0.0, y1 = 0.12, z1 = 0.02;
+                const x2 = 0.0, y2 = 0.01, z2 = 0.13;
+
+                // Bezier equation
+                const mt = 1 - flightT;
+                const bx = mt * mt * x0 + 2 * mt * flightT * x1 + flightT * flightT * x2;
+                const by = mt * mt * y0 + 2 * mt * flightT * y1 + flightT * flightT * y2;
+                const bz = mt * mt * z0 + 2 * mt * flightT * z1 + flightT * flightT * z2;
+
+                this.sequenceBall.position.set(bx, by, bz);
+
+                // Animate bat swinging back slowly
+                if (this.cricketBatMesh && flightT < 0.3) {
+                    this.cricketBatMesh.rotation.y = -Math.PI / 3 + (Math.PI / 3) * (flightT / 0.3);
+                } else if (this.cricketBatMesh) {
+                    this.cricketBatMesh.rotation.y = 0;
                 }
 
-                const chargeRatio = this.buttonPinchProgress[i] / 2.0;
+                if (time >= 1.6) {
+                    this.sportSequencePhase = 2;
+                    // Trigger landing sparkles and boundary ripples
+                    this.triggerFirework(0.0, 0.01, 0.13, 0x00ff66);
+                }
+            } else if (this.sportSequencePhase === 2) {
+                // Phase 2: Boundary Landing & AR Reveal (1.6s - 2.0s)
+                if (time >= 1.9) {
+                    this.sportSequencePhase = 3;
+                    this.sportCelebrationCard.visible = true;
+                    // Trigger grand pyrotechnic fireworks sequence
+                    this.triggerManualFireworks();
+                }
+            }
+        }
 
-                // Vertical stretch as charge indicator
-                btn.scale.y = 1.0 + chargeRatio * 2.5;
-                // Micro-vibration energy feedback
-                btn.position.y = Math.sin(this.radarTime * 60.0) * 0.001 * chargeRatio;
+        // --- 2. SOCCER CHOREOGRAPHY SEQUENCE ---
+        else if (stType === 'berlin') {
+            if (this.sportSequencePhase === 0) {
+                // Phase 0: Ball prep at center field (0.0s - 0.5s)
+                if (time >= 0.5) {
+                    this.sportSequencePhase = 1;
+                    // Trigger kick sparkler
+                    this.triggerFirework(0.0, 0.003, 0.0, 0x22d3ee);
+                }
+            } else if (this.sportSequencePhase === 1) {
+                // Phase 1: Kick flight straight to Berlin Goal (0.5s - 1.4s)
+                const flightT = Math.min((time - 0.5) / 0.9, 1.0);
+                
+                // Kick trajectory: (0.0, 0.003, 0.0) -> (0.0, 0.005, 0.048) inside goal
+                const startX = 0.0, startY = 0.003, startZ = 0.0;
+                const endX = 0.0, endY = 0.005, endZ = 0.048;
 
-                if (this.buttonPinchProgress[i] >= 2.0 && this.menuToggleCooldown <= 0.0) {
-                    this.menuToggleCooldown = 0.8;
-                    this.buttonPinchProgress[i] = 0.0;
+                this.sequenceBall.position.set(
+                    startX + (endX - startX) * flightT,
+                    startY + (endY - startY) * flightT + 0.006 * Math.sin(flightT * Math.PI), // curve upward
+                    startZ + (endZ - startZ) * flightT
+                );
 
-                    // Squeeze shockwave click feedback
-                    btn.scale.set(1.2, 0.4, 1.2);
-                    this.triggerSixAnimation(i);
+                if (time >= 1.4) {
+                    this.sportSequencePhase = 2;
+                    // Score! Animate goal net wiggling
+                    this.isGoalWiggling = true;
+                    this.goalWiggleTime = 0.0;
+                    this.wigglingGoalNet = this.goal1NetMesh;
+                    // Sparkler celebration inside net
+                    this.triggerFirework(0.0, 0.005, 0.048, 0x22d3ee);
+                }
+            } else if (this.sportSequencePhase === 2) {
+                // Phase 2: Score Reveal (1.4s - 1.8s)
+                if (time >= 1.7) {
+                    this.sportSequencePhase = 3;
+                    this.sportCelebrationCard.visible = true;
+                    // Trigger staged fireworks show
+                    this.triggerManualFireworks();
+                }
+            }
+        }
+
+        // --- 3. BASKETBALL CHOREOGRAPHY SEQUENCE ---
+        else {
+            if (this.sportSequencePhase === 0) {
+                // Phase 0: Basketball fast dribble to center court (0.0s - 0.5s)
+                const t = Math.min(time / 0.5, 1.0);
+                const startX = 0.03, startZ = 0.0;
+                const endX = 0.0, endZ = 0.02;
+                const dribbleY = 0.015 + Math.abs(Math.sin(time * 30.0)) * 0.006;
+                this.sequenceBall.position.set(
+                    startX + (endX - startX) * t,
+                    dribbleY,
+                    startZ + (endZ - startZ) * t
+                );
+
+                if (time >= 0.5) {
+                    this.sportSequencePhase = 1;
+                }
+            } else if (this.sportSequencePhase === 1) {
+                // Phase 1: Dunk slam rise and fall (0.5s - 1.3s)
+                const flightT = Math.min((time - 0.5) / 0.8, 1.0);
+                
+                // Trajectory: (0.0, 0.015, 0.02) -> Dunk rise -> Slam down through rim at (0.0, 0.0125, 0.041)
+                const startX = 0.0, startY = 0.015, startZ = 0.02;
+                const peakY = 0.022;
+                const endX = 0.0, endY = 0.0135, endZ = 0.041;
+
+                let by = startY;
+                if (flightT < 0.65) {
+                    // Rise phase
+                    const rt = flightT / 0.65;
+                    by = startY + (peakY - startY) * rt;
+                } else {
+                    // Slam down phase
+                    const st = (flightT - 0.65) / 0.35;
+                    by = peakY + (endY - peakY) * st;
+                }
+
+                this.sequenceBall.position.set(
+                    startX + (endX - startX) * flightT,
+                    by,
+                    startZ + (endZ - startZ) * flightT
+                );
+
+                if (time >= 1.3) {
+                    this.sportSequencePhase = 2;
+                    // Animate basketball net compression/wiggle
+                    this.isHoopWiggling = true;
+                    this.hoopWiggleTime = 0.0;
+                    this.wigglingHoopNet = this.hoop1NetMesh;
+                    // Flash basketball rim orange
+                    if (this.basketballHoop1 && (this.basketballHoop1 as any).rimMesh) {
+                        const rim = (this.basketballHoop1 as any).rimMesh as THREE.Mesh;
+                        (rim.material as THREE.MeshBasicMaterial).color.setHex(0xff3300); // flashing crimson red rim
+                    }
+                    // Trigger sparks inside rim
+                    this.triggerFirework(0.0, 0.013, 0.041, 0xf97316);
+                }
+            } else if (this.sportSequencePhase === 2) {
+                // Phase 2: Dunk Score Reveal (1.3s - 1.7s)
+                if (time >= 1.6) {
+                    this.sportSequencePhase = 3;
+                    this.sportCelebrationCard.visible = true;
+                    // Trigger staged fireworks show
+                    this.triggerManualFireworks();
+                }
+            }
+        }
+
+        // --- 4. TRAIL RECORDING ---
+        if (this.sportSequencePhase < 3) {
+            this.sequenceBallPoints.push(this.sequenceBall.position.clone());
+            if (this.sequenceBallPoints.length > 50) this.sequenceBallPoints.shift();
+            this.sequenceBallTrail.geometry.setFromPoints(this.sequenceBallPoints);
+        } else {
+            // Ball and trail fade out
+            this.sequenceBall.visible = false;
+            this.sequenceBallTrail.visible = false;
+        }
+
+        // --- 5. CELEBRATION AR TEXT CARD BOUNCY ANIMATION & FLOAT ---
+        if (this.sportSequencePhase === 3) {
+            const cardTime = time - 1.8; // celebration timer duration
+            
+            // Bouncy spring scale LERP
+            const targetScale = 1.3;
+            const currentScale = Math.min(cardTime * 5.0, 1.0);
+            const scaleFactor = Math.sin(currentScale * Math.PI / 2.0) * targetScale;
+            this.sportCelebrationCard.scale.set(scaleFactor, scaleFactor, scaleFactor);
+
+            // Gentle floating lookAt orientation towards player/camera
+            this.sportCelebrationCard.position.y = this.ROOF_Y + 0.075 + Math.sin(time * 4.5) * 0.003;
+            this.sportCelebrationCard.rotation.y = Math.sin(time * 0.8) * 0.08;
+
+            // Restoring rim colors / flashing net resets after wiggling
+            if (cardTime > 2.0) {
+                // Gradually dry/reset rim colors
+                if (this.basketballHoop1 && (this.basketballHoop1 as any).rimMesh) {
+                    const rim = (this.basketballHoop1 as any).rimMesh as THREE.Mesh;
+                    (rim.material as THREE.MeshBasicMaterial).color.setHex(0xf97316); // restore orange rim
+                }
+            }
+
+            // End Sequence Timer (6.0s duration)
+            if (time >= 6.0) {
+                this.isSportSequenceActive = false;
+                this.sportCelebrationCard.visible = false;
+                if (this.arBillboard) {
+                    this.arBillboard.visible = true; // restore match scoreboard
+                }
+                console.log("[SportSequence] Sequence complete, scoreboard restored.");
+            }
+        }
+    }
+
+    private updateNetsWiggling(dt: number) {
+        // Football net wiggle
+        if (this.isGoalWiggling && this.wigglingGoalNet) {
+            this.goalWiggleTime += dt;
+            const t = this.goalWiggleTime;
+            if (t >= 1.0) {
+                this.isGoalWiggling = false;
+                this.wigglingGoalNet.scale.set(1.0, 1.0, 1.0);
+                const mat = this.wigglingGoalNet.material;
+                if (mat instanceof THREE.Material) {
+                    mat.opacity = 0.45;
+                }
+                if (mat instanceof THREE.LineBasicMaterial) {
+                    mat.color.setHex(0x00ffff);
                 }
             } else {
-                // Drain dwell time when finger moves away
-                this.buttonPinchProgress[i] -= dt * 2.0;
-                if (this.buttonPinchProgress[i] < 0.0) {
-                    this.buttonPinchProgress[i] = 0.0;
-                }
+                // High frequency vibration damping
+                const decay = Math.exp(-t * 3.5);
+                const scaleY = 1.0 + Math.sin(t * 40.0) * 0.08 * decay;
+                const scaleZ = 1.0 + Math.cos(t * 40.0) * 0.08 * decay;
+                this.wigglingGoalNet.scale.set(1.0, scaleY, scaleZ);
 
-                // Restore default button geometry
-                btn.scale.y += (1.0 - btn.scale.y) * 10.0 * dt;
-                btn.scale.x += (1.0 - btn.scale.x) * 10.0 * dt;
-                btn.scale.z += (1.0 - btn.scale.z) * 10.0 * dt;
-                btn.position.y += (0.0 - btn.position.y) * 10.0 * dt;
+                // Flash net color rapidly between cyan and neon gold
+                const flash = Math.sin(t * 50.0) > 0.0;
+                if (this.wigglingGoalNet.material instanceof THREE.LineBasicMaterial) {
+                    (this.wigglingGoalNet.material as THREE.LineBasicMaterial).color.setHex(flash ? 0xffd700 : 0x00ffff);
+                }
+            }
+        }
+
+        // Basketball net wiggle
+        if (this.isHoopWiggling && this.wigglingHoopNet) {
+            this.hoopWiggleTime += dt;
+            const t = this.hoopWiggleTime;
+            if (t >= 1.0) {
+                this.isHoopWiggling = false;
+                this.wigglingHoopNet.scale.set(1.0, 1.0, 1.0);
+                if (this.wigglingHoopNet.material instanceof THREE.LineBasicMaterial) {
+                    (this.wigglingHoopNet.material as THREE.LineBasicMaterial).color.setHex(0x00ffff);
+                }
+            } else {
+                // Net compress/shake swish animation
+                const decay = Math.exp(-t * 4.0);
+                const compressX = 1.0 - 0.2 * Math.exp(-t * 8.0) + Math.sin(t * 35.0) * 0.06 * decay;
+                const compressZ = 1.0 - 0.2 * Math.exp(-t * 8.0) + Math.cos(t * 35.0) * 0.06 * decay;
+                const stretchY = 1.0 + 0.15 * Math.exp(-t * 8.0);
+                this.wigglingHoopNet.scale.set(compressX, stretchY, compressZ);
+
+                // Flash net color between cyan and orange
+                const flash = Math.sin(t * 45.0) > 0.0;
+                if (this.wigglingHoopNet.material instanceof THREE.LineBasicMaterial) {
+                    (this.wigglingHoopNet.material as THREE.LineBasicMaterial).color.setHex(flash ? 0xf97316 : 0x00ffff);
+                }
             }
         }
     }

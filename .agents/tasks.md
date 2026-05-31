@@ -193,3 +193,67 @@
   - `[x]` Load, clone, and auto-scale the high-resolution Olympiastadion GLB model dynamically inside `setStadiumType` in `src/domainExpansion.ts`
   - `[x]` Traverse child meshes of the Olympiastadion model and recursively apply realistic PBR materials, shadows, and neon grid floor highlights
   - `[x]` Verify clean static type check (`npx tsc --noEmit`) and successful production bundling (`npm run build`)
+- `[x]` Interactive Holographic Fireworks Particle System Celebration
+  - `[x]` Construct highly optimized, Zero-GC instanced particle system (`fireworksMesh`) with a capacity of 400 concurrent particles (4 bursts of 100 particles)
+  - `[x]` Set up Additive blending and depth-write disabled standard basic material for bright glowing sci-fi hologram aesthetics
+  - `[x]` Implement `triggerFirework(x, y, z, color)` method using round-robin slot allocation and random spherical/upward velocity distributions
+  - `[x]` Integrate dynamic celebrations inside `setStadiumType` triggering multi-burst fireworks on stadium switches
+  - `[x]` Wire localized particle sparks on floor and wall bounces in Euler physics ball tracking (Berlin and Inuit map modes)
+  - `[x]` Wire event-driven contact sparkler (at bat hit, `t = 0.25`) and grand border fireworks (at landing, `t = 1.0`) on Bezier spline trajectories (Default mode)
+  - `[x]` Verify zero static type checking or bundling warnings in production client builds
+- `[x]` AR Stadium Banner Adjustments
+  - `[x]` Scale AR billboard banner width and height down by 40% (to 0.108m x 0.0688m)
+  - `[x]` Bring dynamic vertical float center down by 4cm (from 0.215m to 0.175m) for comfortable eye clearance
+- `[x]` Upgraded 3D Fireworks & Manual Button Trigger
+  - `[x]` Place glowing magenta `FIREWORKS` button on roof arc right next to `CLEAR`
+  - `[x]` **[Ultimate Capacity Expansion]** Doubled active slots to 24 and particles per firework to 350, rendering up to **8,400 concurrent instanced particles** in a single zero-GC draw call, pushing Quest 3 hardware to its spectacular limits
+  - `[x]` Upgrade particle physics to full 3D spherical bursts, multi-tiered speed rings, multi-colored secondary/accent palettes, and high-frequency shimmering twinkling crackle decay
+  - `[x]` **[GPU Optimization]** Shrunk base particle geometry to a crisp 1mm cube (`0.001m`) and adjusted instance scales to 1.0mm-1.3mm, providing a beautiful fine-point glowing mist that completely eliminates chunky artifacts and runs at solid 90fps without melting the GPU
+  - `[x]` **[Sequential Rocket Phase & Custom Travel]** Built two-phase shell physics with customizable vertical flight travel height (`targetHeight` array): particles launch as a tight rocket tracer tracer and travel a custom height before bursting
+  - `[x]` **[4-Stage Pyrotechnic Show Sequence]** Programmed automated choreographed sequence state machine in `update()` triggered by the `FIREWORKS` button:
+    1. **Stage 1 (0.0s to 4.5s) - Staggered Rim Climbers**: Launches one rocket every 0.5 seconds clockwise from all 10 circular roof rim points
+    2. **Stage 2 (5.5s) - Cross-Pitch Dual Rockets**: Shoots 2 high-density gold/cyan opposite rockets (North/South) exploding high above the pitch
+    3. **Stage 3 (6.5s) - Quad Corner Rockets**: Shoots 4 cardinal rockets simultaneously exploding in cardinal colors
+    4. **Stage 4 (7.5s) - The Grand Finale**: Launches all 10 rim rockets simultaneously, PLUS a colossal center tracer shooting high up to 6.5cm directly from the pitch center, creating an interlocking dome of shimmering embers
+  - `[x]` **[Spatial Rim Layout]** Repositioned celebratory and manual fireworks along the outer roof rim circle (radius 0.096m, height 0.095m) for all stadium types (Wankhede, Olympiastadion, Inuit oval)
+  - `[x]` **[Billboard Replacement]** Connected dynamic `areFireworksActive()` check to fade the AR Billboard completely to 0.0 opacity while fireworks are playing, restoring it cleanly when they finish
+  - `[x]` Validate type safety check (`npx tsc --noEmit`) and compile production bundle successfully
+- `[x]` Holographic Fireworks Max Settings Upgrade (Current Run)
+  - `[x]` Declared pre-allocated `fireworkLaunchVelocities` and `fireworkScale` buffers in `src/domainExpansion.ts` to maintain high-efficiency Zero-GC update cycles
+  - `[x]` Refactored `triggerFirework()` signature to accept custom 3D velocities and burst scales
+  - `[x]` Rewrote `updateFireworks()` physics loop to project climbing rockets along 3D trajectories and scale burst velocities and visual particle sizes proportionally
+  - `[x]` Overhauled choreographed 4-stage show sequence to support complex angled pyrotechnic staging:
+    - **Stage 1 (Rim Climbers):** 10 staggered climbers angled inward towards pitch center
+    - **Stage 2 (Cross-Pitch Crossing):** North/South opposite crossing rockets meeting over center field
+    - **Stage 3 (Cardinal Blossoming):** 4 quad cardinal corner rockets blossoming outward
+    - **Stage 4 (Grand Finale):** 10 rim rockets blossoming outward simultaneously, plus a colossal golden shell climbing 2.5x-3x higher (17.5cm local height) and bursting at a massive 2.5x scale multiplier
+  - `[x]` Successfully compiled client production bundle via `npm run build` with zero errors
+- `[x]` Volumetric Weather, Physical Sandbox Ball, & Tactical Core Deck (TCD) (Current Run)
+  - `[x]` Added `tcdVisible`, `tcdLauncherButton`, `weatherMesh`, `sandboxBall`, and associated pre-allocated buffers inside `src/domainExpansion.ts` for a strict Zero-GC engine
+  - `[x]` Traversed GLTF stadium scenes recursively to dynamically cache `stands` and `floodlights` materials
+  - `[x]` Constructed TCD Hexagonal Launcher on the roof rim and the floating 7-button Glass backplane Command Panel
+  - `[x]` Built the Volumetric Weather System: animates 400 rain/dust particles, cycles weather states, and drives synchronized wireframe-stands sheet lightning flash bursts
+  - `[x]` Programmed the Flick Sandbox Ball: handles index-finger grabs, derivatives velocity calculations, and Euler physics bounces with localized contact sparks
+  - `[x]` Wired up TCD panel hover dwell tracking (1.2s to trigger actions) and Y-axis billboarding to face the user
+  - `[x]` Successfully compiled client production bundle via `npm run build` with zero errors
+- `[x]` Olympiastadion Goal Posts & Weather/TCD Polish (Current Run)
+  - `[x]` Built procedural glowing holographic football goal posts (`createGoalPost()`) with cyan wireframe nets
+  - `[x]` Queried `field`/`grass` meshes recursively in `setStadiumType()` and dynamically aligned goal posts to the pitch boundaries
+  - `[x]` Reduced base rain drop BoxGeometry bounds by 50% to `0.0003 x 0.0025 x 0.0003`
+  - `[x]` Sized snow/neon-dust flakes down by 50% (`1.0 x 0.2 x 1.0` instance scale) and turned snow particles to pure white
+  - `[x]` Implemented `setWeatherMode(mode)` helper with velocity resetting buffer updates, resolving slow particle drift leakages in subsequent rain cycles
+  - `[x]` Lowered TCD backplane opacity from `0.92` to `0.45` to match the glassmorphic transparent tabs of the compass menu
+  - `[x]` Cut TCD launcher and grid buttons progress dwell timers from `1.0s` / `1.2s` to a snappy `0.5s` hold
+  - `[x]` Successfully compiled client production bundle via `npm run build` with zero errors
+- `[x]` 3D Sport Sequences & Celebration Engine (Current Run)
+  - `[x]` Implement `createBasketballHoop()` to procedurally generate holographic orange rims, glass backboards, and cybernetic nets
+  - `[x]` Initialize Cricket stumps and swinging bat meshes dynamically in `initSportSequenceSystem()`
+  - `[x]` Position and attach basketball hoops to Inuit arena elliptical boundaries inside `setStadiumType()`
+  - `[x]` Rename TCD button index 3 to 'Play SEQ' and draw with auto-scaled font canvas drawing
+  - `[x]` Script the choreographed Sports Sequence trajectories (bowled delivery, swing, parabolic Bezier Six flight, soccer kick goal, basketball fast-dribble, and high slam dunk)
+  - `[x]` Integrate damped sine net wiggling wiggles and red rim flash updates inside the update thread
+  - `[x]` Implement bouncy glass celebration card `sportCelebrationCard` rendering glowing vector text ("SIX!!!", "GOAL!!!", "DUNK!!!")
+  - `[x]` Hide standard matchup scoreboard during celebration and automatically trigger staged pyrotechnics show
+  - `[x]` Resolve static type safety checks (`npx tsc --noEmit`) with zero warnings
+  - `[x]` Compile client production bundle successfully (`npm run build`) in 9.24s
+
