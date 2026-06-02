@@ -446,9 +446,9 @@ export class DomainExpansionSystem extends createSystem({
     private readonly DOMAIN_KEYS_BUTTERFLIES  = ["butterfly360_1","butterfly360_2","butterfly360_3","butterfly360_4","butterfly360_5","butterfly360_6","butterfly360_7","butterfly360_8","butterfly360_9","butterfly360_10"];
     private readonly DOMAIN_NAMES_BUTTERFLIES = ["Butterfly Park — 1","Butterfly Park — 2","Butterfly Park — 3","Butterfly Park — 4","Butterfly Park — 5","Butterfly Park — 6","Butterfly Park — 7","Butterfly Park — 8","Butterfly Park — 9","Butterfly Park — 10"];
     private readonly THUMB_KEYS_BUTTERFLIES  = ["butterfly360_1","butterfly360_2","butterfly360_3","butterfly360_4","butterfly360_5","butterfly360_6","butterfly360_7","butterfly360_8","butterfly360_9","butterfly360_10"];
-    private readonly DOMAIN_KEYS_NURBURGRING = ["berlin360_1", "berlin360_2", "berlin360_3", "berlin360_4", "berlin360_5", "berlin360_6"];
-    private readonly DOMAIN_NAMES_NURBURGRING = ["GP Circuit", "Hatzenbach", "Adenauer Forst", "Karussell", "Pflanzgarten", "Döttinger Höhe"];
-    private readonly THUMB_KEYS_NURBURGRING = ["berlin360_1_thumb","berlin360_2_thumb","berlin360_3_thumb","berlin360_4_thumb","berlin360_5_thumb","berlin360_6_thumb"];
+    private readonly DOMAIN_KEYS_NURBURGRING  = ["nurburgring360_1","nurburgring360_2","nurburgring360_3","nurburgring360_4","nurburgring360_5","nurburgring360_6"];
+    private readonly DOMAIN_NAMES_NURBURGRING  = ["GP Pit Lane","Hatzenbach","Adenauer Forst","Karussell","Pflanzgarten","Döttinger Höhe"];
+    private readonly THUMB_KEYS_NURBURGRING    = ["nurburgring360_1_thumb","nurburgring360_2_thumb","nurburgring360_3_thumb","nurburgring360_4_thumb","nurburgring360_5_thumb","nurburgring360_6_thumb"];
 
 
     // Keyboard debug listeners
