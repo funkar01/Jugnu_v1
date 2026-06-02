@@ -1088,7 +1088,8 @@ export class JugnuSystem extends createSystem({
     }
 
     if (activeJugnuModel) {
-        if (isMapScaledMax) {
+        const isSportSeqActive = !!(window as any).isSportSequenceActive;
+        if (isMapScaledMax || isSportSeqActive) {
             this.isCompassOpen = false;
             this.indexPinchTimer = 0.0;
             this.pinchReleasedTimer = 0.0;

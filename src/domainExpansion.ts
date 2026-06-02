@@ -320,6 +320,14 @@ export class DomainExpansionSystem extends createSystem({
     private isNavLayerActive = false;
     private navPlaceholdersGroup!: THREE.Group;
 
+    private nurburgringFrenetFrames: any = null;
+    private dynamicFloorY = 0.001;
+    private f1xAxis = new THREE.Vector3();
+    private f1yAxis = new THREE.Vector3();
+    private f1zAxis = new THREE.Vector3();
+    private f1RotationMatrix = new THREE.Matrix4();
+    private scratchMatrix = new THREE.Matrix4();
+
     private scratchVector1 = new THREE.Vector3();
     private scratchVector2 = new THREE.Vector3();
     private scratchVector3 = new THREE.Vector3();
@@ -1747,6 +1755,74 @@ export class DomainExpansionSystem extends createSystem({
 
         // Update the Tactical Command Dock (TCD) button labels dynamically
         this.updateTCDButtonLabels();
+
+        // Compute dynamic floor Y based on loaded 3D meshes
+        this.calculateDynamicFloorY();
+    }
+
+    private calculateDynamicFloorY() {
+        let fieldMesh: any = null;
+        const stType = this.currentStadiumType;
+
+        if (stType === 'default' && this.stadiumMesh) {
+            this.stadiumMesh.updateMatrixWorld(true);
+            this.stadiumMesh.traverse((child: any) => {
+                if (!fieldMesh && child instanceof THREE.Mesh) {
+                    const name = child.name.toLowerCase();
+                    if (name.includes('pitch') || name.includes('field') || name.includes('grass')) {
+                        fieldMesh = child;
+                    }
+                }
+            });
+        } else if (stType === 'berlin' && this.berlinMesh) {
+            this.berlinMesh.updateMatrixWorld(true);
+            this.berlinMesh.traverse((child: any) => {
+                if (!fieldMesh && child instanceof THREE.Mesh) {
+                    const name = child.name.toLowerCase();
+                    if (name.includes('pitch') || name.includes('field') || name.includes('grass')) {
+                        fieldMesh = child;
+                    }
+                }
+            });
+        } else if (stType === 'inuit' && this.inuitMesh) {
+            this.inuitMesh.updateMatrixWorld(true);
+            this.inuitMesh.traverse((child: any) => {
+                if (!fieldMesh && child instanceof THREE.Mesh) {
+                    const name = child.name.toLowerCase();
+                    if (name.includes('court') || name.includes('floor') || name.includes('field') || name.includes('pitch') || name.includes('ground')) {
+                        fieldMesh = child;
+                    }
+                }
+            });
+        }
+
+        if (fieldMesh) {
+            fieldMesh.geometry.computeBoundingBox();
+            const bbox = fieldMesh.geometry.boundingBox;
+            if (bbox) {
+                const localMaxY = bbox.max.y;
+                const tempVec = this.scratchVector3;
+                tempVec.set(0, localMaxY, 0);
+
+                let current: THREE.Object3D | null = fieldMesh;
+                while (current && current !== this.tableGroup) {
+                    tempVec.applyMatrix4(current.matrix);
+                    current = current.parent;
+                }
+
+                this.dynamicFloorY = tempVec.y;
+                console.log(`[DynamicFloorY] Computed floor Y for '${stType}': ${this.dynamicFloorY}`);
+                return;
+            }
+        }
+
+        // Fallback if no mesh found
+        if (stType === 'inuit') {
+            this.dynamicFloorY = 0.010;
+        } else {
+            this.dynamicFloorY = 0.001;
+        }
+        console.log(`[DynamicFloorY] Fallback floor Y for '${stType}': ${this.dynamicFloorY}`);
     }
 
     private updateTCDButtonLabels() {
@@ -1811,6 +1887,7 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     update(dt: number) {
+        (window as any).isSportSequenceActive = this.isSportSequenceActive;
         if (this.middlePinchCooldown > 0) {
             this.middlePinchCooldown -= dt;
         }
@@ -1890,14 +1967,22 @@ export class DomainExpansionSystem extends createSystem({
                 // Offset Y upward to prevent wheels clipping on the flat road surface
                 this.nurburgringF1Car.position.y += 0.0011;
 
-                const lookAhead = (this.nurburgringF1Progress + 0.004) % 1.0;
-                const target = this.nurburgringCurve.getPointAt(lookAhead);
-                this.nurburgringF1Car.lookAt(target);
-                this.nurburgringF1Car.rotateY(Math.PI); // Rotate 180 deg to face forward
+                if (this.nurburgringFrenetFrames) {
+                    const frameIndex = Math.floor(this.nurburgringF1Progress * 1000) % 1000;
+                    const tangent = this.nurburgringFrenetFrames.tangents[frameIndex];
+                    const normal = this.nurburgringFrenetFrames.normals[frameIndex];
 
-                // Spin wheels locally
+                    this.f1zAxis.copy(tangent);
+                    this.f1yAxis.copy(normal);
+                    this.f1xAxis.crossVectors(this.f1yAxis, this.f1zAxis).normalize();
+
+                    this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
+                    this.nurburgringF1Car.quaternion.setFromRotationMatrix(this.f1RotationMatrix);
+                }
+
+                // Spin wheels locally (roll forward)
                 this.nurburgringF1Wheels.forEach((wheel) => {
-                    wheel.rotation.x += dt * 35.0; // Local spin speed
+                    wheel.rotation.x -= dt * 35.0;
                 });
 
                 // ── 1. DYNAMIC WET TRACK REFLECTION ──
@@ -2020,11 +2105,15 @@ export class DomainExpansionSystem extends createSystem({
                     this.f1HudTexture.needsUpdate = true;
                     this.f1HudMesh.visible = true;
 
-                    // Face the player head
+                    // Face the player head (Zero-GC and using updated matrixWorld)
                     if (this.player && this.player.head) {
-                        const headPos = new THREE.Vector3();
+                        this.nurburgringF1Car.updateMatrixWorld(true);
+                        const headPos = this.scratchVector3;
                         this.player.head.getWorldPosition(headPos);
-                        const localHeadPos = headPos.clone().applyMatrix4(this.nurburgringF1Car.matrixWorld.clone().invert());
+                        const localHeadPos = this.scratchVector1;
+                        localHeadPos.copy(headPos);
+                        this.scratchMatrix.copy(this.nurburgringF1Car.matrixWorld).invert();
+                        localHeadPos.applyMatrix4(this.scratchMatrix);
                         this.f1HudMesh.lookAt(localHeadPos);
                     }
                 }
@@ -2070,7 +2159,8 @@ export class DomainExpansionSystem extends createSystem({
                         // Emit 2 new particles from rear tire contacts
                         const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(this.nurburgringF1Car.matrix);
                         const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(this.nurburgringF1Car.matrix);
-                        const heading = this.scratchVector3.subVectors(target, pos).normalize();
+                        const frameIndex = Math.floor(this.nurburgringF1Progress * 1000) % 1000;
+                        const heading = this.nurburgringFrenetFrames ? this.nurburgringFrenetFrames.tangents[frameIndex] : new THREE.Vector3(0, 0, 1);
 
                         // FL slot
                         let idx = this.f1SprayEmitSlot * 8;
@@ -2165,10 +2255,19 @@ export class DomainExpansionSystem extends createSystem({
                     // Offset Y upward to prevent chassis clipping on the flat road surface
                     car.group.position.y += 0.0006;
 
-                    const lookAhead = (car.progress + 0.005) % 1.0;
-                    const target = this.nurburgringCurve.getPointAt(lookAhead);
-                    car.group.lookAt(target);
-                    car.group.rotateY(Math.PI); // Rotate 180 deg to face forward
+                    // Set orientation from Frenet frames
+                    if (this.nurburgringFrenetFrames) {
+                        const carFrameIndex = Math.floor(car.progress * 1000) % 1000;
+                        const carTangent = this.nurburgringFrenetFrames.tangents[carFrameIndex];
+                        const carNormal = this.nurburgringFrenetFrames.normals[carFrameIndex];
+
+                        this.f1zAxis.copy(carTangent);
+                        this.f1yAxis.copy(carNormal);
+                        this.f1xAxis.crossVectors(this.f1yAxis, this.f1zAxis).normalize();
+
+                        this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
+                        car.group.quaternion.setFromRotationMatrix(this.f1RotationMatrix);
+                    }
                 });
             }
 
@@ -6872,6 +6971,8 @@ export class DomainExpansionSystem extends createSystem({
 
         console.log(`[SportSequence] Triggered sequence for: ${this.currentStadiumType}`);
         this.isSportSequenceActive = true;
+        this.tcdVisible = false;
+        if (this.tcdPanelGroup) this.tcdPanelGroup.visible = false;
         this.sportSequenceTime = 0.0;
         this.sportSequencePhase = 0;
         this.sequenceBallPoints = [];
@@ -6965,13 +7066,7 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     private getFloorY(): number {
-        const stType = this.currentStadiumType;
-        if (stType === 'inuit') {
-            return 0.010;
-        } else if (stType === 'berlin') {
-            return 0.001;
-        }
-        return 0.001;
+        return this.dynamicFloorY;
     }
 
     private updateSportSequence(dt: number) {
@@ -8065,6 +8160,7 @@ export class DomainExpansionSystem extends createSystem({
             new THREE.Vector3(-0.03,  0.002, -0.08)  // Döttinger Höhe
         ];
         this.nurburgringCurve = new THREE.CatmullRomCurve3(points, true);
+        this.nurburgringFrenetFrames = this.nurburgringCurve.computeFrenetFrames(1000, true);
 
         // 5. Extrude 3D flat road Geometry along spline
         const roadWidth = 0.012;
@@ -8343,10 +8439,10 @@ export class DomainExpansionSystem extends createSystem({
             depthWrite: false
         });
 
-        const hudGeom = new THREE.PlaneGeometry(0.010, 0.005);
+        const hudGeom = new THREE.PlaneGeometry(0.020, 0.010);
         this.f1HudMesh = new THREE.Mesh(hudGeom, this.f1HudMat);
-        // Position it floating directly above the driver helmet (y = 0.0026 + 0.0035 = 0.0061)
-        this.f1HudMesh.position.set(0, 0.0065, -0.0015);
+        // Position it floating directly above the driver helmet (y = 0.0026 + 0.0035 = 0.0061, raised to 0.0095 to prevent clipping)
+        this.f1HudMesh.position.set(0, 0.0095, -0.0015);
         this.nurburgringF1Car.add(this.f1HudMesh);
 
         // --- 9. F1 VORTEX VAPOR TRAILS INITIALIZATION ---
