@@ -43,14 +43,39 @@ const applyStadiumMaterial = (mat: THREE.Material | undefined, name: string, par
     
     const isMatch = (str: string) => name.includes(str) || parentName.includes(str);
     
-    if (isMatch('field') || isMatch('grass')) {
+    if (isMatch('court') || isMatch('hardwood') || isMatch('floor')) {
+        // High-gloss premium NBA hardwood floor reflecting cyber overlays!
+        newMat.roughness = 0.05;
+        newMat.metalness = 0.22;
+        if (!newMat.map && mat && (mat as any).map) {
+            newMat.map = (mat as any).map;
+        }
+        if (!newMat.map) {
+            newMat.color.setHex(0xb45309); // Honey maple wood fallback
+        }
+        newMat.transparent = true;
+        newMat.opacity = 0.60; // Holographic semi-transparent playing field base
+    } else if (isMatch('paint') || isMatch('key') || isMatch('restrict')) {
+        // Vibrant neon purple/cyan painted key lanes
+        newMat.roughness = 0.08;
+        newMat.metalness = 0.3;
+        if (!newMat.map) {
+            newMat.color.setHex(0x6d28d9); // Cyber neon violet key fallback
+        }
+        newMat.transparent = true;
+        newMat.opacity = 0.60;
+    } else if (isMatch('field') || isMatch('grass')) {
         newMat.color.setHex(0x113e19);
         newMat.roughness = 0.85;
         newMat.metalness = 0.05;
+        newMat.transparent = true;
+        newMat.opacity = 0.60;
     } else if (isMatch('pitch') || isMatch('wicket')) {
         newMat.color.setHex(0xc2a679);
         newMat.roughness = 0.9;
         newMat.metalness = 0.0;
+        newMat.transparent = true;
+        newMat.opacity = 0.60;
     } else if (isMatch('stands') || isMatch('seating') || isMatch('seats')) {
         if (name.includes('.001') || name.includes('1')) {
             newMat.color.setHex(0xaa2222); // RCB Red stands
@@ -63,26 +88,35 @@ const applyStadiumMaterial = (mat: THREE.Material | undefined, name: string, par
         }
         newMat.roughness = 0.6;
         newMat.metalness = 0.2;
+        newMat.transparent = true;
+        newMat.opacity = 0.45;
     } else if (isMatch('boundary') || isMatch('rope')) {
         newMat.color.setHex(0x00ffff);
         newMat.emissive.setHex(0x008888);
         newMat.roughness = 0.2;
         newMat.metalness = 0.5;
+        newMat.transparent = true;
+        newMat.opacity = 0.70;
     } else if (isMatch('floodlight') || isMatch('light')) {
         newMat.color.setHex(0x334155);
         newMat.roughness = 0.15;
         newMat.metalness = 0.9;
         newMat.emissive.setHex(0xffffff);
+        newMat.transparent = true;
+        newMat.opacity = 0.85;
     } else if (isMatch('roof') || isMatch('top') || isMatch('canopy')) {
         newMat.color.setHex(0xe2e8f0);
         newMat.roughness = 0.3;
         newMat.metalness = 0.75;
         newMat.transparent = true;
-        newMat.opacity = 0.92;
+        newMat.opacity = 0.50; // translucent roof
     } else {
-        newMat.color.setHex(0x0f172a);
+        // Concrete, foundation, outer terrain: deep cyan-blue transparent glass
+        newMat.color.setHex(0x002244);
         newMat.roughness = 0.45;
         newMat.metalness = 0.55;
+        newMat.transparent = true;
+        newMat.opacity = 0.35;
     }
     
     return newMat;
@@ -232,7 +266,7 @@ export class DomainExpansionSystem extends createSystem({
     private readonly ROOF_RADIUS = 0.096; // Radius of stadium inner roof arc
 
     // Physics Bouncing Simulation & Stadium Selection
-    private currentStadiumType: 'default' | 'berlin' | 'inuit' | 'butterflies' = '' as any;
+    private currentStadiumType: 'default' | 'berlin' | 'inuit' | 'butterflies' | 'nurburgring' = '' as any;
     private berlinMesh: THREE.Mesh | null = null;
     private inuitMesh: THREE.Mesh | null = null;
     private butterflyGroup: THREE.Group | null = null;
@@ -249,6 +283,25 @@ export class DomainExpansionSystem extends createSystem({
     }[] = [];
     private ballVelocity = new THREE.Vector3(0.04, 0.03, 0.05);
     private lastBubbleSkinStadium: string = 'default'; // tracks which stadium the bubbles were last skinned for
+    private nurburgringGroup: THREE.Group | null = null;
+    private nurburgringCurve!: THREE.CatmullRomCurve3;
+    private nurburgringCars: {
+        group: THREE.Group,
+        progress: number,
+        speed: number
+    }[] = [];
+    private holoCylinder!: THREE.Mesh;
+    private holoCylinderWire!: THREE.LineSegments;
+    private nurburgringF1Car!: THREE.Group;
+    private nurburgringF1Wheels: THREE.Mesh[] = [];
+    private nurburgringF1Progress = 0.0;
+    private nurburgringF1Speed = 0.052;
+    private isNavLayerActive = false;
+    private navPlaceholdersGroup!: THREE.Group;
+
+    private scratchVector1 = new THREE.Vector3();
+    private scratchVector2 = new THREE.Vector3();
+    private scratchVector3 = new THREE.Vector3();
 
     // Highly Optimized, Zero-GC Holographic Fireworks System
     private fireworksMesh!: THREE.InstancedMesh;
@@ -358,6 +411,9 @@ export class DomainExpansionSystem extends createSystem({
     private readonly DOMAIN_KEYS_BUTTERFLIES  = ["butterfly360_1","butterfly360_2","butterfly360_3","butterfly360_4","butterfly360_5","butterfly360_6","butterfly360_7","butterfly360_8","butterfly360_9","butterfly360_10"];
     private readonly DOMAIN_NAMES_BUTTERFLIES = ["Butterfly Park — 1","Butterfly Park — 2","Butterfly Park — 3","Butterfly Park — 4","Butterfly Park — 5","Butterfly Park — 6","Butterfly Park — 7","Butterfly Park — 8","Butterfly Park — 9","Butterfly Park — 10"];
     private readonly THUMB_KEYS_BUTTERFLIES  = ["butterfly360_1","butterfly360_2","butterfly360_3","butterfly360_4","butterfly360_5","butterfly360_6","butterfly360_7","butterfly360_8","butterfly360_9","butterfly360_10"];
+    private readonly DOMAIN_KEYS_NURBURGRING = ["berlin360_1", "berlin360_2", "berlin360_3", "berlin360_4", "berlin360_5", "berlin360_6"];
+    private readonly DOMAIN_NAMES_NURBURGRING = ["GP Circuit", "Hatzenbach", "Adenauer Forst", "Karussell", "Pflanzgarten", "Döttinger Höhe"];
+    private readonly THUMB_KEYS_NURBURGRING = ["berlin360_1_thumb","berlin360_2_thumb","berlin360_3_thumb","berlin360_4_thumb","berlin360_5_thumb","berlin360_6_thumb"];
 
 
     // Keyboard debug listeners
@@ -380,12 +436,12 @@ export class DomainExpansionSystem extends createSystem({
         this.tableGroup.scale.setScalar(0.01); // Safe minimum scale
         this.tableGroup.visible = false;
 
-        // Overhauled Table base: multi-tiered transparent glass cylinders for luxury depth
+        // Overhauled Table base: transparent holographic glass cylinder
         const baseGeom = new THREE.CylinderGeometry(0.2, 0.2, 0.01, 64);
         const baseMat = new THREE.MeshBasicMaterial({
-            color: 0x030712, // Ultra-rich obsidian black
+            color: 0x003355, // Deep holographic cyan-blue
             transparent: true,
-            opacity: 0.9,
+            opacity: 0.35,
             side: THREE.DoubleSide,
             depthWrite: false
         });
@@ -481,9 +537,8 @@ export class DomainExpansionSystem extends createSystem({
         canvas.height = 512;
         const ctx = canvas.getContext('2d')!;
 
-        // Blueprint background
-        ctx.fillStyle = '#050510';
-        ctx.fillRect(0, 0, 512, 512);
+        // Blueprint background (cleared for transparency)
+        ctx.clearRect(0, 0, 512, 512);
 
         // Drawing detailed concentric radar rings
         ctx.strokeStyle = 'rgba(0, 255, 255, 0.15)';
@@ -492,53 +547,6 @@ export class DomainExpansionSystem extends createSystem({
             ctx.beginPath();
             ctx.arc(256, 256, r, 0, Math.PI * 2);
             ctx.stroke();
-        }
-
-        // Draw urban major highways/arterials (thick, glowing gray-cyan paths)
-        ctx.strokeStyle = 'rgba(0, 255, 255, 0.35)';
-        ctx.lineWidth = 12;
-        ctx.beginPath();
-        // Ring road highway
-        ctx.arc(256, 256, 140, 0, Math.PI * 2);
-        // Main arterial cross-junction
-        ctx.moveTo(256, 0); ctx.lineTo(256, 512);
-        ctx.moveTo(0, 256); ctx.lineTo(512, 256);
-        ctx.stroke();
-
-        // Draw detailed inner lane markings on highways
-        ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([8, 8]);
-        ctx.beginPath();
-        ctx.arc(256, 256, 140, 0, Math.PI * 2);
-        ctx.moveTo(256, 0); ctx.lineTo(256, 512);
-        ctx.moveTo(0, 256); ctx.lineTo(512, 256);
-        ctx.stroke();
-        ctx.setLineDash([]); // Reset dash
-
-        // Draw minor grid streets/lots (representing residential blocks)
-        ctx.strokeStyle = 'rgba(0, 255, 255, 0.12)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        for (let offset = 40; offset < 256; offset += 32) {
-            // Horizontal grid lines
-            ctx.moveTo(0, 256 - offset); ctx.lineTo(512, 256 - offset);
-            ctx.moveTo(0, 256 + offset); ctx.lineTo(512, 256 + offset);
-            // Vertical grid lines
-            ctx.moveTo(256 - offset, 0); ctx.lineTo(256 - offset, 512);
-            ctx.moveTo(256 + offset, 0); ctx.lineTo(256 + offset, 512);
-        }
-        ctx.stroke();
-
-        // Draw filled block building lots (futuristic blueprint shading on lots)
-        ctx.fillStyle = 'rgba(0, 255, 255, 0.04)';
-        for (let x = 60; x < 450; x += 32) {
-            for (let y = 60; y < 450; y += 32) {
-                // Avoid placing blocks on the main arterial highways
-                if (Math.abs(x - 256) > 20 && Math.abs(y - 256) > 20 && Math.abs(Math.sqrt((x-256)**2 + (y-256)**2) - 140) > 15) {
-                    ctx.fillRect(x + 4, y + 4, 24, 24);
-                }
-            }
         }
 
         const mapTexture = new THREE.CanvasTexture(canvas);
@@ -940,12 +948,47 @@ export class DomainExpansionSystem extends createSystem({
         beam2.rotation.z = -Math.PI / 4;
         beam2.position.z = 0.002;
         
+        this.xButton.add(beam1);
+        this.xButton.add(beam2);
+        this.tableGroup.add(this.xButton);
+        
         // Initialize Ball Tracking & Interactive Sixes Buttons on the tactical deck
         this.initBallTracking();
         this.initWeatherSystem();
         this.initSandboxBall();
         this.initTrackingButtons();
         this.initSportSequenceSystem();
+
+        // Holographic containment cylinder for immersive view (scales 2.5 to 3.5)
+        const cylGeo = new THREE.CylinderGeometry(0.13, 0.13, 0.08, 32, 1, true);
+        cylGeo.translate(0, 0.04, 0); // Base sits on table (y = 0)
+        
+        const cylMat = new THREE.MeshPhongMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.0,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            shininess: 100
+        });
+        this.holoCylinder = new THREE.Mesh(cylGeo, cylMat);
+        this.holoCylinder.visible = false;
+        this.tableGroup.add(this.holoCylinder);
+
+        const wireMat = new THREE.LineBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.0
+        });
+        this.holoCylinderWire = new THREE.LineSegments(new THREE.EdgesGeometry(cylGeo), wireMat);
+        this.holoCylinderWire.visible = false;
+        this.tableGroup.add(this.holoCylinderWire);
+
+        // Navigation Placeholders Group
+        this.navPlaceholdersGroup = new THREE.Group();
+        this.navPlaceholdersGroup.visible = false;
+        this.tableGroup.add(this.navPlaceholdersGroup);
+        this.createNavPlaceholders();
 
         // Initialize Left Wrist Button
         const wristBtnGeom = new THREE.SphereGeometry(0.015, 16, 16);
@@ -1137,7 +1180,7 @@ export class DomainExpansionSystem extends createSystem({
         return this.debugMPressed;
     }
 
-    private setStadiumType(stadiumType: 'default' | 'berlin' | 'inuit' | 'butterflies') {
+    private setStadiumType(stadiumType: 'default' | 'berlin' | 'inuit' | 'butterflies' | 'nurburgring') {
         console.log(`[StadiumSelector] Switching stadium from ${this.currentStadiumType} to ${stadiumType}`);
         this.currentStadiumType = stadiumType;
 
@@ -1151,6 +1194,9 @@ export class DomainExpansionSystem extends createSystem({
         } else if (stadiumType === 'butterflies') {
             this.domainKeys  = [...this.DOMAIN_KEYS_BUTTERFLIES];
             this.domainNames = [...this.DOMAIN_NAMES_BUTTERFLIES];
+        } else if (stadiumType === 'nurburgring') {
+            this.domainKeys  = [...this.DOMAIN_KEYS_NURBURGRING];
+            this.domainNames = [...this.DOMAIN_NAMES_NURBURGRING];
         } else {
             this.domainKeys  = [...this.DOMAIN_KEYS_DEFAULT];
             this.domainNames = [...this.DOMAIN_NAMES_DEFAULT];
@@ -1160,6 +1206,7 @@ export class DomainExpansionSystem extends createSystem({
         const thumbKeys = stadiumType === 'berlin' ? this.THUMB_KEYS_BERLIN
                         : stadiumType === 'inuit'  ? this.THUMB_KEYS_INUIT
                         : stadiumType === 'butterflies' ? this.THUMB_KEYS_BUTTERFLIES
+                        : stadiumType === 'nurburgring' ? this.THUMB_KEYS_NURBURGRING
                         : this.THUMB_KEYS_DEFAULT;
 
         const totalDomains = this.domainKeys.length;
@@ -1238,8 +1285,11 @@ export class DomainExpansionSystem extends createSystem({
         if (this.butterflyGroup) {
             this.butterflyGroup.visible = (stadiumType === 'butterflies');
         }
+        if (this.nurburgringGroup) {
+            this.nurburgringGroup.visible = (stadiumType === 'nurburgring');
+        }
         if (this.minimapMapPlane) {
-            this.minimapMapPlane.visible = (stadiumType !== 'butterflies');
+            this.minimapMapPlane.visible = (stadiumType !== 'butterflies' && stadiumType !== 'nurburgring');
         }
         if (this.techRing1) {
             this.techRing1.visible = (stadiumType !== 'butterflies');
@@ -1254,6 +1304,11 @@ export class DomainExpansionSystem extends createSystem({
         // Lazily build Butterfly Park flat ground and butterflies
         if (stadiumType === 'butterflies' && !this.butterflyGroup) {
             this.createButterflyGroup();
+        }
+
+        // Lazily build Nürburgring racetrack
+        if (stadiumType === 'nurburgring' && !this.nurburgringGroup) {
+            this.createNurburgringGroup();
         }
 
         // 2. Lazily create new meshes if they don't exist yet
@@ -1366,106 +1421,191 @@ export class DomainExpansionSystem extends createSystem({
         if (stadiumType === 'inuit' && !this.inuitMesh) {
             const inuitGroup = new THREE.Group();
 
-            // Extruded Elliptical Wall (oval cross-section tube)
-            const segments = 64;
-            const height = 0.095;
-            const a = 0.11;
-            const b = 0.07;
-            const inuitGeo = new THREE.BufferGeometry();
-            const vertices: number[] = [];
-            const indices: number[] = [];
-            const uvs: number[] = [];
-
-            for (let i = 0; i <= segments; i++) {
-                const theta = (i / segments) * 2 * Math.PI;
-                const x = a * Math.cos(theta);
-                const z = b * Math.sin(theta);
+            const inuitAsset = AssetManager.getGLTF("cryptocom");
+            if (inuitAsset) {
+                const mesh = inuitAsset.scene.clone();
                 
-                // Bottom vertex
-                vertices.push(x, 0.002, z);
-                uvs.push(i / segments, 0);
+                // Measure bounding box to scale it correctly to fit the map (0.24m diameter)
+                const box = new THREE.Box3().setFromObject(mesh);
+                const size = new THREE.Vector3();
+                box.getSize(size);
+                
+                const maxDim = Math.max(size.x, size.z);
+                const inuitScale = (0.24 / (maxDim || 1.0)) * 1.30;
+                mesh.scale.setScalar(inuitScale);
+                mesh.position.set(0, 0.010, 0);
+                inuitGroup.add(mesh);
+                
+                // Traverse child meshes and recursively apply PBR materials
+                let courtMesh: THREE.Mesh | null = null;
+                mesh.traverse((child: any) => {
+                    if (child instanceof THREE.Mesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                        
+                        const name = child.name.toLowerCase();
+                        const parentName = child.parent ? child.parent.name.toLowerCase() : "";
+                        
+                        if (Array.isArray(child.material)) {
+                            child.material = child.material.map((m: any) => applyStadiumMaterial(m, name, parentName));
+                        } else {
+                            child.material = applyStadiumMaterial(child.material, name, parentName);
+                        }
 
-                // Top vertex
-                vertices.push(x, height, z);
-                uvs.push(i / segments, 1);
+                        if (name.includes('court') || name.includes('floor') || name.includes('field') || name.includes('pitch') || name.includes('ground')) {
+                            courtMesh = child;
+                        }
+                    }
+                });
+
+                const hoop1 = this.createBasketballHoop();
+                const hoop2 = this.createBasketballHoop();
+                this.basketballHoop1 = hoop1;
+                this.basketballHoop2 = hoop2;
+                this.hoop1NetMesh = (hoop1 as any).netMesh;
+                this.hoop2NetMesh = (hoop2 as any).netMesh;
+
+                if (courtMesh) {
+                    (courtMesh as THREE.Mesh).geometry.computeBoundingBox();
+                    const bbox = (courtMesh as THREE.Mesh).geometry.boundingBox;
+                    if (bbox) {
+                        const fSize = new THREE.Vector3();
+                        bbox.getSize(fSize);
+                        const fCenter = new THREE.Vector3();
+                        bbox.getCenter(fCenter);
+
+                        // Position hoops at local boundaries along the major axis
+                        if (fSize.z > fSize.x) {
+                            hoop1.position.set(fCenter.x, fCenter.y + 0.002, fCenter.z + fSize.z * 0.44);
+                            hoop1.rotation.y = Math.PI; // Face inward
+
+                            hoop2.position.set(fCenter.x, fCenter.y + 0.002, fCenter.z - fSize.z * 0.44);
+                            hoop2.rotation.y = 0; // Face inward
+                        } else {
+                            hoop1.position.set(fCenter.x + fSize.x * 0.44, fCenter.y + 0.002, fCenter.z);
+                            hoop1.rotation.y = -Math.PI / 2; // Face inward
+
+                            hoop2.position.set(fCenter.x - fSize.x * 0.44, fCenter.y + 0.002, fCenter.z);
+                            hoop2.rotation.y = Math.PI / 2; // Face inward
+                        }
+                    } else {
+                        hoop1.position.set(0.0, 0.002, 0.045);
+                        hoop1.rotation.y = Math.PI;
+                        hoop2.position.set(0.0, 0.002, -0.045);
+                        hoop2.rotation.y = 0;
+                    }
+                } else {
+                    hoop1.position.set(0.0, 0.002, 0.045);
+                    hoop1.rotation.y = Math.PI;
+                    hoop2.position.set(0.0, 0.002, -0.045);
+                    hoop2.rotation.y = 0;
+                }
+
+                mesh.add(hoop1, hoop2);
+                console.log("[InuitStadium] Holographic basketball hoops attached to court boundaries!");
+                this.collectStadiumMaterials(mesh);
+            } else {
+                // FALLBACK: Extruded Elliptical Wall (oval cross-section tube)
+                const segments = 64;
+                const height = 0.095;
+                const a = 0.07 * 1.30; // Swapped and scaled up by 30%
+                const b = 0.11 * 1.30; // Swapped and scaled up by 30%
+                const inuitGeo = new THREE.BufferGeometry();
+                const vertices: number[] = [];
+                const indices: number[] = [];
+                const uvs: number[] = [];
+
+                for (let i = 0; i <= segments; i++) {
+                    const theta = (i / segments) * 2 * Math.PI;
+                    const x = a * Math.cos(theta);
+                    const z = b * Math.sin(theta);
+                    
+                    // Bottom vertex (raised to 0.010)
+                    vertices.push(x, 0.010, z);
+                    uvs.push(i / segments, 0);
+
+                    // Top vertex
+                    vertices.push(x, height, z);
+                    uvs.push(i / segments, 1);
+                }
+
+                for (let i = 0; i < segments; i++) {
+                    const idx = i * 2;
+                    indices.push(idx, idx + 1, idx + 2);
+                    indices.push(idx + 1, idx + 3, idx + 2);
+                }
+
+                inuitGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                inuitGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+                inuitGeo.setIndex(indices);
+                inuitGeo.computeVertexNormals();
+
+                const inuitMat = new THREE.MeshStandardMaterial({
+                    color: 0xf97316,
+                    roughness: 0.15,
+                    metalness: 0.9,
+                    transparent: true,
+                    opacity: 0.35,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                });
+                const ovalWall = new THREE.Mesh(inuitGeo, inuitMat);
+                inuitGroup.add(ovalWall);
+
+                // Top neon ring
+                const ringPoints: THREE.Vector3[] = [];
+                for (let i = 0; i <= segments; i++) {
+                    const theta = (i / segments) * 2 * Math.PI;
+                    ringPoints.push(new THREE.Vector3(a * Math.cos(theta), height, b * Math.sin(theta)));
+                }
+                const topRingGeo = new THREE.BufferGeometry().setFromPoints(ringPoints);
+                const ringMat = new THREE.LineBasicMaterial({ color: 0xf97316, linewidth: 3 });
+                const topRing = new THREE.Line(topRingGeo, ringMat);
+                inuitGroup.add(topRing);
+
+                // Bottom neon ring (raised to 0.010)
+                const bottomPoints: THREE.Vector3[] = [];
+                for (let i = 0; i <= segments; i++) {
+                    const theta = (i / segments) * 2 * Math.PI;
+                    bottomPoints.push(new THREE.Vector3(a * Math.cos(theta), 0.010, b * Math.sin(theta)));
+                }
+                const bottomRingGeo = new THREE.BufferGeometry().setFromPoints(bottomPoints);
+                const bottomRing = new THREE.Line(bottomRingGeo, ringMat);
+                inuitGroup.add(bottomRing);
+
+                // Grid floor: Oriented vertically to match Z-axis gameplay orientation and scaled by 30%
+                const floorGeo = new THREE.PlaneGeometry(0.14 * 1.30, 0.22 * 1.30);
+                floorGeo.rotateX(-Math.PI / 2);
+                const floorMat = new THREE.MeshBasicMaterial({
+                    color: 0x1a0d02,
+                    transparent: true,
+                    opacity: 0.8,
+                    side: THREE.DoubleSide
+                });
+                const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+                floorMesh.position.y = 0.009; // raised from 0.001 to 0.009
+                inuitGroup.add(floorMesh);
+
+                const gridHelper = new THREE.GridHelper(0.22 * 1.30, 10, 0xf97316, 0x663311);
+                gridHelper.position.y = 0.0095; // raised from 0.0015 to 0.0095
+                inuitGroup.add(gridHelper);
+
+                // Procedurally generate two glowing NBA basketball hoops (positions scaled by 30%)
+                const hoop1 = this.createBasketballHoop();
+                hoop1.position.set(0.0, 0.010, 0.045 * 1.30); // raised from 0.002 to 0.010
+                hoop1.rotation.y = Math.PI; // Face inward
+                
+                const hoop2 = this.createBasketballHoop();
+                hoop2.position.set(0.0, 0.010, -0.045 * 1.30); // raised from 0.002 to 0.010
+                hoop2.rotation.y = 0; // Face inward
+
+                inuitGroup.add(hoop1, hoop2);
+                
+                this.basketballHoop1 = hoop1;
+                this.basketballHoop2 = hoop2;
+                this.hoop1NetMesh = (hoop1 as any).netMesh;
+                this.hoop2NetMesh = (hoop2 as any).netMesh;
             }
-
-            for (let i = 0; i < segments; i++) {
-                const idx = i * 2;
-                indices.push(idx, idx + 1, idx + 2);
-                indices.push(idx + 1, idx + 3, idx + 2);
-            }
-
-            inuitGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            inuitGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-            inuitGeo.setIndex(indices);
-            inuitGeo.computeVertexNormals();
-
-            const inuitMat = new THREE.MeshStandardMaterial({
-                color: 0xf97316,
-                roughness: 0.15,
-                metalness: 0.9,
-                transparent: true,
-                opacity: 0.35,
-                side: THREE.DoubleSide,
-                depthWrite: false
-            });
-            const ovalWall = new THREE.Mesh(inuitGeo, inuitMat);
-            inuitGroup.add(ovalWall);
-
-            // Top neon ring
-            const ringPoints: THREE.Vector3[] = [];
-            for (let i = 0; i <= segments; i++) {
-                const theta = (i / segments) * 2 * Math.PI;
-                ringPoints.push(new THREE.Vector3(a * Math.cos(theta), height, b * Math.sin(theta)));
-            }
-            const topRingGeo = new THREE.BufferGeometry().setFromPoints(ringPoints);
-            const ringMat = new THREE.LineBasicMaterial({ color: 0xf97316, linewidth: 3 });
-            const topRing = new THREE.Line(topRingGeo, ringMat);
-            inuitGroup.add(topRing);
-
-            // Bottom neon ring
-            const bottomPoints: THREE.Vector3[] = [];
-            for (let i = 0; i <= segments; i++) {
-                const theta = (i / segments) * 2 * Math.PI;
-                bottomPoints.push(new THREE.Vector3(a * Math.cos(theta), 0.002, b * Math.sin(theta)));
-            }
-            const bottomRingGeo = new THREE.BufferGeometry().setFromPoints(bottomPoints);
-            const bottomRing = new THREE.Line(bottomRingGeo, ringMat);
-            inuitGroup.add(bottomRing);
-
-            // Grid floor
-            const floorGeo = new THREE.PlaneGeometry(0.22, 0.14);
-            floorGeo.rotateX(-Math.PI / 2);
-            const floorMat = new THREE.MeshBasicMaterial({
-                color: 0x1a0d02,
-                transparent: true,
-                opacity: 0.8,
-                side: THREE.DoubleSide
-            });
-            const floorMesh = new THREE.Mesh(floorGeo, floorMat);
-            floorMesh.position.y = 0.001;
-            inuitGroup.add(floorMesh);
-
-            const gridHelper = new THREE.GridHelper(0.22, 10, 0xf97316, 0x663311);
-            gridHelper.position.y = 0.0015;
-            inuitGroup.add(gridHelper);
-
-            // Procedurally generate two glowing NBA basketball hoops
-            const hoop1 = this.createBasketballHoop();
-            hoop1.position.set(0.0, 0.002, 0.045);
-            hoop1.rotation.y = Math.PI; // Face inward
-            
-            const hoop2 = this.createBasketballHoop();
-            hoop2.position.set(0.0, 0.002, -0.045);
-            hoop2.rotation.y = 0; // Face inward
-
-            inuitGroup.add(hoop1, hoop2);
-            
-            this.basketballHoop1 = hoop1;
-            this.basketballHoop2 = hoop2;
-            this.hoop1NetMesh = (hoop1 as any).netMesh;
-            this.hoop2NetMesh = (hoop2 as any).netMesh;
 
             this.inuitMesh = inuitGroup as any;
             this.tableGroup.add(this.inuitMesh!);
@@ -1491,7 +1631,7 @@ export class DomainExpansionSystem extends createSystem({
         if (this.sandboxBall) this.sandboxBall.scale.setScalar(ballScale);
         
         // Assign color based on stadium
-        const colors = { default: 0xff6600, berlin: 0x22d3ee, inuit: 0xf97316, butterflies: 0x10b981 };
+        const colors = { default: 0xff6600, berlin: 0x22d3ee, inuit: 0xf97316, butterflies: 0x10b981, nurburgring: 0x22d3ee };
         (this.activeBall.material as THREE.MeshBasicMaterial).color.setHex(colors[stadiumType]);
         (this.ballTrail.material as THREE.LineBasicMaterial).color.setHex(colors[stadiumType]);
 
@@ -1516,7 +1656,7 @@ export class DomainExpansionSystem extends createSystem({
         if (this.locationPin && this.locationPin.children.length >= 4) {
             const pinLabelMesh = this.locationPin.children[3] as THREE.Mesh;
             const pinLabelMat = pinLabelMesh.material as THREE.MeshBasicMaterial;
-            const newLabel = stadiumType === 'berlin' ? 'OLYMPIASTADION' : stadiumType === 'inuit' ? 'CRYPTO.COM ARENA' : 'WANKHEDE STADIUM';
+            const newLabel = stadiumType === 'berlin' ? 'OLYMPIASTADION' : stadiumType === 'inuit' ? 'CRYPTO.COM ARENA' : stadiumType === 'nurburgring' ? 'NÜRBURGRING 24H' : 'WANKHEDE STADIUM';
             
             const canvas = document.createElement('canvas');
             canvas.width = 256; canvas.height = 64;
@@ -1552,6 +1692,7 @@ export class DomainExpansionSystem extends createSystem({
         // 7. Trigger celebratory fireworks on the outer circle of the top part of the stadium
         const stColors = stadiumType === 'berlin' ? [0x22d3ee, 0xffaa00, 0xff33aa]
                        : stadiumType === 'inuit'  ? [0xf97316, 0x00ffff, 0xffff00]
+                       : stadiumType === 'nurburgring' ? [0xff5500, 0x22d3ee, 0xff00ff]
                        : [0xff6600, 0x00ff66, 0x00aaff];
 
         // Trigger 3 fireworks spaced out along the roof rim circle
@@ -1568,6 +1709,79 @@ export class DomainExpansionSystem extends createSystem({
         // Toggle visibility of the cricket props based on stadium selection
         if (this.sportPropsGroup) {
             this.sportPropsGroup.visible = (stadiumType === 'default');
+        }
+
+        // Dynamic Coloring of the Holographic Cylinder and Wireframe
+        const activeColor = colors[stadiumType] || 0x00ffff;
+        if (this.holoCylinder && this.holoCylinder.material) {
+            (this.holoCylinder.material as THREE.MeshPhongMaterial).color.setHex(activeColor);
+        }
+        if (this.holoCylinderWire && this.holoCylinderWire.material) {
+            (this.holoCylinderWire.material as THREE.LineBasicMaterial).color.setHex(activeColor);
+        }
+
+        // Update the Tactical Command Dock (TCD) button labels dynamically
+        this.updateTCDButtonLabels();
+    }
+
+    private updateTCDButtonLabels() {
+        if (!this.tcdButtonLabels || this.tcdButtonLabels.length < 3) return;
+
+        const stType = this.currentStadiumType;
+        let labels = ["KOHLI", "SHARMA", "SCOOP"];
+        const colors = [0x00ffff, 0xffff00, 0x00ff66];
+
+        if (stType === 'berlin') {
+            labels = ["CROSS", "HEADER", "VOLLEY"];
+        } else if (stType === 'inuit') {
+            labels = ["STEAL", "LAYUP", "3PT"];
+        } else if (stType === 'butterflies') {
+            labels = ["FLY", "FLUTTER", "GLIDE"];
+        } else if (stType === 'nurburgring') {
+            labels = ["RACE", "SPEED", "LAP"];
+        }
+
+        for (let i = 0; i < 3; i++) {
+            const labelMesh = this.tcdButtonLabels[i];
+            if (!labelMesh) continue;
+
+            const labelVal = labels[i];
+            const colorVal = colors[i];
+
+            // Re-draw text on canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d')!;
+            ctx.clearRect(0, 0, 128, 64);
+            ctx.fillStyle = 'rgba(2, 6, 26, 0.94)';
+            ctx.fillRect(0, 0, 128, 64);
+            
+            const hexStr = '#' + colorVal.toString(16).padStart(6, '0');
+            ctx.strokeStyle = hexStr;
+            ctx.lineWidth = 4;
+            ctx.strokeRect(2, 2, 124, 60);
+
+            ctx.fillStyle = '#ffffff';
+            if (labelVal.length > 6) {
+                ctx.font = 'bold 15px monospace';
+            } else {
+                ctx.font = 'bold 20px monospace';
+            }
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(labelVal, 64, 32);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tex.needsUpdate = true;
+
+            const mat = labelMesh.material as THREE.MeshBasicMaterial;
+            if (mat.map) {
+                mat.map.dispose();
+            }
+            mat.map = tex;
+            mat.needsUpdate = true;
         }
     }
 
@@ -1628,6 +1842,80 @@ export class DomainExpansionSystem extends createSystem({
                 b.leftWing.rotation.z = flap;
                 b.rightWing.rotation.z = -flap;
             });
+        }
+
+        // --- Update Nürburgring in the Minimap ---
+        if (this.currentStadiumType === 'nurburgring' && this.nurburgringGroup && this.tableGroup.visible) {
+            const isImmersive = this.currentTableScale >= 2.5;
+
+            // 1. Toggle visibility and update cars
+            if (isImmersive) {
+                // Hide tiny cars
+                this.nurburgringCars.forEach((car) => {
+                    car.group.visible = false;
+                });
+
+                // Show & update detailed F1 car
+                this.nurburgringF1Car.visible = true;
+                this.nurburgringF1Progress += dt * this.nurburgringF1Speed;
+                if (this.nurburgringF1Progress > 1.0) this.nurburgringF1Progress -= 1.0;
+
+                const pos = this.nurburgringCurve.getPointAt(this.nurburgringF1Progress);
+                this.nurburgringF1Car.position.copy(pos);
+                // Offset Y upward to prevent wheels clipping on the flat road surface
+                this.nurburgringF1Car.position.y += 0.0011;
+
+                const lookAhead = (this.nurburgringF1Progress + 0.004) % 1.0;
+                const target = this.nurburgringCurve.getPointAt(lookAhead);
+                this.nurburgringF1Car.lookAt(target);
+                this.nurburgringF1Car.rotateY(Math.PI); // Rotate 180 deg to face forward
+
+                // Spin wheels locally
+                this.nurburgringF1Wheels.forEach((wheel) => {
+                    wheel.rotation.x += dt * 35.0; // Local spin speed
+                });
+            } else {
+                // Hide F1 car
+                this.nurburgringF1Car.visible = false;
+
+                // Show & update tiny cars
+                this.nurburgringCars.forEach((car) => {
+                    car.group.visible = true;
+                    car.progress += dt * car.speed;
+                    if (car.progress > 1.0) car.progress -= 1.0;
+
+                    const pos = this.nurburgringCurve.getPointAt(car.progress);
+                    car.group.position.copy(pos);
+                    // Offset Y upward to prevent chassis clipping on the flat road surface
+                    car.group.position.y += 0.0006;
+
+                    const lookAhead = (car.progress + 0.005) % 1.0;
+                    const target = this.nurburgringCurve.getPointAt(lookAhead);
+                    car.group.lookAt(target);
+                    car.group.rotateY(Math.PI); // Rotate 180 deg to face forward
+                });
+            }
+
+            // 2. Spectator camera flashes and flare sparks
+            if (Math.random() < 0.25) {
+                const isFlare = Math.random() < 0.40;
+                const randomProgress = Math.random();
+                const trackPoint = this.nurburgringCurve.getPointAt(randomProgress);
+
+                // Offset slightly outward from track center to simulate trackside crowd
+                const tangent = this.nurburgringCurve.getTangentAt(randomProgress).normalize();
+                const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+                const offsetDistance = (Math.random() > 0.5 ? 1 : -1) * (0.006 + Math.random() * 0.012);
+                
+                const flashX = trackPoint.x + normal.x * offsetDistance;
+                const flashZ = trackPoint.z + normal.z * offsetDistance;
+                const flashY = trackPoint.y + 0.002 + Math.random() * 0.008;
+
+                const color = isFlare ? 0xff4500 : 0xffffff;
+                const burstScale = isFlare ? 0.008 : 0.002;
+                
+                this.triggerFirework(flashX, flashY, flashZ, color, 0.001, 0.0, 0.002, 0.0, burstScale);
+            }
         }
 
         // Expose a global window variable so Jugnu System ignores index pinches when this table is actively rotating
@@ -1960,7 +2248,7 @@ export class DomainExpansionSystem extends createSystem({
                 this.playerSimTime = 0.0;
             }
 
-            const isScalingAbove2m = this.currentTableScale > 3.33;
+            const isScalingAbove2m = this.currentTableScale >= 2.0;
 
             let playerHeadPos = new THREE.Vector3(0, 1.6, 0);
             if (this.player && this.player.head) {
@@ -2026,8 +2314,8 @@ export class DomainExpansionSystem extends createSystem({
                 cardTarget.y = cardWorldPos.y; // Level vertical height in world space
                 p.statsCard.lookAt(cardTarget);
 
-                // Scaling activation check: only load player tags and player markers when scaling is above 2 meters (table scale > 3.33)
-                const isScalingAbove2m = this.currentTableScale > 3.33;
+                // Scaling activation check: only load player tags and player markers when scaling is above 2 meters (table scale >= 2.0)
+                const isScalingAbove2m = this.currentTableScale >= 2.0;
                 
                 // 1. Smoothly fade in/out the player group and markers
                 const targetOpacityPlayer = isScalingAbove2m ? 0.95 : 0.0;
@@ -2049,9 +2337,9 @@ export class DomainExpansionSystem extends createSystem({
                 const targetOpacityRing = isScalingAbove2m ? 0.5 : 0.0;
                 ringMat.opacity += (targetOpacityRing - ringMat.opacity) * dt * 10.0;
                 
-                // Scale up hovered player
+                // Scale up hovered player (skip hover interactions during active replay)
                 let isHovered = false;
-                if (isScalingAbove2m) {
+                if (isScalingAbove2m && !this.isSportSequenceActive) {
                     p.group.getWorldPosition(playerWorldPos);
                     
                     let distToLeft = Infinity;
@@ -2072,13 +2360,13 @@ export class DomainExpansionSystem extends createSystem({
                 p.mesh.scale.setScalar(THREE.MathUtils.lerp(p.mesh.scale.x, baseScaleFactor * p.hoverScale, dt * 10.0));
                 p.ring.scale.setScalar(THREE.MathUtils.lerp(p.ring.scale.x, baseScaleFactor * p.hoverScale, dt * 10.0));
                 
-                // 2. Smoothly fade in/out and scale the player name tag
+                // 2. Smoothly fade in/out and scale the player name tag (always hide tags during replay)
                 // Only batsmen get persistent name tags; other roles only show on hover
                 const tagMat = p.tag.material as THREE.MeshBasicMaterial;
                 let targetOpacityTag = 0.0;
                 let targetTagScale = 0.0;
                 
-                if (isScalingAbove2m) {
+                if (isScalingAbove2m && !this.isSportSequenceActive) {
                     const isBatsman = p.role === 'batsman';
                     if (isHovered) {
                         targetOpacityTag = 1.0;
@@ -2120,39 +2408,41 @@ export class DomainExpansionSystem extends createSystem({
                     }
                 }
 
-                const targetOpacity = (isHovered && isScalingAbove2m) ? 0.95 : 0.0;
-                cardMat.opacity += (targetOpacity - cardMat.opacity) * dt * 8.0;
+                if (!this.isSportSequenceActive) {
+                    const targetOpacity = (isHovered && isScalingAbove2m) ? 0.95 : 0.0;
+                    cardMat.opacity += (targetOpacity - cardMat.opacity) * dt * 8.0;
 
-                const curCardOpacity = cardMat.opacity;
-                const hoverLerp = (p.hoverScale - 1.0) / 0.4;
-                const dy = hoverLerp * 0.007;
-                const dz = hoverLerp * 0.016;
+                    const curCardOpacity = cardMat.opacity;
+                    const hoverLerp = (p.hoverScale - 1.0) / 0.4;
+                    const dy = hoverLerp * 0.007;
+                    const dz = hoverLerp * 0.016;
 
-                // Sync opacities and apply 3D depth parallax shifts to all children of statsCard
-                p.statsCard.children.forEach((child) => {
-                    if (child instanceof THREE.Mesh) {
-                        const childMat = child.material as THREE.MeshBasicMaterial;
-                        if (childMat) {
-                            if (child !== cardMesh) {
-                                const baseOpacity = child.userData.baseOpacity ?? 0.85;
-                                childMat.opacity = curCardOpacity * (baseOpacity / 0.95);
+                    // Sync opacities and apply 3D depth parallax shifts to all children of statsCard
+                    p.statsCard.children.forEach((child) => {
+                        if (child instanceof THREE.Mesh) {
+                            const childMat = child.material as THREE.MeshBasicMaterial;
+                            if (childMat) {
+                                if (child !== cardMesh) {
+                                    const baseOpacity = child.userData.baseOpacity ?? 0.85;
+                                    childMat.opacity = curCardOpacity * (baseOpacity / 0.95);
+                                }
                             }
-                        }
-                        
-                        const baseY = p.statsCard.userData.baseY ?? 0.045;
-                        const baseZ = child.userData.baseZ ?? 0.0;
+                            
+                            const baseY = p.statsCard.userData.baseY ?? 0.045;
+                            const baseZ = child.userData.baseZ ?? 0.0;
 
-                        // Slide factor for 3D parallax depth effect
-                        let factor = 1.0;
-                        if (child !== cardMesh && child.userData.baseOpacity !== 0.85) {
-                            factor = 0.6; // Backing panel and border move slightly less
+                            // Slide factor for 3D parallax depth effect
+                            let factor = 1.0;
+                            if (child !== cardMesh && child.userData.baseOpacity !== 0.85) {
+                                factor = 0.6; // Backing panel and border move slightly less
+                            }
+                            child.position.y = baseY + dy * factor;
+                            child.position.z = baseZ + dz * factor;
                         }
-                        child.position.y = baseY + dy * factor;
-                        child.position.z = baseZ + dz * factor;
-                    }
-                });
+                    });
 
-                p.statsCard.visible = cardMat.opacity > 0.01;
+                    p.statsCard.visible = cardMat.opacity > 0.01;
+                }
             });
 
             // Log middle pinch status transitions
@@ -2179,8 +2469,8 @@ export class DomainExpansionSystem extends createSystem({
                         const ratio = currentHandDist / this.initialHandDist;
                         const targetUserScale = this.initialUserScale * ratio;
                         
-                        // strictly clamped from 1.0 (base 0.60m diameter) up to 5.0 (3.0m maximum diameter)
-                        this.userTableScale = THREE.MathUtils.clamp(targetUserScale, 1.0, 5.0);
+                        // strictly clamped from 1.0 (base 0.60m diameter) up to 3.5 (Player Immersive maximum)
+                        this.userTableScale = THREE.MathUtils.clamp(targetUserScale, 1.0, 3.5);
                         
                         // Log only on significant scale changes to avoid spamming the debug board
                         if (Math.abs(this.userTableScale - this.lastLoggedScale) > 0.2) {
@@ -2274,6 +2564,8 @@ export class DomainExpansionSystem extends createSystem({
                 this.player.head.getWorldPosition(headPos);
             }
 
+            const showBubbles = (this.currentTableScale < 2.5);
+
             for (let i = 0; i < this.domainKeys.length; i++) {
                 const bubble = this.selectionBubbles[i];
                 const bMat = this.bubbleMats[i];
@@ -2282,6 +2574,16 @@ export class DomainExpansionSystem extends createSystem({
                 const loader = this.loaderRings[i];
                 const lMat = loader.material as THREE.MeshBasicMaterial;
                 const nameTag = this.nameTags[i];
+
+                bubble.visible = showBubbles;
+                if (ring) ring.visible = showBubbles;
+                if (loader) loader.visible = showBubbles;
+                if (nameTag) nameTag.visible = showBubbles;
+
+                if (!showBubbles) {
+                    this.pinchProgresses[i] = 0.0;
+                    continue;
+                }
 
                 bubble.rotation.y += dt * 0.4;
 
@@ -2445,14 +2747,14 @@ export class DomainExpansionSystem extends createSystem({
             this.locationPin.lookAt(pinTarget);
 
             // Scale-gated fade-out: Location Pin and AR Billboard fade away together smoothly as we scale the stadium up
-            // At scale <= 1.8, fully visible. At scale >= 3.0, completely invisible.
+            // At scale <= 1.8, fully visible. At scale >= 3.0, completely invisible. Also invisible during replays or immersive scale.
             const fadeFactor = THREE.MathUtils.clamp(
                 THREE.MathUtils.mapLinear(this.currentTableScale, 1.8, 3.0, 1.0, 0.0),
                 0.0,
                 1.0
             );
 
-            const targetPinOpacity = 0.9 * fadeFactor;
+            const targetPinOpacity = (this.isSportSequenceActive || this.currentTableScale >= 2.5) ? 0.0 : (0.9 * fadeFactor);
             this.locationPin.traverse((child) => {
                 if (child instanceof THREE.Mesh) {
                     const mat = child.material as THREE.MeshBasicMaterial;
@@ -2468,7 +2770,7 @@ export class DomainExpansionSystem extends createSystem({
                 this.locationPin.visible = firstMat.opacity > 0.01;
             }
 
-            // Scale-gated fade-out for AR TV Billboard: vanishes smoothly as we scale the stadium up, or when fireworks play
+            // Scale-gated fade-out for AR TV Billboard: vanishes smoothly as we scale the stadium up, or when fireworks play, or during active replays
             if (this.arBillboard) {
                 const areFireworksPlaying = this.areFireworksActive();
                 this.arBillboard.traverse((child) => {
@@ -2476,7 +2778,7 @@ export class DomainExpansionSystem extends createSystem({
                         const mat = child.material as THREE.Material;
                         if (mat && mat.transparent) {
                             const defOpacity = child.userData.defaultOpacity ?? 0.8;
-                            const targetOpacity = areFireworksPlaying ? 0.0 : (defOpacity * fadeFactor);
+                            const targetOpacity = (areFireworksPlaying || this.isSportSequenceActive) ? 0.0 : (defOpacity * fadeFactor);
                             mat.opacity += (targetOpacity - mat.opacity) * dt * 8.0;
                         }
                     }
@@ -2495,8 +2797,8 @@ export class DomainExpansionSystem extends createSystem({
                 this.arBillboard.visible = maxOpacity > 0.01;
             }
 
-            // 7. Holographic Close "X" Button Billboard & Poke check
-            if (this.isDomainActive) {
+            // 7. Holographic Close "X" Button Billboard & Poke check (hide at scale >= 2.5)
+            if (this.isDomainActive && this.currentTableScale < 2.5) {
                 this.xButton.visible = true;
                 const activeBubble = this.selectionBubbles[this.currentDomainIndex];
                 
@@ -2670,7 +2972,7 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
 
-            if (this.currentStadiumType === 'butterflies') {
+            if (this.currentStadiumType === 'butterflies' || this.currentStadiumType === 'nurburgring') {
                 if (this.weatherMesh) this.weatherMesh.visible = false;
                 if (this.sandboxBall) this.sandboxBall.visible = false;
                 if (this.activeBall) this.activeBall.visible = false;
@@ -2694,8 +2996,69 @@ export class DomainExpansionSystem extends createSystem({
                 this.updateSandboxBall(dt);
                 this.updateSportSequence(dt);
                 this.updateNetsWiggling(dt);
+
+                // - Small Version (Minimized): [1.0, 2.0) -> fully visible (stFadeFactor = 1.0)
+                // - Medium Version: [2.0, 2.5) -> if isNavLayerActive, fade to 0.70 (30% transparency), else 0.90 (90% solid)
+                // - Player Immersive View: [2.5, 3.5] -> structural meshes smoothly fade to 0.0 from their starting opacity
+                let stFadeFactor = 1.0;
+                if (this.currentTableScale >= 2.5) {
+                    const startVal = this.isNavLayerActive ? 0.70 : 0.90;
+                    stFadeFactor = THREE.MathUtils.clamp(
+                        THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 3.5, startVal, 0.0),
+                        0.0,
+                        startVal
+                    );
+                } else if (this.currentTableScale >= 2.0) {
+                    stFadeFactor = this.isNavLayerActive ? 0.70 : 0.90;
+                } else {
+                    stFadeFactor = 1.0;
+                }
+
+                const activeStMesh = this.currentStadiumType === 'default' ? this.stadiumMesh
+                                   : this.currentStadiumType === 'berlin'  ? this.berlinMesh
+                                   : this.currentStadiumType === 'inuit'   ? this.inuitMesh
+                                   : null;
+
+                if (activeStMesh) {
+                    activeStMesh.traverse((child: any) => {
+                        if (child instanceof THREE.Mesh) {
+                            const name = child.name.toLowerCase();
+                            const parentName = child.parent ? child.parent.name.toLowerCase() : "";
+                            const matches = (str: string) => name.includes(str) || parentName.includes(str);
+                            
+                            // Gameplay Asset Retention Override
+                            const isGameplay = (
+                                matches('pitch') || matches('crease') || matches('wicket') || matches('stump') || matches('bat') || matches('boundary') || matches('rope') ||
+                                matches('field') || matches('grass') || matches('goal') || matches('net') ||
+                                matches('court') || matches('hardwood') || matches('floor') || matches('paint') || matches('key') || matches('restrict') || matches('hoop') || matches('backboard')
+                            );
+
+                            const mats = Array.isArray(child.material) ? child.material : [child.material];
+                            mats.forEach((mat: any) => {
+                                if (mat) {
+                                    mat.transparent = true;
+                                    
+                                    // Store original material opacity in userData so we can scale relative to it!
+                                    if (mat.userData.baseOpacity === undefined) {
+                                        mat.userData.baseOpacity = mat.opacity ?? 1.0;
+                                    }
+                                    
+                                    const factor = isGameplay ? 1.0 : stFadeFactor;
+                                    const targetOp = mat.userData.baseOpacity * factor;
+                                    // Smoothly interpolate opacity to prevent jarring flashes
+                                    mat.opacity += (targetOp - mat.opacity) * dt * 10.0;
+                                }
+                            });
+                        }
+                    });
+                }
+
+                const showTCD = (this.currentTableScale < 2.5);
                 if (this.tcdLauncherButton && this.tcdLauncherButton.parent) {
-                    this.tcdLauncherButton.parent.visible = true;
+                    this.tcdLauncherButton.parent.visible = showTCD;
+                }
+                if (this.tcdPanelGroup) {
+                    this.tcdPanelGroup.visible = showTCD && this.tcdVisible;
                 }
                 this.updateTrackingButtons(
                     leftIndexPinchPos,
@@ -2704,6 +3067,47 @@ export class DomainExpansionSystem extends createSystem({
                     hasRightIndex,
                     dt
                 );
+            }
+
+            // --- Holographic Containment Cylinder Update ---
+            if (this.currentTableScale >= 2.5 && this.currentStadiumType !== 'butterflies') {
+                this.holoCylinder.visible = true;
+                this.holoCylinderWire.visible = true;
+                
+                const cylinderAlpha = THREE.MathUtils.clamp(
+                    THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 3.5, 0.0, 0.15),
+                    0.0,
+                    0.15
+                );
+                const wireframeAlpha = THREE.MathUtils.clamp(
+                    THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 3.5, 0.0, 0.5),
+                    0.0,
+                    0.5
+                );
+                
+                (this.holoCylinder.material as THREE.MeshPhongMaterial).opacity = cylinderAlpha;
+                (this.holoCylinderWire.material as THREE.LineBasicMaterial).opacity = wireframeAlpha;
+            } else {
+                this.holoCylinder.visible = false;
+                this.holoCylinderWire.visible = false;
+            }
+
+            // --- Venue Navigation Layer Placeholder Updates (Zero-GC) ---
+            const showNav = this.isNavLayerActive && (this.currentTableScale >= 2.0);
+            if (this.navPlaceholdersGroup) {
+                this.navPlaceholdersGroup.visible = showNav;
+                if (showNav) {
+                    this.player.head.getWorldPosition(this.scratchVector1); // headPos
+                    
+                    this.navPlaceholdersGroup.children.forEach((placeholder: any) => {
+                        const label = placeholder.getObjectByName("label");
+                        if (label) {
+                            label.getWorldPosition(this.scratchVector2); // labelWorldPos
+                            this.scratchVector3.set(this.scratchVector1.x, this.scratchVector2.y, this.scratchVector1.z); // targetWorldPos (yaw-only height matched)
+                            label.lookAt(this.scratchVector3);
+                        }
+                    });
+                }
             }
         } else {
             // Table is closed: hide close button instantly
@@ -2727,6 +3131,12 @@ export class DomainExpansionSystem extends createSystem({
             if (this.sandboxBall) this.sandboxBall.visible = false;
             this.tcdVisible = false;
             if (this.tcdPanelGroup) this.tcdPanelGroup.visible = false;
+            
+            // Reset Navigation and Cylinder Layer states
+            this.isNavLayerActive = false;
+            if (this.navPlaceholdersGroup) this.navPlaceholdersGroup.visible = false;
+            if (this.holoCylinder) this.holoCylinder.visible = false;
+            if (this.holoCylinderWire) this.holoCylinderWire.visible = false;
         }
 
         // --- Immersive 360° Dome expansion cinematic transitions ---
@@ -3823,7 +4233,7 @@ export class DomainExpansionSystem extends createSystem({
         this.billboardTexture = new THREE.CanvasTexture(this.billboardCanvas);
 
         this.arBillboard.visible = false;
-        // this.tableGroup.add(this.arBillboard);
+        this.tableGroup.add(this.arBillboard);
     }
 
     private redrawBillboard() {
@@ -3876,26 +4286,26 @@ export class DomainExpansionSystem extends createSystem({
         this.hawkeyeProgress = 0.0;
         this.hawkeyeTime = 0.0;
 
-        // Define precise local path coordinates on the mini Wankhede wicket pitch
+        // Define precise local path coordinates on the mini Wankhede wicket pitch (Aligned along X-axis!)
         const points: THREE.Vector3[] = [];
         
         if (pathType === 'SIX') {
-            points.push(new THREE.Vector3(0.0, 0.02, -0.045));    // Bowler crease release
-            points.push(new THREE.Vector3(0.0, 0.001, 0.015));   // Center bounce coordinate
-            points.push(new THREE.Vector3(0.0, 0.016, 0.038));   // Strike zone contact
-            points.push(new THREE.Vector3(0.03, 0.05, 0.065));   // Sky rise arc
-            points.push(new THREE.Vector3(0.06, 0.075, 0.09));   // High peak over stand canopy
-            points.push(new THREE.Vector3(0.08, 0.045, 0.11));   // Landing in stands
+            points.push(new THREE.Vector3(-0.045, 0.02, 0.0));    // Bowler crease release
+            points.push(new THREE.Vector3(0.015, 0.001, 0.0));   // Center bounce coordinate
+            points.push(new THREE.Vector3(0.038, 0.016, 0.0));   // Strike zone contact
+            points.push(new THREE.Vector3(0.065, 0.05, 0.03));   // Sky rise arc
+            points.push(new THREE.Vector3(0.09, 0.075, 0.06));   // High peak over stand canopy
+            points.push(new THREE.Vector3(0.11, 0.045, 0.08));   // Landing in stands
         } else if (pathType === 'WICKET') {
-            points.push(new THREE.Vector3(0.002, 0.02, -0.045)); // Release slightly off-center
-            points.push(new THREE.Vector3(-0.001, 0.001, 0.018));// Bounce close to crease
-            points.push(new THREE.Vector3(-0.002, 0.012, 0.042));// Directly striking stumps!
-            points.push(new THREE.Vector3(-0.004, 0.002, 0.048));// Bumping away
+            points.push(new THREE.Vector3(-0.045, 0.02, 0.002)); // Release slightly off-center
+            points.push(new THREE.Vector3(0.018, 0.001, -0.001));// Bounce close to crease
+            points.push(new THREE.Vector3(0.042, 0.012, -0.002));// Directly striking stumps!
+            points.push(new THREE.Vector3(0.048, 0.002, -0.004));// Bumping away
         } else { // DOT
-            points.push(new THREE.Vector3(-0.002, 0.02, -0.045));
-            points.push(new THREE.Vector3(0.001, 0.001, 0.014));
-            points.push(new THREE.Vector3(0.003, 0.015, 0.038)); // Swing & miss
-            points.push(new THREE.Vector3(0.004, 0.02, 0.047));  // Safely caught by keeper
+            points.push(new THREE.Vector3(-0.045, 0.02, -0.002));
+            points.push(new THREE.Vector3(0.014, 0.001, 0.001));
+            points.push(new THREE.Vector3(0.038, 0.015, 0.003)); // Swing & miss
+            points.push(new THREE.Vector3(0.047, 0.02, 0.004));  // Safely caught by keeper
         }
 
         this.hawkeyeCurve = new THREE.CatmullRomCurve3(points);
@@ -3985,14 +4395,14 @@ export class DomainExpansionSystem extends createSystem({
 
         const rosterCricket: PlayerEntry[] = [
             // ── Batting: Rajasthan Royals (Yellow) ──────────────────────────
-            { id: "b1", name: "Y. Jaiswal",   role: "batsman", jersey: "1",  team: "yellow", x:  0.013, z:  0.000, primary: "Runs: 68* (42)",       secondary: "SR: 161.9",        rcbCardKey: "" },
-            { id: "b2", name: "S. Samson",    role: "batsman", jersey: "13", team: "yellow", x: -0.013, z:  0.000, primary: "Runs: 31 (20)",        secondary: "SR: 155.0",        rcbCardKey: "" },
+            { id: "b1", name: "Y. Jaiswal",   role: "batsman", jersey: "1",  team: "yellow", x:  0.035, z: -0.005, primary: "Runs: 68* (42)",       secondary: "SR: 161.9",        rcbCardKey: "" },
+            { id: "b2", name: "S. Samson",    role: "batsman", jersey: "13", team: "yellow", x: -0.035, z:  0.005, primary: "Runs: 31 (20)",        secondary: "SR: 155.0",        rcbCardKey: "" },
             // ── Umpires ─────────────────────────────────────────────────────
-            { id: "u1", name: "M. Erasmus",   role: "umpire",  jersey: "U1", team: "neutral", x: -0.020, z:  0.000, primary: "Umpire (Bowler's)",   secondary: "Decisions: 100%",  rcbCardKey: "" },
-            { id: "u2", name: "N. Llong",     role: "umpire",  jersey: "U2", team: "neutral", x:  0.013, z:  0.020, primary: "Umpire (Sq. Leg)",    secondary: "Decisions: 100%",  rcbCardKey: "" },
+            { id: "u1", name: "M. Erasmus",   role: "umpire",  jersey: "U1", team: "neutral", x: -0.055, z:  0.000, primary: "Umpire (Bowler's)",   secondary: "Decisions: 100%",  rcbCardKey: "" },
+            { id: "u2", name: "N. Llong",     role: "umpire",  jersey: "U2", team: "neutral", x:  0.035, z:  0.020, primary: "Umpire (Sq. Leg)",    secondary: "Decisions: 100%",  rcbCardKey: "" },
             // ── Fielding: Royal Challengers Bengaluru (Blue) ────────────────
-            { id: "f1",  name: "J. Cox",        role: "fielder", jersey: "60", team: "blue", x:  0.018, z:  0.000, primary: "Catches: 1, St: 0",    secondary: "Wicketkeeper",      rcbCardKey: "rcbJordanCox"  },
-            { id: "f2",  name: "B. Kumar",      role: "fielder", jersey: "15", team: "blue", x: -0.028, z:  0.000, primary: "Overs: 3.2-0-22-2",   secondary: "Active: Bowler",    rcbCardKey: "rcbBhuvi"      },
+            { id: "f1",  name: "J. Cox",        role: "fielder", jersey: "60", team: "blue", x:  0.052, z:  0.000, primary: "Catches: 1, St: 0",    secondary: "Wicketkeeper",      rcbCardKey: "rcbJordanCox"  },
+            { id: "f2",  name: "B. Kumar",      role: "fielder", jersey: "15", team: "blue", x: -0.055, z:  0.000, primary: "Overs: 3.2-0-22-2",   secondary: "Active: Bowler",    rcbCardKey: "rcbBhuvi"      },
             { id: "f3",  name: "K. Pandya",     role: "fielder", jersey: "24", team: "blue", x:  0.022, z:  0.026, primary: "Overs: 2-0-18-1",     secondary: "Pos: Point",        rcbCardKey: "rcbKrunal"     },
             { id: "f4",  name: "V. Kohli",      role: "fielder", jersey: "18", team: "blue", x: -0.004, z:  0.028, primary: "4s/6s: 3/4 | SR:250", secondary: "Pos: Cover",        rcbCardKey: "rcbKohli"      },
             { id: "f5",  name: "V. Iyer",       role: "fielder", jersey: "10", team: "blue", x:  0.022, z: -0.018, primary: "Runs Saved: 5",        secondary: "Pos: Gully",        rcbCardKey: "rcbVenkatesh"  },
@@ -4006,8 +4416,8 @@ export class DomainExpansionSystem extends createSystem({
 
         const rosterFootball: PlayerEntry[] = [
             // ── Berlin FC (Blue — home) ──────────────────────────────────────
-            // Goalkeeper
-            { id: "gk", name: "M. Neuer",      role: "fielder", jersey: "1",  team: "blue",   x:  0.000, z: -0.090, primary: "Saves: 3 / 5",        secondary: "GK — Penalty Box",  rcbCardKey: "" },
+            // Goalkeeper (re-positioned so he stands right in front of the goal line at z = -0.082 table space)
+            { id: "gk", name: "M. Neuer",      role: "fielder", jersey: "1",  team: "blue",   x:  0.000, z: -0.114, primary: "Saves: 3 / 5",        secondary: "GK — Penalty Box",  rcbCardKey: "" },
             // Defenders
             { id: "d1", name: "T. Alexander",  role: "fielder", jersey: "5",  team: "blue",   x: -0.040, z: -0.065, primary: "Tackles: 4",           secondary: "CB — Left",         rcbCardKey: "" },
             { id: "d2", name: "R. Rüdiger",    role: "fielder", jersey: "22", team: "blue",   x:  0.040, z: -0.065, primary: "Interceptions: 3",     secondary: "CB — Right",        rcbCardKey: "" },
@@ -4047,7 +4457,7 @@ export class DomainExpansionSystem extends createSystem({
         const roster: PlayerEntry[] =
             this.currentStadiumType === 'berlin' ? rosterFootball
           : this.currentStadiumType === 'inuit'  ? rosterBasketball
-          : this.currentStadiumType === 'butterflies' ? []
+          : (this.currentStadiumType === 'butterflies' || this.currentStadiumType === 'nurburgring') ? []
           : rosterCricket;
 
         // ── Shared Phong glassmorphic materials (created ONCE per team — not 22× per player) ───────
@@ -4123,6 +4533,11 @@ export class DomainExpansionSystem extends createSystem({
         const gPad      = new THREE.BoxGeometry(0.00045, SHIN_H * 0.88, 0.000275);
         const gRing     = (() => { const g = new THREE.RingGeometry(0.0018, 0.0026, 16); g.rotateX(-Math.PI / 2); return g; })();
 
+        // Additional custom geometries for sport-specific models (Zero-GC)
+        const gGlove    = new THREE.BoxGeometry(0.00075, 0.00075, 0.00075); // goalkeeper gloves
+        const gHeadband = new THREE.CylinderGeometry(H_HEAD * 0.82, H_HEAD * 0.82, 0.0003, 10); // tennis/soccer headbands
+        const gHair     = new THREE.SphereGeometry(H_HEAD * 0.35, 8, 8); // hair bun for soccer style
+
         roster.forEach((p, idx) => {
             const team  = p.team as 'blue' | 'yellow' | 'neutral';
             const mats  = sharedMats[team];
@@ -4130,6 +4545,11 @@ export class DomainExpansionSystem extends createSystem({
 
             const playerGroup = new THREE.Group();
             this.tableGroup.add(playerGroup);
+
+            // Active sport flags
+            const isCricket = this.currentStadiumType === 'default';
+            const isFootball = this.currentStadiumType === 'berlin';
+            const isBasketball = this.currentStadiumType === 'inuit';
 
             // ── Torso ─────────────────────────────────────────────────────────────────
             const mesh = new THREE.Mesh(gTorso, mats.body);
@@ -4152,22 +4572,40 @@ export class DomainExpansionSystem extends createSystem({
             headMesh.position.set(0, headY, 0);
             mesh.add(headMesh);
 
-            // Helmet shell
-            const helmetMesh = new THREE.Mesh(gHelmet, mats.sec);
-            helmetMesh.position.set(0, headY + H_HEAD * 0.04, 0);
-            mesh.add(helmetMesh);
+            // ── Sport-Specific Headgear/Hair ─────────────────────────────────────────
+            if (isCricket) {
+                // Helmet shell
+                const helmetMesh = new THREE.Mesh(gHelmet, mats.sec);
+                helmetMesh.position.set(0, headY + H_HEAD * 0.04, 0);
+                mesh.add(helmetMesh);
 
-            // Helmet brim
-            const brimMesh = new THREE.Mesh(gBrim, mats.sec);
-            brimMesh.position.set(0, headY - H_HEAD * 0.35, H_HEAD * 0.45);
-            mesh.add(brimMesh);
+                // Helmet brim
+                const brimMesh = new THREE.Mesh(gBrim, mats.sec);
+                brimMesh.position.set(0, headY - H_HEAD * 0.35, H_HEAD * 0.45);
+                mesh.add(brimMesh);
 
-            // Face grill bars (metallic)
-            [-0.00016, 0.00016].forEach(ox => {
-                const bar = new THREE.Mesh(gGrill, sharedMetal);
-                bar.position.set(ox, headY - H_HEAD * 0.15, H_HEAD * 0.86);
-                mesh.add(bar);
-            });
+                // Face grill bars (metallic)
+                [-0.00016, 0.00016].forEach(ox => {
+                    const bar = new THREE.Mesh(gGrill, sharedMetal);
+                    bar.position.set(ox, headY - H_HEAD * 0.15, H_HEAD * 0.86);
+                    mesh.add(bar);
+                });
+            } else if (isFootball) {
+                // Add stylish neon headband instead of helmet!
+                const headband = new THREE.Mesh(gHeadband, ledM);
+                headband.position.set(0, headY + H_HEAD * 0.1, 0);
+                mesh.add(headband);
+
+                // Hair bun on back of head
+                const hairBun = new THREE.Mesh(gHair, sharedBlack);
+                hairBun.position.set(0, headY + H_HEAD * 0.5, -H_HEAD * 0.35);
+                mesh.add(hairBun);
+            } else if (isBasketball) {
+                // Basketball players: headbands only!
+                const headband = new THREE.Mesh(gHeadband, ledM);
+                headband.position.set(0, headY + H_HEAD * 0.1, 0);
+                mesh.add(headband);
+            }
 
             // LED visor (emissive stripe)
             const visorMesh = new THREE.Mesh(gVisor, ledM);
@@ -4175,27 +4613,44 @@ export class DomainExpansionSystem extends createSystem({
             mesh.add(visorMesh);
 
             // ── Shoulder pads ─────────────────────────────────────────────────────────
-            const padW = W_TORSO * 1.1;
-            [-(W_TORSO + padW * 0.42), (W_TORSO + padW * 0.42)].forEach(ox => {
-                const s = new THREE.Mesh(gShoulder, mats.sec);
-                s.position.set(ox, H_TORSO * 0.85, 0);
-                mesh.add(s);
-            });
+            // Only Cricket and Football get shoulder panels
+            if (isCricket || isFootball) {
+                const padW = W_TORSO * 1.1;
+                [-(W_TORSO + padW * 0.42), (W_TORSO + padW * 0.42)].forEach(ox => {
+                    const s = new THREE.Mesh(gShoulder, mats.sec);
+                    s.position.set(ox, H_TORSO * 0.85, 0);
+                    mesh.add(s);
+                });
+            }
 
             // ── Arms (upper + forearm) ─────────────────────────────────────────────────
-            const lArmMesh = new THREE.Mesh(gUArm, mats.body);
+            // Basketball is sleeveless: upper arm is skin. Football/cricket are sleeved.
+            const armMat = isBasketball ? sharedSkin : mats.body; 
+            const lArmMesh = new THREE.Mesh(gUArm, armMat);
             lArmMesh.position.set(-(W_TORSO + 0.0003), H_TORSO * 0.82, 0);
             mesh.add(lArmMesh);
-            const rArmMesh = new THREE.Mesh(gUArm, mats.body);
+            const rArmMesh = new THREE.Mesh(gUArm, armMat);
             rArmMesh.position.set( (W_TORSO + 0.0003), H_TORSO * 0.82, 0);
             mesh.add(rArmMesh);
 
-            const lFArm = new THREE.Mesh(gFArm, sharedSkin);
+            // Forearm is skin for football/basketball (short sleeves / sleeveless)
+            const forearmMat = isCricket ? mats.body : sharedSkin;
+            const lFArm = new THREE.Mesh(gFArm, forearmMat);
             lFArm.position.y = -UA_H;
             lArmMesh.add(lFArm);
-            const rFArm = new THREE.Mesh(gFArm, sharedSkin);
+            const rFArm = new THREE.Mesh(gFArm, forearmMat);
             rFArm.position.y = -UA_H;
             rArmMesh.add(rFArm);
+
+            // Goalkeeper Neuer gets goalkeeper gloves!
+            if (isFootball && p.id === 'gk') {
+                const lGlove = new THREE.Mesh(gGlove, mats.sec);
+                lGlove.position.set(0, -FA_H * 0.9, 0.0);
+                lFArm.add(lGlove);
+                const rGlove = new THREE.Mesh(gGlove, mats.sec);
+                rGlove.position.set(0, -FA_H * 0.9, 0.0);
+                rFArm.add(rGlove);
+            }
 
             // ── Legs (thigh + shin + shoe) ──────────────────────────────────────────
             const lLegMesh = new THREE.Mesh(gThigh, mats.pants);
@@ -4219,7 +4674,7 @@ export class DomainExpansionSystem extends createSystem({
                 sh.add(shoe);
             });
 
-            // ── Role-specific extras & poses ─────────────────────────────────────────
+            // ── Role-specific extras & poses (NO CROSSED HANDS) ───────────────────────
             if (p.role === 'batsman') {
                 // Leg pads
                 [lShin, rShin].forEach(sh => {
@@ -4227,8 +4682,8 @@ export class DomainExpansionSystem extends createSystem({
                     lp.position.set(0, -SHIN_H * 0.45, 0.000275);
                     sh.add(lp);
                 });
-                // Bat (blade + grip)
-                const bladeG = new THREE.BoxGeometry(0.000325, 0.0029, 0.00013);
+                // Bat (blade + grip) oriented flat side to X-axis
+                const bladeG = new THREE.BoxGeometry(0.00013, 0.0029, 0.000325);
                 const blade  = new THREE.Mesh(bladeG, sharedWood);
                 blade.position.y = 0.00145;
                 const gripG  = new THREE.CylinderGeometry(0.0001, 0.0001, 0.0008, 5);
@@ -4240,18 +4695,22 @@ export class DomainExpansionSystem extends createSystem({
                 batPivot.position.set(W_TORSO * 0.9, H_TORSO * 0.35, W_TORSO * 0.7);
                 batPivot.rotation.set(-Math.PI / 4.5, 0.15, Math.PI / 5.5);
                 mesh.add(batPivot);
-                lArmMesh.rotation.set(-Math.PI / 6,  0,  Math.PI / 5);
-                rArmMesh.rotation.set(-Math.PI / 4,  0, -Math.PI / 5);
+
+                // Natural athletic stance, arms not crossed
+                lArmMesh.rotation.set(-Math.PI / 4,  0, -Math.PI / 12);
+                rArmMesh.rotation.set(-Math.PI / 3,  0,  Math.PI / 12);
                 lLegMesh.rotation.set( Math.PI / 9,  0, -Math.PI / 14);
                 rLegMesh.rotation.set( Math.PI / 9,  0,  Math.PI / 14);
             } else if (p.role === 'fielder') {
-                lArmMesh.rotation.set(-Math.PI / 5,  0,  Math.PI / 7);
-                rArmMesh.rotation.set(-Math.PI / 5,  0, -Math.PI / 7);
+                // Normal fielders (or soccer/basketball): arms at sides, not crossed
+                lArmMesh.rotation.set(-Math.PI / 18,  0, -Math.PI / 10);
+                rArmMesh.rotation.set(-Math.PI / 18,  0,  Math.PI / 10);
                 lLegMesh.rotation.set( Math.PI / 11, 0, -Math.PI / 13);
                 rLegMesh.rotation.set( Math.PI / 11, 0,  Math.PI / 13);
             } else {
-                lArmMesh.rotation.set( Math.PI / 8,  0, -Math.PI / 9);
-                rArmMesh.rotation.set( Math.PI / 8,  0,  Math.PI / 9);
+                // Umpires and officials: neutral arms hanging naturally down
+                lArmMesh.rotation.set( 0,  0, -Math.PI / 12);
+                rArmMesh.rotation.set( 0,  0,  Math.PI / 12);
             }
 
             // ── Underfoot single ring (simplified) ────────────────────────────────────
@@ -4869,7 +5328,7 @@ export class DomainExpansionSystem extends createSystem({
         this.tableGroup.add(this.sportPropsGroup);
 
         // --- 1. CRICKET PROPS (default) ---
-        // Neon green Wickets/Stumps group
+        // Neon green Wickets/Stumps group (Aligned side-by-side along Z-axis!)
         const stumpsGroup = new THREE.Group();
         const stumpGeom = new THREE.CylinderGeometry(0.0002, 0.0002, 0.006, 8);
         const stumpMat = new THREE.MeshBasicMaterial({
@@ -4877,20 +5336,20 @@ export class DomainExpansionSystem extends createSystem({
             transparent: true,
             opacity: 0.85
         });
-        const s1 = new THREE.Mesh(stumpGeom, stumpMat); s1.position.set(-0.0012, 0.003, 0);
+        const s1 = new THREE.Mesh(stumpGeom, stumpMat); s1.position.set(0, 0.003, -0.0012);
         const s2 = new THREE.Mesh(stumpGeom, stumpMat); s2.position.set(0, 0.003, 0);
-        const s3 = new THREE.Mesh(stumpGeom, stumpMat); s3.position.set(0.0012, 0.003, 0);
+        const s3 = new THREE.Mesh(stumpGeom, stumpMat); s3.position.set(0, 0.003, 0.0012);
         // Bail on top
-        const bailGeom = new THREE.BoxGeometry(0.003, 0.0002, 0.0002);
+        const bailGeom = new THREE.BoxGeometry(0.0002, 0.0002, 0.003);
         const bail = new THREE.Mesh(bailGeom, stumpMat); bail.position.set(0, 0.006, 0);
         stumpsGroup.add(s1, s2, s3, bail);
-        stumpsGroup.position.set(0, 0.001, -0.045);
+        stumpsGroup.position.set(0.045, 0.001, 0);
         this.cricketStumpsMesh = stumpsGroup;
         this.sportPropsGroup.add(this.cricketStumpsMesh);
 
-        // Neon gold wooden bat group
+        // Neon gold wooden bat group (Flat side facing X-axis!)
         const batGroup = new THREE.Group();
-        const bladeGeom = new THREE.BoxGeometry(0.0015, 0.007, 0.0004);
+        const bladeGeom = new THREE.BoxGeometry(0.0004, 0.007, 0.0015);
         const bladeMat = new THREE.MeshStandardMaterial({
             color: 0xe2af37,
             roughness: 0.25,
@@ -4903,7 +5362,7 @@ export class DomainExpansionSystem extends createSystem({
         const handle = new THREE.Mesh(handleGeom, handleMat);
         handle.position.y = 0.0085;
         batGroup.add(blade, handle);
-        batGroup.position.set(0, 0.001, -0.035);
+        batGroup.position.set(0.035, 0.001, 0);
         this.cricketBatMesh = batGroup;
         this.sportPropsGroup.add(this.cricketBatMesh);
 
@@ -5548,7 +6007,7 @@ export class DomainExpansionSystem extends createSystem({
             { label: "SCOOP",  color: 0x00ff66,  x: 0.026,  y: 0.016 },
             { label: "Play SEQ", color: 0xff00ff,  x: -0.026, y: 0.001 },
             { label: "STORM",  color: 0x6366f1,  x: 0.0,    y: 0.001 },
-            { label: "FLICK",  color: 0xff5500,  x: 0.026,  y: 0.001 },
+            { label: "NAVIG",  color: 0xff5500,  x: 0.026,  y: 0.001 },
             { label: "CLEAR",  color: 0xff3333,  x: 0.0,    y: -0.014 }
         ];
 
@@ -6058,13 +6517,9 @@ export class DomainExpansionSystem extends createSystem({
                             else this.setWeatherMode('off');
                             console.log(`[TCD] Weather cycled to: ${this.weatherMode}`);
                         } else if (i === 5) {
-                            // Toggle Flick Sandbox Ball
-                            this.isSandboxBallActive = !this.isSandboxBallActive;
-                            if (this.isSandboxBallActive) {
-                                this.sandboxBall.position.set(0.0, 0.06, 0.0); // drop from 6cm height
-                                this.sandboxBallVel.set(0, 0, 0);
-                            }
-                            console.log(`[TCD] Sandbox Physics Ball active: ${this.isSandboxBallActive}`);
+                            // Toggle Navigation Layer
+                            this.isNavLayerActive = !this.isNavLayerActive;
+                            console.log(`[TCD] Stadium Navigation Layer active: ${this.isNavLayerActive}`);
                         } else if (i === 6) {
                             // CLEAR/Reset all
                             this.triggerSixAnimation(3);
@@ -6116,8 +6571,8 @@ export class DomainExpansionSystem extends createSystem({
 
         const stType = this.currentStadiumType;
         if (stType === 'default') {
-            // Cricket: Ball starts at bowler's release position
-            this.sequenceBall.position.set(0.0, 0.015, 0.045);
+            // Cricket: Ball starts at bowler's release position (Aligned along X-axis!)
+            this.sequenceBall.position.set(-0.045, 0.015, 0.0);
             (this.sequenceBall.material as THREE.MeshBasicMaterial).color.setHex(0xff3333); // Red cricket ball
             (this.sequenceBallTrail.material as THREE.LineBasicMaterial).color.setHex(0xffaa00);
         } else if (stType === 'berlin') {
@@ -6189,7 +6644,7 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     private updateSportSequence(dt: number) {
-        if (this.currentStadiumType === 'butterflies') {
+        if (this.currentStadiumType === 'butterflies' || this.currentStadiumType === 'nurburgring') {
             this.isSportSequenceActive = false;
             if (this.sequenceBall) this.sequenceBall.visible = false;
             if (this.sequenceBallTrail) this.sequenceBallTrail.visible = false;
@@ -6206,6 +6661,18 @@ export class DomainExpansionSystem extends createSystem({
             this.arBillboard.visible = false;
         }
 
+        // NBA Finals packed stadium camera flash strobe effect!
+        if (stType === 'inuit' && Math.random() < 0.25) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 0.085 + Math.random() * 0.035; // seating stands radius
+            const flashX = Math.sin(angle) * radius;
+            const flashZ = Math.cos(angle) * radius;
+            const flashY = 0.015 + Math.random() * 0.04;  // stands height
+            
+            // Trigger instant white shimmering camera flash spark in the stands!
+            this.triggerFirework(flashX, flashY, flashZ, 0xffffff, 0.001, 0.0, 0.005, 0.0, 0.45);
+        }
+
         // Helper to locate players
         const getPlayer = (id: string) => this.players.find(p => p.id === id);
 
@@ -6217,7 +6684,10 @@ export class DomainExpansionSystem extends createSystem({
             p.group.position.z += dz * speedFactor;
             
             if (Math.abs(dx) > 0.001 || Math.abs(dz) > 0.001) {
-                p.group.rotation.y = Math.atan2(dx, dz);
+                const targetAngle = Math.atan2(dx, dz);
+                let diff = targetAngle - p.group.rotation.y;
+                diff = Math.atan2(Math.sin(diff), Math.cos(diff)); // normalize to [-PI, PI]
+                p.group.rotation.y += diff * 12.0 * dt;
                 p.group.position.y = 0.009 + Math.abs(Math.sin(time * 15.0)) * 0.002; // bob up/down
             }
         };
@@ -6254,7 +6724,7 @@ export class DomainExpansionSystem extends createSystem({
             });
         };
 
-        // --- 1. CRICKET CHOREOGRAPHY SEQUENCE (20.0s over) ---
+        // --- 1. CRICKET CHOREOGRAPHY SEQUENCE (20.0s over - Aligned along X-axis!) ---
         if (stType === 'default') {
             const bowler = getPlayer("f2");   // B. Kumar
             const batsman = getPlayer("b2");  // S. Samson
@@ -6271,11 +6741,11 @@ export class DomainExpansionSystem extends createSystem({
                 const ballT = Math.min(time / 1.0, 1.0);
                 
                 // Bowler Kumar run up & bowl
-                if (bowler) runPlayer(bowler, 0.0, 0.035, dt * 5.0);
+                if (bowler) runPlayer(bowler, -0.035, 0.0, dt * 5.0);
                 
                 // Ball delivery trajectory (Bowler to Crease)
-                const startX = 0.0, startY = 0.015, startZ = 0.045;
-                const endX = 0.0, endY = 0.004, endZ = -0.035;
+                const startX = -0.045, startY = 0.015, startZ = 0.0;
+                const endX = 0.035, endY = 0.004, endZ = 0.0;
                 this.sequenceBall.position.set(
                     startX + (endX - startX) * ballT,
                     startY + (endY - startY) * ballT - 0.002 * Math.sin(ballT * Math.PI),
@@ -6284,25 +6754,25 @@ export class DomainExpansionSystem extends createSystem({
 
                 if (time >= 1.0 && time < 1.1) {
                     if (this.cricketBatMesh) this.cricketBatMesh.rotation.y = -Math.PI / 4;
-                    this.triggerFirework(0.0, 0.004, -0.035, 0xffaa00, 0.015);
+                    this.triggerFirework(0.035, 0.004, 0.0, 0xffaa00, 0.015);
                 }
 
                 // Ball rebounds to Point fielder f3
                 if (time >= 1.0) {
                     const reboundT = Math.min((time - 1.0) / 1.0, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.0, 0.004, -0.035),
-                        new THREE.Vector3(0.022, 0.004, 0.026),
+                        new THREE.Vector3(0.035, 0.004, 0.0),
+                        new THREE.Vector3(0.026, 0.004, 0.022),
                         reboundT
                     );
-                    if (fielder3) runPlayer(fielder3, 0.022, 0.026, dt * 6.0);
+                    if (fielder3) runPlayer(fielder3, 0.026, 0.022, dt * 6.0);
                 }
                 
                 if (time >= 2.0) {
                     const throwT = Math.min((time - 2.0) / 1.0, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.022, 0.004, 0.026),
-                        new THREE.Vector3(0.0, 0.009, 0.035),
+                        new THREE.Vector3(0.026, 0.004, 0.022),
+                        new THREE.Vector3(-0.035, 0.009, 0.0),
                         throwT
                     );
                     if (this.cricketBatMesh) this.cricketBatMesh.rotation.y = 0;
@@ -6314,8 +6784,8 @@ export class DomainExpansionSystem extends createSystem({
                 const ballT = Math.min((time - 3.0) / 1.2, 1.0);
                 
                 // Ball delivery trajectory (Bouncer - goes high)
-                const startX = 0.0, startY = 0.015, startZ = 0.045;
-                const endX = 0.0, endY = 0.025, endZ = -0.048; // Keeper gloves
+                const startX = -0.045, startY = 0.015, startZ = 0.0;
+                const endX = 0.048, endY = 0.025, endZ = 0.0; // Keeper gloves
                 
                 this.sequenceBall.position.set(
                     startX + (endX - startX) * ballT,
@@ -6334,8 +6804,8 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 4.5) {
                     const tossT = Math.min((time - 4.5) / 1.2, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.0, 0.025, -0.048),
-                        new THREE.Vector3(0.0, 0.009, 0.035),
+                        new THREE.Vector3(0.048, 0.025, 0.0),
+                        new THREE.Vector3(-0.035, 0.009, 0.0),
                         tossT
                     );
                 }
@@ -6344,8 +6814,8 @@ export class DomainExpansionSystem extends createSystem({
                 showPlayerCard("b2"); // Highlight Samson
                 const ballT = Math.min((time - 6.0) / 1.1, 1.0);
                 
-                const startX = 0.0, startY = 0.015, startZ = 0.045;
-                const endX = 0.0, endY = 0.004, endZ = -0.035;
+                const startX = -0.045, startY = 0.015, startZ = 0.0;
+                const endX = 0.035, endY = 0.004, endZ = 0.0;
                 this.sequenceBall.position.set(
                     startX + (endX - startX) * ballT,
                     startY + (endY - startY) * ballT - 0.002 * Math.sin(ballT * Math.PI),
@@ -6354,14 +6824,14 @@ export class DomainExpansionSystem extends createSystem({
 
                 if (time >= 7.1 && time < 7.2) {
                     if (this.cricketBatMesh) this.cricketBatMesh.rotation.y = -Math.PI / 3;
-                    this.triggerFirework(0.0, 0.004, -0.035, 0x00ff66, 0.015);
+                    this.triggerFirework(0.035, 0.004, 0.0, 0x00ff66, 0.015);
                 }
 
                 // Ball runs to boundary, J. Bethell runs to field
                 if (time >= 7.1) {
                     const flightT = Math.min((time - 7.1) / 1.4, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.0, 0.004, -0.035),
+                        new THREE.Vector3(0.035, 0.004, 0.0),
                         new THREE.Vector3(0.065, 0.002, 0.085), // boundary point
                         flightT
                     );
@@ -6393,9 +6863,8 @@ export class DomainExpansionSystem extends createSystem({
 
                 // Batsmen swap crease ends!
                 if (time >= 7.5 && time < 9.5) {
-                    const runT = (time - 7.5) / 2.0;
-                    if (batsman) runPlayer(batsman, 0.013, 0.0, dt * 5.0);
-                    if (partner) runPlayer(partner, -0.013, 0.0, dt * 5.0);
+                    if (batsman) runPlayer(batsman, -0.035, 0.005, dt * 5.0);
+                    if (partner) runPlayer(partner, 0.035, -0.005, dt * 5.0);
                 }
             } else if (time >= 9.5 && time < 12.5) {
                 // --- BALL 4: Clean Bowled Stumps flying (9.5s - 12.5s) ---
@@ -6403,8 +6872,8 @@ export class DomainExpansionSystem extends createSystem({
                 this.sportCelebrationCard.visible = false;
                 const ballT = Math.min((time - 9.5) / 1.0, 1.0);
 
-                const startX = 0.0, startY = 0.015, startZ = 0.045;
-                const endX = 0.0, endY = 0.002, endZ = -0.045; // Stumps
+                const startX = -0.045, startY = 0.015, startZ = 0.0;
+                const endX = 0.045, endY = 0.002, endZ = 0.0; // Stumps
                 this.sequenceBall.position.set(
                     startX + (endX - startX) * ballT,
                     startY + (endY - startY) * ballT - 0.003 * Math.sin(ballT * Math.PI),
@@ -6418,8 +6887,8 @@ export class DomainExpansionSystem extends createSystem({
                 // Wickets Fly & flash red!
                 if (time >= 10.5 && time < 11.5) {
                     if (this.cricketStumpsMesh) {
-                        this.cricketStumpsMesh.rotation.x = -Math.PI / 4;
-                        this.cricketStumpsMesh.position.z = -0.049;
+                        this.cricketStumpsMesh.rotation.z = Math.PI / 4;
+                        this.cricketStumpsMesh.position.x = 0.049;
                         this.cricketStumpsMesh.traverse((child: any) => {
                             if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshBasicMaterial) {
                                 child.material.color.setHex(0xff0000); // glowing red dismissals!
@@ -6427,7 +6896,7 @@ export class DomainExpansionSystem extends createSystem({
                         });
                     }
                     if (time >= 10.5 && time < 10.6) {
-                        this.triggerFirework(0.0, 0.003, -0.045, 0xff0055, 0.02);
+                        this.triggerFirework(0.045, 0.003, 0.0, 0xff0055, 0.02);
                     }
                 }
             } else if (time >= 12.5 && time < 15.5) {
@@ -6436,7 +6905,7 @@ export class DomainExpansionSystem extends createSystem({
                 // Restore stumps
                 if (this.cricketStumpsMesh) {
                     this.cricketStumpsMesh.rotation.set(0, 0, 0);
-                    this.cricketStumpsMesh.position.set(0, 0.001, -0.045);
+                    this.cricketStumpsMesh.position.set(0.045, 0.001, 0);
                     this.cricketStumpsMesh.traverse((child: any) => {
                         if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshBasicMaterial) {
                             child.material.color.setHex(0x00ff66);
@@ -6445,8 +6914,8 @@ export class DomainExpansionSystem extends createSystem({
                 }
                 const ballT = Math.min((time - 12.5) / 1.0, 1.0);
                 
-                const startX = 0.0, startY = 0.015, startZ = 0.045;
-                const endX = 0.0, endY = 0.004, endZ = -0.035;
+                const startX = -0.045, startY = 0.015, startZ = 0.0;
+                const endX = 0.035, endY = 0.004, endZ = 0.0;
                 this.sequenceBall.position.set(
                     startX + (endX - startX) * ballT,
                     startY + (endY - startY) * ballT - 0.002 * Math.sin(ballT * Math.PI),
@@ -6456,8 +6925,8 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 13.5 && time < 14.5) {
                     const reboundT = Math.min((time - 13.5) / 1.0, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.0, 0.004, -0.035),
-                        new THREE.Vector3(0.022, 0.004, 0.026),
+                        new THREE.Vector3(0.035, 0.004, 0.0),
+                        new THREE.Vector3(0.026, 0.004, 0.022),
                         reboundT
                     );
                 }
@@ -6466,8 +6935,8 @@ export class DomainExpansionSystem extends createSystem({
                 showPlayerCard("b2"); // Highlight Samson Card
                 const ballT = Math.min((time - 15.5) / 1.0, 1.0);
                 
-                const startX = 0.0, startY = 0.015, startZ = 0.045;
-                const endX = 0.0, endY = 0.004, endZ = -0.035;
+                const startX = -0.045, startY = 0.015, startZ = 0.0;
+                const endX = 0.035, endY = 0.004, endZ = 0.0;
                 this.sequenceBall.position.set(
                     startX + (endX - startX) * ballT,
                     startY + (endY - startY) * ballT - 0.002 * Math.sin(ballT * Math.PI),
@@ -6476,15 +6945,15 @@ export class DomainExpansionSystem extends createSystem({
 
                 if (time >= 16.5 && time < 16.6) {
                     if (this.cricketBatMesh) this.cricketBatMesh.rotation.y = -Math.PI / 2.5;
-                    this.triggerFirework(0.0, 0.004, -0.035, 0xff00ff, 0.02);
+                    this.triggerFirework(0.035, 0.004, 0.0, 0xff00ff, 0.02);
                 }
 
                 // Parabolic SIX flight out of the stadium
                 if (time >= 16.5) {
                     const flightT = Math.min((time - 16.5) / 1.6, 1.0);
-                    const x0 = 0.0, y0 = 0.004, z0 = -0.035;
-                    const x1 = -0.05, y1 = 0.16, z1 = 0.04;
-                    const x2 = -0.09, y2 = 0.01, z2 = 0.115; // out of stadium
+                    const x0 = 0.035, y0 = 0.004, z0 = 0.0;
+                    const x1 = 0.04, y1 = 0.16, z1 = -0.05;
+                    const x2 = 0.115, y2 = 0.01, z2 = -0.09; // out of stadium
 
                     const mt = 1 - flightT;
                     const bx = mt * mt * x0 + 2 * mt * flightT * x1 + flightT * flightT * x2;
@@ -6493,7 +6962,7 @@ export class DomainExpansionSystem extends createSystem({
                     this.sequenceBall.position.set(bx, by, bz);
 
                     // Deep fielder runs to boundary wall
-                    if (fielder8) runPlayer(fielder8, -0.075, 0.10, dt * 3.5);
+                    if (fielder8) runPlayer(fielder8, 0.10, -0.075, dt * 3.5);
                 }
 
                 // Show SIX celebration card
@@ -6530,35 +6999,50 @@ export class DomainExpansionSystem extends createSystem({
             const neuer = getPlayer("gk");      // GK M. Neuer
             const goretzka = getPlayer("m2");   // CM Defensive L. Goretzka
 
+            const S = 0.72; // scale factor to match FIELD_SCALE
+
             if (time < 4.0) {
                 // --- Bellingham Dribbles & Passes (0.0s - 4.0s) ---
                 showPlayerCard("a1"); // Highlight Bellingham
                 const dribbleT = Math.min(time / 2.5, 1.0);
                 
                 // Bellingham runs and dribbles towards penalty box
-                const startX = 0.013, startZ = 0.040;
-                const endX = 0.0, endZ = 0.02;
+                const startX = 0.013 * S, startZ = 0.040 * S;
+                const endX = 0.0 * S, endZ = 0.02 * S;
                 
                 const bx = startX + (endX - startX) * dribbleT;
                 const bz = startZ + (endZ - startZ) * dribbleT;
-                const by = 0.003 + Math.abs(Math.sin(time * 25.0)) * 0.002;
+                const bob = Math.abs(Math.sin(time * 25.0)) * 0.002;
+                const by = 0.003 + bob;
                 
                 this.sequenceBall.position.set(bx, by, bz);
-                if (bellingham) runPlayer(bellingham, bx, bz, dt * 5.0);
+                
+                // Bellingham Dribble (Soccer, phase 1): Snap group position to (bx, 0.009 + bob, bz) and orient rotation directly to end direction
+                if (bellingham) {
+                    if (dribbleT < 1.0) {
+                        bellingham.group.position.set(bx, 0.009 + bob, bz);
+                        bellingham.group.rotation.y = Math.atan2(endX - startX, endZ - startZ);
+                    } else {
+                        stopPlayer(bellingham);
+                    }
+                }
 
                 // Goretzka runs to intercept
-                if (goretzka) runPlayer(goretzka, 0.015, 0.022, dt * 4.0);
+                if (goretzka) runPlayer(goretzka, 0.015 * S, 0.022 * S, dt * 4.0);
 
                 // Bellingham passes to Sané
                 if (time >= 2.5) {
                     const passT = Math.min((time - 2.5) / 1.5, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.0, 0.003, 0.02),
-                        new THREE.Vector3(-0.055, 0.003, 0.015),
+                        new THREE.Vector3(0.0 * S, 0.003, 0.02 * S),
+                        new THREE.Vector3(-0.055 * S, 0.003, 0.015 * S),
                         passT
                     );
                     if (bellingham) stopPlayer(bellingham);
                     if (goretzka) stopPlayer(goretzka);
+                    
+                    // Sané Receive (Soccer, phase 2): Run at dt * 15.0 to receive the pass
+                    if (sane) runPlayer(sane, -0.055 * S, 0.015 * S, dt * 15.0);
                 }
             } else if (time >= 4.0 && time < 8.0) {
                 // --- Sané Dribbles Wing & Crosses, Kimmich Slides (4.0s - 8.0s) ---
@@ -6566,24 +7050,33 @@ export class DomainExpansionSystem extends createSystem({
                 const runT = Math.min((time - 4.0) / 2.2, 1.0);
 
                 // Sané runs with ball
-                const startX = -0.055, startZ = 0.015;
-                const endX = -0.065, endZ = -0.035; // Deep wing
+                const startX = -0.055 * S, startZ = 0.015 * S;
+                const endX = -0.065 * S, endZ = -0.035 * S; // Deep wing
 
                 const bx = startX + (endX - startX) * runT;
                 const bz = startZ + (endZ - startZ) * runT;
-                const by = 0.003 + Math.abs(Math.sin(time * 25.0)) * 0.002;
+                const bob = Math.abs(Math.sin(time * 25.0)) * 0.002;
+                const by = 0.003 + bob;
 
-                this.sequenceBall.position.set(bx, by, bz);
-                if (sane) runPlayer(sane, bx, bz, dt * 6.0);
+                if (runT < 1.0) {
+                    this.sequenceBall.position.set(bx, by, bz);
+                    // Sané Dribble (Soccer, phase 3): Snap position to (bx, 0.009 + bob, bz) and orient rotation
+                    if (sane) {
+                        sane.group.position.set(bx, 0.009 + bob, bz);
+                        sane.group.rotation.y = Math.atan2(endX - startX, endZ - startZ);
+                    }
+                } else {
+                    if (sane) stopPlayer(sane);
+                }
 
-                // Kimmich dashes and sliding tackles!
+                // Kimmich Slide (Soccer, phase 3): Elevate run speed to dt * 18.0
                 if (kimmich) {
                     if (time < 6.0) {
-                        runPlayer(kimmich, -0.05, -0.015, dt * 5.5);
+                        runPlayer(kimmich, -0.05 * S, -0.015 * S, dt * 18.0);
                     } else {
                         // Slide flat!
-                        kimmich.group.position.x += (-0.062 - kimmich.group.position.x) * dt * 5.0;
-                        kimmich.group.position.z += (-0.03 - kimmich.group.position.z) * dt * 5.0;
+                        kimmich.group.position.x += (-0.062 * S - kimmich.group.position.x) * dt * 18.0;
+                        kimmich.group.position.z += (-0.03 * S - kimmich.group.position.z) * dt * 18.0;
                         kimmich.group.rotation.y = Math.PI / 4;
                         kimmich.mesh.rotation.z = Math.PI / 2.5; // fall flat
                     }
@@ -6592,8 +7085,8 @@ export class DomainExpansionSystem extends createSystem({
                 // Sané crosses the ball high into box
                 if (time >= 6.5) {
                     const crossT = Math.min((time - 6.5) / 1.5, 1.0);
-                    const startPos = new THREE.Vector3(-0.065, 0.003, -0.035);
-                    const endPos = new THREE.Vector3(0.0, 0.005, -0.065); // box center
+                    const startPos = new THREE.Vector3(-0.065 * S, 0.003, -0.035 * S);
+                    const endPos = new THREE.Vector3(0.0 * S, 0.005, -0.065 * S); // box center
                     this.sequenceBall.position.set(
                         startPos.x + (endPos.x - startPos.x) * crossT,
                         startPos.y + (endPos.y - startPos.y) * crossT + 0.015 * Math.sin(crossT * Math.PI), // high cross arc
@@ -6611,15 +7104,15 @@ export class DomainExpansionSystem extends createSystem({
                 }
                 const duelT = Math.min((time - 8.0) / 1.2, 1.0);
 
-                // Kane and Rüdiger run to center of penalty box
-                if (kane) runPlayer(kane, 0.0, -0.065, dt * 6.5);
-                if (rudiger) runPlayer(rudiger, 0.003, -0.062, dt * 6.5);
+                // Kane/Rüdiger Contest (Soccer, phase 4): Accelerate run speed to dt * 22.0
+                if (kane) runPlayer(kane, 0.0 * S, -0.065 * S, dt * 22.0);
+                if (rudiger) runPlayer(rudiger, 0.003 * S, -0.062 * S, dt * 22.0);
 
                 // Contesting header: Kane leaps!
                 if (time >= 9.0 && time < 10.2) {
                     if (kane) kane.group.position.y = 0.018; // jump 9mm high!
                     if (time >= 9.0 && time < 9.1) {
-                        this.triggerFirework(0.0, 0.018, -0.065, 0x00ffff, 0.01);
+                        this.triggerFirework(0.0 * S, 0.018, -0.065 * S, 0x00ffff, 0.01);
                     }
                 } else if (kane) {
                     kane.group.position.y = 0.009;
@@ -6629,11 +7122,12 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 9.2) {
                     const reboundT = Math.min((time - 9.2) / 1.8, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.0, 0.018, -0.065),
-                        new THREE.Vector3(0.0, 0.003, -0.025), // bellingham rebound spot
+                        new THREE.Vector3(0.0 * S, 0.018, -0.065 * S),
+                        new THREE.Vector3(0.0 * S, 0.003, -0.025 * S), // bellingham rebound spot
                         reboundT
                     );
-                    if (bellingham) runPlayer(bellingham, 0.0, -0.025, dt * 5.0);
+                    // Bellingham Rebound (Soccer, phase 4): Accelerate run speed to dt * 20.0
+                    if (bellingham) runPlayer(bellingham, 0.0 * S, -0.025 * S, dt * 20.0);
                 }
             } else if (time >= 12.0 && time < 16.0) {
                 // --- Bellingham Beats Defender & Feeds Kane (12.0s - 16.0s) ---
@@ -6642,21 +7136,25 @@ export class DomainExpansionSystem extends createSystem({
                 if (kane) stopPlayer(kane);
                 if (rudiger) stopPlayer(rudiger);
 
-                // Bellingham runs onto ball and feeds short pass to Kane
+                // Bellingham Dribble/Pass (Soccer, phase 5): Snap position to (0.0, 0.009, -0.025 * S)
                 if (bellingham) {
-                    const runY = 0.003 + Math.abs(Math.sin(time * 25.0)) * 0.002;
-                    bellingham.group.position.y = runY;
+                    bellingham.group.position.set(0.0, 0.009, -0.025 * S);
+                    bellingham.group.rotation.y = Math.PI; // Face goal
                 }
                 
                 // Ball passed to Kane at (0.0, 0.003, -0.068)
                 if (time >= 13.5) {
                     const throwT = Math.min((time - 13.5) / 1.5, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.0, 0.003, -0.025),
-                        new THREE.Vector3(0.0, 0.003, -0.068),
+                        new THREE.Vector3(0.0 * S, 0.003, -0.025 * S),
+                        new THREE.Vector3(0.0 * S, 0.003, -0.068 * S),
                         throwT
                     );
                     if (bellingham) stopPlayer(bellingham);
+                    // Kane Receive (Soccer, phase 5): Run at dt * 22.0
+                    if (kane) runPlayer(kane, 0.0 * S, -0.068 * S, dt * 22.0);
+                } else {
+                    this.sequenceBall.position.set(0.0 * S, 0.003, -0.025 * S);
                 }
             } else if (time >= 16.0 && time < 20.0) {
                 // --- Kane Curving Goal Shot, Neuer Dives (16.0s - 20.0s) ---
@@ -6664,8 +7162,9 @@ export class DomainExpansionSystem extends createSystem({
                 const shotT = Math.min((time - 16.0) / 1.2, 1.0);
                 
                 // Ball flies into Goal 2 (bottom right corner of net)
-                const startX = 0.0, startY = 0.003, startZ = -0.068;
-                const endX = 0.008, endY = 0.004, endZ = -0.093; // Inside goal
+                // Adjust shot ending position to z = -0.089 and Neuer's dive position to z = -0.082 (physical coordinates)
+                const startX = 0.0 * S, startY = 0.003, startZ = -0.068 * S;
+                const endX = 0.008 * S, endY = 0.004, endZ = -0.089; // Physical endZ = -0.089
                 
                 this.sequenceBall.position.set(
                     startX + (endX - startX) * shotT,
@@ -6678,13 +7177,13 @@ export class DomainExpansionSystem extends createSystem({
                     this.isGoalWiggling = true;
                     this.goalWiggleTime = 0.0;
                     this.wigglingGoalNet = this.goal2NetMesh;
-                    // Sparkler trigger
-                    this.triggerFirework(0.008, 0.004, -0.093, 0x22d3ee, 0.015);
+                    // Sparkler trigger aligned perfectly with end positions
+                    this.triggerFirework(0.008 * S, 0.004, -0.089, 0x22d3ee, 0.015);
                 }
 
-                // Keeper Neuer dives flat!
+                // Neuer Dive (Soccer, phase 6): Set dive LERP speed to dt * 20.0
                 if (neuer && time >= 16.5) {
-                    neuer.group.position.x += (0.008 - neuer.group.position.x) * dt * 6.0;
+                    neuer.group.position.x += (0.008 * S - neuer.group.position.x) * dt * 20.0;
                     neuer.mesh.rotation.z = -Math.PI / 2.2; // side dive
                 }
 
@@ -6725,26 +7224,38 @@ export class DomainExpansionSystem extends createSystem({
             if (time < 5.0) {
                 // --- Steal and break (0.0s - 5.0s) ---
                 showPlayerCard("p5"); // Highlight Russell
-                const dribbleT = Math.min(time / 3.0, 1.0);
-
-                // J. Brown dribbles near perimeter, guarded by Russell
+                
                 const startX = 0.0, startZ = 0.035;
-                if (brown) runPlayer(brown, startX, startZ, dt * 5.0);
+                const bob = Math.abs(Math.sin(time * 20.0)) * 0.005;
 
-                // Russell lunges and steals ball at 1.5s
+                // Brown Dribble (Basketball, phase 1): Snap position to (startX, 0.009 + bob, startZ) and look at Russell
                 if (time < 1.5) {
-                    if (russell) runPlayer(russell, 0.005, 0.02, dt * 4.0);
-                    this.sequenceBall.position.set(startX, 0.015 + Math.abs(Math.sin(time * 20.0)) * 0.005, startZ);
+                    if (brown) {
+                        brown.group.position.set(startX, 0.009 + bob, startZ);
+                        if (russell) {
+                            const dx = russell.group.position.x - startX;
+                            const dz = russell.group.position.z - startZ;
+                            brown.group.rotation.y = Math.atan2(dx, dz);
+                        }
+                    }
+                    // Russell Steal (Basketball, phase 1): Accelerate run to dt * 15.0
+                    if (russell) runPlayer(russell, 0.005, 0.02, dt * 15.0);
+                    this.sequenceBall.position.set(startX, 0.015 + bob, startZ);
                 } else {
-                    // D. Russell runs downcourt with ball
+                    // Russell Dribble (Basketball, phase 2): Snap position to (bx, 0.009 + bob, bz) and orient rotation
                     const endX = 0.0, endZ = -0.015;
-                    const bx = startX + (endX - startX) * ((time - 1.5) / 2.0);
-                    const bz = startZ + (endZ - startZ) * ((time - 1.5) / 2.0);
-                    const by = 0.015 + Math.abs(Math.sin(time * 30.0)) * 0.006;
+                    const runT = (time - 1.5) / 2.0;
+                    const bx = startX + (endX - startX) * Math.min(runT, 1.0);
+                    const bz = startZ + (endZ - startZ) * Math.min(runT, 1.0);
+                    const rBob = Math.abs(Math.sin(time * 30.0)) * 0.006;
+                    const by = 0.015 + rBob;
                     
                     if (time < 3.5) {
                         this.sequenceBall.position.set(bx, by, bz);
-                        if (russell) runPlayer(russell, bx, bz, dt * 6.5);
+                        if (russell) {
+                            russell.group.position.set(bx, 0.009 + rBob, bz);
+                            russell.group.rotation.y = Math.atan2(endX - startX, endZ - startZ);
+                        }
                     } else {
                         // Pass to LeBron cutting baseline (-0.035, 0.0, -0.04)
                         const passT = Math.min((time - 3.5) / 1.5, 1.0);
@@ -6754,21 +7265,25 @@ export class DomainExpansionSystem extends createSystem({
                             passT
                         );
                         if (russell) stopPlayer(russell);
+                        // LeBron Receive (Basketball, phase 2): Accelerate run to dt * 18.0
+                        if (james) runPlayer(james, -0.035, -0.04, dt * 18.0);
                     }
                     if (brown) stopPlayer(brown);
                 }
             } else if (time >= 5.0 && time < 10.0) {
                 // --- LeBron catches, pump fakes, draws defender (5.0s - 10.0s) ---
                 showPlayerCard("p1"); // Highlight LeBron
-                const pumpT = Math.min((time - 5.0) / 2.5, 1.0);
                 if (russell) stopPlayer(russell);
 
-                // LeBron catches ball at (-0.035, 0.015, -0.04)
-                if (james) runPlayer(james, -0.035, -0.04, dt * 5.0);
+                // LeBron Catch (Basketball, phase 3): Snap position to catch coordinates (-0.035, 0.009, -0.04)
+                if (james) {
+                    james.group.position.set(-0.035, 0.009, -0.04);
+                    james.group.rotation.y = Math.PI / 4;
+                }
                 this.sequenceBall.position.set(-0.035, 0.015, -0.04);
 
-                // Defender Tatum runs to contest LeBron
-                if (tatum) runPlayer(tatum, -0.03, -0.038, dt * 6.0);
+                // Tatum Contest (Basketball, phase 3): Accelerate run to dt * 18.0
+                if (tatum) runPlayer(tatum, -0.03, -0.038, dt * 18.0);
 
                 // LeBron does a pump fake (Bellingham crossover style)
                 if (time >= 7.5) {
@@ -6783,6 +7298,8 @@ export class DomainExpansionSystem extends createSystem({
                         new THREE.Vector3(0.03, 0.015, -0.035), // Reaves behind 3-pt line
                         passT
                     );
+                    // Reaves Receive (Basketball, phase 3): Accelerate run to dt * 20.0
+                    if (reaves) runPlayer(reaves, 0.03, -0.035, dt * 20.0);
                 }
             } else if (time >= 10.0 && time < 15.0) {
                 // --- Reaves catches, Jumps & shoots 3-Pointer (10.0s - 15.0s) ---
@@ -6793,8 +7310,11 @@ export class DomainExpansionSystem extends createSystem({
                 }
                 if (james) stopPlayer(james);
 
-                // Reaves runs to spot, catches ball
-                if (reaves) runPlayer(reaves, 0.03, -0.035, dt * 5.0);
+                // Reaves Catch (Basketball, phase 4): Snap position to catching spot (0.03, 0.009, -0.035)
+                if (reaves) {
+                    reaves.group.position.set(0.03, 0.009, -0.035);
+                    reaves.group.rotation.y = -Math.PI / 4; // Face hoop
+                }
                 this.sequenceBall.position.set(0.03, 0.015, -0.035);
 
                 // Reaves Jumps high!
@@ -6934,7 +7454,7 @@ export class DomainExpansionSystem extends createSystem({
             // Restore wickets
             if (this.cricketStumpsMesh) {
                 this.cricketStumpsMesh.rotation.set(0, 0, 0);
-                this.cricketStumpsMesh.position.set(0, 0.001, -0.045);
+                this.cricketStumpsMesh.position.set(0.045, 0.001, 0);
                 this.cricketStumpsMesh.traverse((child: any) => {
                     if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshBasicMaterial) {
                         child.material.color.setHex(0x00ff66);
@@ -7009,11 +7529,11 @@ export class DomainExpansionSystem extends createSystem({
         // 1. Create a flat ground for Butterfly Park
         const groundGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.002, 64);
         const groundMat = new THREE.MeshStandardMaterial({
-            color: 0x064e3b, // Deep rich forest/emerald green
+            color: 0x042f2e, // Deep holographic green-teal
             roughness: 0.85,
             metalness: 0.1,
             transparent: true,
-            opacity: 0.95
+            opacity: 0.35
         });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.position.y = 0.001;
@@ -7120,5 +7640,428 @@ export class DomainExpansionSystem extends createSystem({
         }
         
         this.tableGroup.add(this.butterflyGroup);
+    }
+
+    private createNurburgringGroup() {
+        this.nurburgringGroup = new THREE.Group();
+
+        // 1. Create a flat ground base (Deep holographic cyan-blue)
+        const groundGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.002, 64);
+        const groundMat = new THREE.MeshStandardMaterial({
+            color: 0x003355, // Deep holographic cyan-blue
+            roughness: 0.9,
+            metalness: 0.3,
+            transparent: true,
+            opacity: 0.35
+        });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.position.y = 0.001;
+        ground.receiveShadow = true;
+        this.nurburgringGroup.add(ground);
+
+        // 2. Add an elegant grid on top of the ground
+        const gridHelper = new THREE.GridHelper(0.36, 12, 0x00ffff, 0x111122);
+        gridHelper.position.y = 0.00205;
+        this.nurburgringGroup.add(gridHelper);
+
+        // 3. Add a glowing neon cyan border ring
+        const borderGeo = new THREE.TorusGeometry(0.18, 0.0015, 8, 100);
+        borderGeo.rotateX(Math.PI / 2);
+        const borderMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8 });
+        const border = new THREE.Mesh(borderGeo, borderMat);
+        border.position.y = 0.00205;
+        this.nurburgringGroup.add(border);
+
+        // 4. Closed winding 3D Spline representing Nürburgring with topography elevations
+        const points = [
+            new THREE.Vector3( 0.00,  0.003, -0.09), // Start/GP Straight
+            new THREE.Vector3( 0.04,  0.005, -0.08), // Hatzenbach
+            new THREE.Vector3( 0.08,  0.012, -0.05), // Flugplatz (elevation!)
+            new THREE.Vector3( 0.06,  0.002, -0.01), // Fuchsroehre (dip!)
+            new THREE.Vector3( 0.09,  0.008,  0.03), // Adenauer Forst
+            new THREE.Vector3( 0.02,  0.006,  0.07), // Wehrseifen
+            new THREE.Vector3(-0.03,  0.003,  0.09), // Karussell (steep bank / dip)
+            new THREE.Vector3(-0.08,  0.010,  0.05), // Hohe Acht (highest point!)
+            new THREE.Vector3(-0.07,  0.005, -0.01), // Pflanzgarten
+            new THREE.Vector3(-0.05,  0.002, -0.06), // Schwalbenschwanz
+            new THREE.Vector3(-0.03,  0.002, -0.08)  // Döttinger Höhe
+        ];
+        this.nurburgringCurve = new THREE.CatmullRomCurve3(points, true);
+
+        // 5. Extrude 3D flat road Geometry along spline
+        const roadWidth = 0.012;
+        const roadThickness = 0.001;
+        const roadShape = new THREE.Shape();
+        roadShape.moveTo(-roadWidth / 2, -roadThickness / 2);
+        roadShape.lineTo(roadWidth / 2, -roadThickness / 2);
+        roadShape.lineTo(roadWidth / 2, roadThickness / 2);
+        roadShape.lineTo(-roadWidth / 2, roadThickness / 2);
+        roadShape.closePath();
+
+        const extrudeSettings = {
+            steps: 128,
+            bevelEnabled: false,
+            extrudePath: this.nurburgringCurve
+        };
+        const trackGeo = new THREE.ExtrudeGeometry(roadShape, extrudeSettings);
+        const trackMat = new THREE.MeshStandardMaterial({
+            color: 0x1b1b22, // Dark asphalt gray
+            roughness: 0.75,
+            metalness: 0.25
+        });
+        const trackMesh = new THREE.Mesh(trackGeo, trackMat);
+        trackMesh.receiveShadow = true;
+        trackMesh.castShadow = true;
+        this.nurburgringGroup.add(trackMesh);
+
+        // 6. Overlay glowing neon racing outline guide line
+        const linePoints = this.nurburgringCurve.getPoints(200);
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
+        const lineMat = new THREE.LineBasicMaterial({
+            color: 0x22d3ee, // Cyberpunk neon cyan
+            linewidth: 2,
+            transparent: true,
+            opacity: 0.75
+        });
+        const lineMesh = new THREE.Line(lineGeo, lineMat);
+        this.nurburgringGroup.add(lineMesh);
+
+        // 7. Spawn 4 detailed low-poly sports cars
+        const carColors = [0xef4444, 0x3b82f6, 0x10b981, 0xf59e0b]; // Red, Blue, Green, Orange
+        this.nurburgringCars = [];
+        
+        const chassisGeo = new THREE.BoxGeometry(0.0035, 0.0015, 0.006);
+        const cabinGeo = new THREE.BoxGeometry(0.0026, 0.001, 0.003);
+        const lightGeo = new THREE.BoxGeometry(0.0006, 0.0006, 0.0006);
+        const cabinMat = new THREE.MeshStandardMaterial({
+            color: 0x05050f,
+            roughness: 0.1,
+            metalness: 0.9,
+            transparent: true,
+            opacity: 0.8
+        });
+        const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const taillightMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+
+        for (let i = 0; i < 4; i++) {
+            const carGroup = new THREE.Group();
+            
+            // Chassis
+            const chassisMat = new THREE.MeshStandardMaterial({
+                color: carColors[i],
+                roughness: 0.1,
+                metalness: 0.8,
+                emissive: new THREE.Color(carColors[i]).multiplyScalar(0.2)
+            });
+            const chassis = new THREE.Mesh(chassisGeo, chassisMat);
+            chassis.position.y = 0.00075;
+            carGroup.add(chassis);
+            
+            // Cabin
+            const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+            cabin.position.set(0, 0.0015 + 0.0005, -0.0005);
+            carGroup.add(cabin);
+            
+            // Headlights at front corners (+Z represents front)
+            const hl1 = new THREE.Mesh(lightGeo, headlightMat);
+            hl1.position.set(-0.0012, 0.0008, 0.003);
+            carGroup.add(hl1);
+            
+            const hl2 = new THREE.Mesh(lightGeo, headlightMat);
+            hl2.position.set(0.0012, 0.0008, 0.003);
+            carGroup.add(hl2);
+            
+            // Taillights at rear corners (-Z represents rear)
+            const tl1 = new THREE.Mesh(lightGeo, taillightMat);
+            tl1.position.set(-0.0012, 0.0008, -0.003);
+            carGroup.add(tl1);
+            
+            // Add to group and list
+            const tl2 = new THREE.Mesh(lightGeo, taillightMat);
+            tl2.position.set(0.0012, 0.0008, -0.003);
+            carGroup.add(tl2);
+
+            this.nurburgringGroup.add(carGroup);
+            this.nurburgringCars.push({
+                group: carGroup,
+                progress: i * 0.25,
+                speed: 0.038 + Math.random() * 0.015
+            });
+        }
+
+        // 8. Create the high-fidelity immersive F1 Car
+        this.createNurburgringF1Car();
+        this.nurburgringGroup.add(this.nurburgringF1Car);
+
+        this.tableGroup.add(this.nurburgringGroup);
+        console.log("[NurburgringMap] High-fidelity racetrack, line guides, and 4 detailed sports cars initialized!");
+    }
+
+    private createNurburgringF1Car() {
+        this.nurburgringF1Car = new THREE.Group();
+        this.nurburgringF1Wheels = [];
+
+        // Materials
+        const bodyMat = new THREE.MeshStandardMaterial({
+            color: 0xef4444, // Glossy Red chassis body
+            roughness: 0.1,
+            metalness: 0.8
+        });
+        const carbonMat = new THREE.MeshStandardMaterial({
+            color: 0x18181b, // Carbon chassis base
+            roughness: 0.5,
+            metalness: 0.9
+        });
+        const helmetMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff, // White helmet
+            roughness: 0.2
+        });
+        const visorMat = new THREE.MeshBasicMaterial({
+            color: 0xeab308 // Gold visor
+        });
+        const wheelMat = new THREE.MeshStandardMaterial({
+            color: 0x09090b, // Matte Black tire rubber
+            roughness: 0.9
+        });
+        const axleMat = new THREE.MeshStandardMaterial({
+            color: 0xd1d5db, // Silver metal axles
+            roughness: 0.2,
+            metalness: 0.8
+        });
+
+        // 1. Carbon chassis base
+        const baseGeo = new THREE.BoxGeometry(0.004, 0.0008, 0.014);
+        const baseMesh = new THREE.Mesh(baseGeo, carbonMat);
+        baseMesh.position.y = 0.0006;
+        this.nurburgringF1Car.add(baseMesh);
+
+        // 2. Tapered glossy red chassis nosecone (+Z is front)
+        const noseGeo = new THREE.BoxGeometry(0.002, 0.001, 0.007);
+        const noseMesh = new THREE.Mesh(noseGeo, bodyMat);
+        noseMesh.position.set(0, 0.0012, 0.0035);
+        noseMesh.rotation.x = -0.1; // Slightly angled down to front nose
+        this.nurburgringF1Car.add(noseMesh);
+
+        // 3. Side pods (left and right)
+        const podGeo = new THREE.BoxGeometry(0.0018, 0.0015, 0.006);
+        
+        const leftPod = new THREE.Mesh(podGeo, bodyMat);
+        leftPod.position.set(-0.0024, 0.0012, -0.001);
+        
+        const rightPod = new THREE.Mesh(podGeo, bodyMat);
+        rightPod.position.set(0.0024, 0.0012, -0.001);
+        
+        this.nurburgringF1Car.add(leftPod, rightPod);
+
+        // 4. Driver Cockpit & Helmet
+        const cockpitGeo = new THREE.BoxGeometry(0.0018, 0.0008, 0.003);
+        const cockpitMesh = new THREE.Mesh(cockpitGeo, carbonMat);
+        cockpitMesh.position.set(0, 0.0018, -0.0015);
+        this.nurburgringF1Car.add(cockpitMesh);
+
+        // Helmet
+        const helmetGeo = new THREE.SphereGeometry(0.0009, 16, 16);
+        const helmetMesh = new THREE.Mesh(helmetGeo, helmetMat);
+        helmetMesh.position.set(0, 0.0026, -0.0015);
+        this.nurburgringF1Car.add(helmetMesh);
+
+        // Visor
+        const visorGeo = new THREE.BoxGeometry(0.0012, 0.0004, 0.0006);
+        const visorMesh = new THREE.Mesh(visorGeo, visorMat);
+        visorMesh.position.set(0, 0.0028, -0.001);
+        this.nurburgringF1Car.add(visorMesh);
+
+        // 5. Front Wing with Endplates (at z = 0.007)
+        const frontWingGeo = new THREE.BoxGeometry(0.0075, 0.0003, 0.0015);
+        const frontWing = new THREE.Mesh(frontWingGeo, carbonMat);
+        frontWing.position.set(0, 0.0008, 0.007);
+        this.nurburgringF1Car.add(frontWing);
+
+        const endplateGeo = new THREE.BoxGeometry(0.0002, 0.0015, 0.0018);
+        const leftFrontEndplate = new THREE.Mesh(endplateGeo, bodyMat);
+        leftFrontEndplate.position.set(-0.00375, 0.0014, 0.007);
+        const rightFrontEndplate = new THREE.Mesh(endplateGeo, bodyMat);
+        rightFrontEndplate.position.set(0.00375, 0.0014, 0.007);
+        this.nurburgringF1Car.add(leftFrontEndplate, rightFrontEndplate);
+
+        // 6. Rear Wing with Endplates (at z = -0.007, raised)
+        const rearWingGeo = new THREE.BoxGeometry(0.007, 0.0004, 0.002);
+        const rearWing = new THREE.Mesh(rearWingGeo, bodyMat);
+        rearWing.position.set(0, 0.0035, -0.007);
+        this.nurburgringF1Car.add(rearWing);
+
+        // Struts to hold rear wing
+        const strutGeo = new THREE.BoxGeometry(0.0004, 0.0025, 0.0004);
+        const leftStrut = new THREE.Mesh(strutGeo, carbonMat);
+        leftStrut.position.set(-0.001, 0.00225, -0.007);
+        const rightStrut = new THREE.Mesh(strutGeo, carbonMat);
+        rightStrut.position.set(0.001, 0.00225, -0.007);
+        this.nurburgringF1Car.add(leftStrut, rightStrut);
+
+        // Rear endplates
+        const rearEndplateGeo = new THREE.BoxGeometry(0.0002, 0.0032, 0.0024);
+        const leftRearEndplate = new THREE.Mesh(rearEndplateGeo, carbonMat);
+        leftRearEndplate.position.set(-0.0035, 0.0031, -0.007);
+        const rightRearEndplate = new THREE.Mesh(rearEndplateGeo, carbonMat);
+        rightRearEndplate.position.set(0.0035, 0.0031, -0.007);
+        this.nurburgringF1Car.add(leftRearEndplate, rightRearEndplate);
+
+        // 7. Axles and Spinning Wheels (4 wheels)
+        const wheelGeo = new THREE.CylinderGeometry(0.0016, 0.0016, 0.0012, 16);
+        wheelGeo.rotateZ(Math.PI / 2); // align axle rotation
+
+        const axleGeo = new THREE.CylinderGeometry(0.0003, 0.0003, 0.0068, 8);
+        axleGeo.rotateZ(Math.PI / 2);
+
+        // Front Axle
+        const frontAxle = new THREE.Mesh(axleGeo, axleMat);
+        frontAxle.position.set(0, 0.0009, 0.0048);
+        this.nurburgringF1Car.add(frontAxle);
+
+        // Rear Axle
+        const rearAxle = new THREE.Mesh(axleGeo, axleMat);
+        rearAxle.position.set(0, 0.0009, -0.0048);
+        this.nurburgringF1Car.add(rearAxle);
+
+        // 4 Wheels
+        const wheelOffsets = [
+            { x: -0.0037, z: 0.0048 }, // FL
+            { x: 0.0037, z: 0.0048 },  // FR
+            { x: -0.0037, z: -0.0048 }, // RL
+            { x: 0.0037, z: -0.0048 }   // RR
+        ];
+
+        wheelOffsets.forEach((offset) => {
+            const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+            wheel.position.set(offset.x, 0.001, offset.z);
+            wheel.castShadow = true;
+            this.nurburgringF1Car.add(wheel);
+            this.nurburgringF1Wheels.push(wheel);
+        });
+
+        // Hide initially
+        this.nurburgringF1Car.visible = false;
+    }
+
+    private createNavLabel(text: string, colorString: string): THREE.Mesh {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d')!;
+        
+        ctx.clearRect(0, 0, 256, 64);
+        
+        ctx.strokeStyle = colorString;
+        ctx.lineWidth = 3;
+        ctx.fillStyle = 'rgba(5, 5, 15, 0.85)';
+        
+        const r = 8;
+        ctx.beginPath();
+        ctx.roundRect(4, 4, 248, 56, r);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.shadowColor = colorString;
+        ctx.shadowBlur = 5;
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 22px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 128, 32);
+        
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.needsUpdate = true;
+        
+        const geom = new THREE.PlaneGeometry(0.06, 0.015);
+        const mat = new THREE.MeshBasicMaterial({
+            map: tex,
+            transparent: true,
+            opacity: 0.95,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.name = "label";
+        return mesh;
+    }
+
+    private createNavPlaceholders() {
+        // 1. Parking Area (x = -0.11, z = 0.11)
+        const parkingGroup = new THREE.Group();
+        parkingGroup.position.set(-0.11, 0.002, 0.11);
+        
+        const parkGeo = new THREE.BoxGeometry(0.05, 0.001, 0.05);
+        const parkMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.8 });
+        const parkMesh = new THREE.Mesh(parkGeo, parkMat);
+        parkingGroup.add(parkMesh);
+        
+        const parkEdgeGeo = new THREE.EdgesGeometry(parkGeo);
+        const parkEdgeMat = new THREE.LineBasicMaterial({ color: 0x3b82f6, linewidth: 2 });
+        const parkEdge = new THREE.LineSegments(parkEdgeGeo, parkEdgeMat);
+        parkingGroup.add(parkEdge);
+        
+        const parkLabel = this.createNavLabel("P - PARKING", "#3b82f6");
+        parkLabel.position.set(0, 0.035, 0);
+        parkingGroup.add(parkLabel);
+        
+        this.navPlaceholdersGroup.add(parkingGroup);
+        
+        // 2. Restrooms (x = 0.11, z = 0.11)
+        const toiletGroup = new THREE.Group();
+        toiletGroup.position.set(0.11, 0.002, 0.11);
+        
+        const cylGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.02, 16);
+        const toiletMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, metalness: 0.5, roughness: 0.2, transparent: true, opacity: 0.8 });
+        const toiletMesh = new THREE.Mesh(cylGeo, toiletMat);
+        toiletMesh.position.y = 0.01;
+        toiletGroup.add(toiletMesh);
+        
+        const toiletLabel = this.createNavLabel("RESTROOMS", "#3b82f6");
+        toiletLabel.position.set(0, 0.035, 0);
+        toiletGroup.add(toiletLabel);
+        
+        this.navPlaceholdersGroup.add(toiletGroup);
+        
+        // 3. Food Court (x = 0.11, z = -0.11)
+        const foodGroup = new THREE.Group();
+        foodGroup.position.set(0.11, 0.002, -0.11);
+        
+        const foodGeo = new THREE.BoxGeometry(0.025, 0.02, 0.025);
+        const foodMat = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.4 });
+        const foodMesh = new THREE.Mesh(foodGeo, foodMat);
+        foodMesh.position.y = 0.01;
+        foodGroup.add(foodMesh);
+        
+        const foodLabel = this.createNavLabel("FOOD & DRINK", "#10b981");
+        foodLabel.position.set(0, 0.035, 0);
+        foodGroup.add(foodLabel);
+        
+        this.navPlaceholdersGroup.add(foodGroup);
+        
+        // 4. First Aid (x = -0.11, z = -0.11)
+        const medicalGroup = new THREE.Group();
+        medicalGroup.position.set(-0.11, 0.002, -0.11);
+        
+        const medGeo = new THREE.BoxGeometry(0.022, 0.022, 0.022);
+        const medMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.5 });
+        const medMesh = new THREE.Mesh(medGeo, medMat);
+        medMesh.position.y = 0.011;
+        medicalGroup.add(medMesh);
+        
+        const crossGeoH = new THREE.BoxGeometry(0.012, 0.003, 0.023);
+        const crossGeoV = new THREE.BoxGeometry(0.003, 0.012, 0.023);
+        const crossMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const crossH = new THREE.Mesh(crossGeoH, crossMat);
+        crossH.position.set(0, 0.011, 0);
+        const crossV = new THREE.Mesh(crossGeoV, crossMat);
+        crossV.position.set(0, 0.011, 0);
+        medicalGroup.add(crossH, crossV);
+        
+        const medLabel = this.createNavLabel("FIRST AID", "#ef4444");
+        medLabel.position.set(0, 0.035, 0);
+        medicalGroup.add(medLabel);
+        
+        this.navPlaceholdersGroup.add(medicalGroup);
     }
 }

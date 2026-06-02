@@ -94,6 +94,11 @@ const assets: AssetManifest = {
     type: AssetType.GLTF,
     priority: "critical",
   },
+  cryptocom: {
+    url: "./gltf/Crypto.comStadium/Crypto.comStadium.glb",
+    type: AssetType.GLTF,
+    priority: "critical",
+  },
   iplCam1: {
     url: "./Domains/IPLfinal (1).png",
     type: AssetType.Texture,
