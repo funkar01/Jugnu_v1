@@ -135,7 +135,7 @@ export class JugnuSystem extends createSystem({
   private compassStadiumTexture!: THREE.CanvasTexture;
   private compassStadiumMat!: THREE.MeshBasicMaterial;
   private compassStadiumCard!: THREE.Mesh;
-  private selectedStadium: 'default' | 'berlin' | 'inuit' = 'default';
+  private selectedStadium: 'default' | 'berlin' | 'inuit' | 'butterflies' = 'default';
 
   // Swipe & Scroll State
   private isSwiping = false;
@@ -1459,9 +1459,10 @@ export class JugnuSystem extends createSystem({
                     const canvasY = (0.09 - cardLocalTip.y) / 0.18 * 384;
 
                     if (canvasX >= 40 && canvasX <= 472) {
-                        if (canvasY >= 100 && canvasY <= 170) hoveredStadiumOption = 0;
-                        else if (canvasY >= 190 && canvasY <= 260) hoveredStadiumOption = 1;
-                        else if (canvasY >= 280 && canvasY <= 350) hoveredStadiumOption = 2;
+                        if (canvasY >= 75 && canvasY <= 130) hoveredStadiumOption = 0;
+                        else if (canvasY >= 145 && canvasY <= 200) hoveredStadiumOption = 1;
+                        else if (canvasY >= 215 && canvasY <= 270) hoveredStadiumOption = 2;
+                        else if (canvasY >= 285 && canvasY <= 340) hoveredStadiumOption = 3;
                     }
 
                     const isPressed = Math.abs(cardLocalTip.z) < 0.014;
@@ -1473,7 +1474,7 @@ export class JugnuSystem extends createSystem({
                             source.gamepad.hapticActuators[0].pulse(0.85, 50);
                         }
 
-                        const choices: ('default' | 'berlin' | 'inuit')[] = ['default', 'berlin', 'inuit'];
+                        const choices: ('default' | 'berlin' | 'inuit' | 'butterflies')[] = ['default', 'berlin', 'inuit', 'butterflies'];
                         this.selectedStadium = choices[hoveredStadiumOption];
                         (window as any).selectedStadiumType = this.selectedStadium;
                         console.log(`[StadiumSelector] Selected: ${this.selectedStadium}`);
@@ -2328,15 +2329,16 @@ export class JugnuSystem extends createSystem({
 
       // Options
       const options = [
-          { key: 'default', label: "WANKHEDE  —  Mumbai, India",     desc: "IPL Final 2026 • RCB vs RR • Cricket" },
-          { key: 'berlin',  label: "OLYMPIASTADION  —  Berlin, Germany", desc: "Bundesliga • FC Bayern vs Hertha • Football" },
-          { key: 'inuit',   label: "CRYPTO.COM ARENA  —  Los Angeles, USA",  desc: "NBA Finals • LA Lakers vs Boston Celtics • Basketball" }
+          { key: 'default',     label: "WANKHEDE  —  Mumbai, India",     desc: "IPL Final 2026 • RCB vs RR • Cricket" },
+          { key: 'berlin',      label: "OLYMPIASTADION  —  Berlin, Germany", desc: "Bundesliga • FC Bayern vs Hertha • Football" },
+          { key: 'inuit',       label: "CRYPTO.COM ARENA  —  Los Angeles, USA",  desc: "NBA Finals • LA Lakers vs Boston Celtics • Basketball" },
+          { key: 'butterflies', label: "BUTTERFLY PARK  —  Immersive 360",    desc: "Butterfly Sanctuary • 10 x 360° Panoramas • Relaxing" }
       ];
 
       const btnX = 40;
       const btnW = 432;
-      const btnH = 70;
-      const btnYs = [100, 190, 280];
+      const btnH = 55;
+      const btnYs = [75, 145, 215, 285];
 
       options.forEach((opt, idx) => {
           const by = btnYs[idx];
@@ -2369,26 +2371,26 @@ export class JugnuSystem extends createSystem({
 
           // Button label text
           ctx.fillStyle = isSelected ? '#ffffff' : (isHovered ? '#22d3ee' : '#a5f3fc');
-          ctx.font = 'bold 16px monospace';
+          ctx.font = 'bold 14px monospace';
           ctx.textAlign = 'left';
-          ctx.fillText((isSelected ? ">> " : "") + opt.label, btnX + 20, by + 28);
+          ctx.fillText((isSelected ? ">> " : "") + opt.label, btnX + 20, by + 22);
 
           // Button description text
           ctx.fillStyle = isSelected ? '#a5f3fc' : '#67e8f9';
-          ctx.font = '11px monospace';
-          ctx.fillText(opt.desc, btnX + 20, by + 50);
+          ctx.font = '10px monospace';
+          ctx.fillText(opt.desc, btnX + 20, by + 40);
 
           // Draw radio indicator
           ctx.strokeStyle = isSelected ? '#22d3ee' : 'rgba(34, 211, 238, 0.5)';
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(btnX + btnW - 30, by + 35, 8, 0, 2 * Math.PI);
+          ctx.arc(btnX + btnW - 30, by + 27, 8, 0, 2 * Math.PI);
           ctx.stroke();
 
           if (isSelected) {
               ctx.fillStyle = '#22d3ee';
               ctx.beginPath();
-              ctx.arc(btnX + btnW - 30, by + 35, 4, 0, 2 * Math.PI);
+              ctx.arc(btnX + btnW - 30, by + 27, 4, 0, 2 * Math.PI);
               ctx.fill();
           }
       });

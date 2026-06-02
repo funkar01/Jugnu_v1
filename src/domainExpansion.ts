@@ -232,9 +232,21 @@ export class DomainExpansionSystem extends createSystem({
     private readonly ROOF_RADIUS = 0.096; // Radius of stadium inner roof arc
 
     // Physics Bouncing Simulation & Stadium Selection
-    private currentStadiumType: 'default' | 'berlin' | 'inuit' = 'default';
+    private currentStadiumType: 'default' | 'berlin' | 'inuit' | 'butterflies' = '' as any;
     private berlinMesh: THREE.Mesh | null = null;
     private inuitMesh: THREE.Mesh | null = null;
+    private butterflyGroup: THREE.Group | null = null;
+    private butterflies: {
+        mesh: THREE.Group,
+        leftWing: THREE.Mesh,
+        rightWing: THREE.Mesh,
+        speed: number,
+        phase: number,
+        pos: THREE.Vector3,
+        vel: THREE.Vector3,
+        wanderTime: number,
+        baseScale: number
+    }[] = [];
     private ballVelocity = new THREE.Vector3(0.04, 0.03, 0.05);
     private lastBubbleSkinStadium: string = 'default'; // tracks which stadium the bubbles were last skinned for
 
@@ -343,6 +355,9 @@ export class DomainExpansionSystem extends createSystem({
     private readonly THUMB_KEYS_DEFAULT = ["iplCam1","iplCam2","iplCam3","iplCam4","iplCam5","iplCam6"];
     private readonly THUMB_KEYS_BERLIN  = ["berlin360_1_thumb","berlin360_2_thumb","berlin360_3_thumb","berlin360_4_thumb","berlin360_5_thumb","berlin360_6_thumb"];
     private readonly THUMB_KEYS_INUIT   = ["inuit360_1_thumb","inuit360_2_thumb","inuit360_3_thumb","inuit360_4_thumb","inuit360_5_thumb","inuit360_6_thumb"];
+    private readonly DOMAIN_KEYS_BUTTERFLIES  = ["butterfly360_1","butterfly360_2","butterfly360_3","butterfly360_4","butterfly360_5","butterfly360_6","butterfly360_7","butterfly360_8","butterfly360_9","butterfly360_10"];
+    private readonly DOMAIN_NAMES_BUTTERFLIES = ["Butterfly Park — 1","Butterfly Park — 2","Butterfly Park — 3","Butterfly Park — 4","Butterfly Park — 5","Butterfly Park — 6","Butterfly Park — 7","Butterfly Park — 8","Butterfly Park — 9","Butterfly Park — 10"];
+    private readonly THUMB_KEYS_BUTTERFLIES  = ["butterfly360_1","butterfly360_2","butterfly360_3","butterfly360_4","butterfly360_5","butterfly360_6","butterfly360_7","butterfly360_8","butterfly360_9","butterfly360_10"];
 
 
     // Keyboard debug listeners
@@ -542,7 +557,7 @@ export class DomainExpansionSystem extends createSystem({
         });
         this.radarRing = new THREE.Mesh(radarGeom, radarMat);
         this.radarRing.rotation.x = -Math.PI / 2;
-        this.radarRing.position.y = 0.003;
+        this.radarRing.position.y = 0.013;
         this.tableGroup.add(this.radarRing);
 
         // Procedural Holographic Buildings using InstancedMesh (100% stable triangle geometry and standard materials - NO transmission)
@@ -778,8 +793,8 @@ export class DomainExpansionSystem extends createSystem({
             }
         }, { once: true });
 
-        this.pinchProgresses = new Array(this.domainKeys.length).fill(0);
-        this.hoverProgresses = new Array(this.domainKeys.length).fill(0);
+        this.pinchProgresses = new Array(10).fill(0);
+        this.hoverProgresses = new Array(10).fill(0);
 
         // --- Holographic Domain Expansion Selection Bubbles (Octagon arrangement on Edge Ring) ---
         const bubbleGeom = new THREE.SphereGeometry(0.035, 32, 16);
@@ -787,7 +802,7 @@ export class DomainExpansionSystem extends createSystem({
         const loaderRingGeom = new THREE.RingGeometry(0.012, 0.015, 32);
         const nameTagGeom = new THREE.PlaneGeometry(0.08, 0.02);
 
-        const totalDomains = this.domainKeys.length;
+        const totalDomains = 10;
         for (let i = 0; i < totalDomains; i++) {
             // Symmetrical arrangement around the stadium (radius = 0.17m)
             const angle = i * (2 * Math.PI / totalDomains);
@@ -806,14 +821,16 @@ export class DomainExpansionSystem extends createSystem({
             });
             
             const texKey = this.domainKeys[i];
-            if (texKey === "mivVideo") {
-                // Live video texture
-                bMat.map = this.mivVideoTex;
-            } else {
-                const tex = AssetManager.getTexture(texKey);
-                if (tex) {
-                    tex.colorSpace = THREE.SRGBColorSpace;
-                    bMat.map = tex;
+            if (texKey) {
+                if (texKey === "mivVideo") {
+                    // Live video texture
+                    bMat.map = this.mivVideoTex;
+                } else {
+                    const tex = AssetManager.getTexture(texKey);
+                    if (tex) {
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        bMat.map = tex;
+                    }
                 }
             }
 
@@ -853,7 +870,7 @@ export class DomainExpansionSystem extends createSystem({
             this.loaderRings.push(loaderMesh);
 
             // Floating, billboarding canvas place name tag plate (at y = 0.16)
-            const name = this.domainNames[i];
+            const name = this.domainNames[i] || `View ${i + 1}`;
             const nameTex = this.createNameTagTexture(name);
             const nameMat = new THREE.MeshBasicMaterial({
                 map: nameTex,
@@ -1120,7 +1137,7 @@ export class DomainExpansionSystem extends createSystem({
         return this.debugMPressed;
     }
 
-    private setStadiumType(stadiumType: 'default' | 'berlin' | 'inuit') {
+    private setStadiumType(stadiumType: 'default' | 'berlin' | 'inuit' | 'butterflies') {
         console.log(`[StadiumSelector] Switching stadium from ${this.currentStadiumType} to ${stadiumType}`);
         this.currentStadiumType = stadiumType;
 
@@ -1131,6 +1148,9 @@ export class DomainExpansionSystem extends createSystem({
         } else if (stadiumType === 'inuit') {
             this.domainKeys  = [...this.DOMAIN_KEYS_INUIT];
             this.domainNames = [...this.DOMAIN_NAMES_INUIT];
+        } else if (stadiumType === 'butterflies') {
+            this.domainKeys  = [...this.DOMAIN_KEYS_BUTTERFLIES];
+            this.domainNames = [...this.DOMAIN_NAMES_BUTTERFLIES];
         } else {
             this.domainKeys  = [...this.DOMAIN_KEYS_DEFAULT];
             this.domainNames = [...this.DOMAIN_NAMES_DEFAULT];
@@ -1139,22 +1159,69 @@ export class DomainExpansionSystem extends createSystem({
         // ── Re-skin selection bubbles with low-res thumbs ────────────────────
         const thumbKeys = stadiumType === 'berlin' ? this.THUMB_KEYS_BERLIN
                         : stadiumType === 'inuit'  ? this.THUMB_KEYS_INUIT
+                        : stadiumType === 'butterflies' ? this.THUMB_KEYS_BUTTERFLIES
                         : this.THUMB_KEYS_DEFAULT;
 
+        const totalDomains = this.domainKeys.length;
         this.selectionBubbles.forEach((bubble, idx) => {
-            const tKey = thumbKeys[idx] ?? thumbKeys[0];
-            const bMat = this.bubbleMats[idx] as THREE.MeshStandardMaterial;
-            if (tKey === 'mivVideo') {
-                bMat.map = this.mivVideoTex;
-            } else {
-                const tex = AssetManager.getTexture(tKey);
-                if (tex) {
-                    tex.colorSpace = THREE.SRGBColorSpace;
-                    bMat.map = tex;
+            if (idx < totalDomains) {
+                const angle = idx * (2 * Math.PI / totalDomains);
+                const bx = Math.cos(angle) * 0.17;
+                const bz = Math.sin(angle) * 0.17;
+                
+                // Symmetrical repositioning
+                bubble.position.set(bx, 0.12, bz);
+                bubble.visible = true;
+                
+                const ring = this.anchorRings[idx];
+                if (ring) {
+                    ring.position.set(bx, 0.0025, bz);
+                    ring.visible = true;
                 }
+                
+                const loader = this.loaderRings[idx];
+                if (loader) {
+                    loader.position.set(bx, 0.17, bz);
+                    loader.scale.setScalar(0.01);
+                    loader.visible = true;
+                }
+                
+                const tag = this.nameTags[idx];
+                if (tag) {
+                    tag.position.set(bx, 0.16, bz);
+                    tag.visible = true;
+                }
+                
+                // Re-skin texture
+                const bMat = this.bubbleMats[idx] as THREE.MeshStandardMaterial;
+                const tKey = thumbKeys[idx] ?? thumbKeys[0];
+                if (tKey === 'mivVideo') {
+                    bMat.map = this.mivVideoTex;
+                } else {
+                    const tex = AssetManager.getTexture(tKey);
+                    if (tex) {
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        bMat.map = tex;
+                    }
+                }
+                bMat.needsUpdate = true;
+                
+                // Update Name Tag texture
+                const name = this.domainNames[idx];
+                const nameTex = this.createNameTagTexture(name);
+                const nameMat = this.nameTagMats[idx] as THREE.MeshBasicMaterial;
+                if (nameMat.map) nameMat.map.dispose();
+                nameMat.map = nameTex;
+                nameMat.needsUpdate = true;
+            } else {
+                // Hide excess pre-allocated bubbles
+                bubble.visible = false;
+                if (this.anchorRings[idx]) this.anchorRings[idx].visible = false;
+                if (this.loaderRings[idx]) this.loaderRings[idx].visible = false;
+                if (this.nameTags[idx]) this.nameTags[idx].visible = false;
             }
-            bMat.needsUpdate = true;
         });
+
         this.lastBubbleSkinStadium = stadiumType;
         console.log(`[StadiumSelector] Bubble skins updated to ${stadiumType}`);
 
@@ -1167,6 +1234,26 @@ export class DomainExpansionSystem extends createSystem({
         }
         if (this.inuitMesh) {
             this.inuitMesh.visible = (stadiumType === 'inuit');
+        }
+        if (this.butterflyGroup) {
+            this.butterflyGroup.visible = (stadiumType === 'butterflies');
+        }
+        if (this.minimapMapPlane) {
+            this.minimapMapPlane.visible = (stadiumType !== 'butterflies');
+        }
+        if (this.techRing1) {
+            this.techRing1.visible = (stadiumType !== 'butterflies');
+        }
+        if (this.techRing2) {
+            this.techRing2.visible = (stadiumType !== 'butterflies');
+        }
+        if (this.techRing3) {
+            this.techRing3.visible = (stadiumType !== 'butterflies');
+        }
+
+        // Lazily build Butterfly Park flat ground and butterflies
+        if (stadiumType === 'butterflies' && !this.butterflyGroup) {
+            this.createButterflyGroup();
         }
 
         // 2. Lazily create new meshes if they don't exist yet
@@ -1396,8 +1483,15 @@ export class DomainExpansionSystem extends createSystem({
         (this.activeBall.material as THREE.MeshBasicMaterial).opacity = 1.0;
         (this.ballTrail.material as THREE.LineBasicMaterial).opacity = 0.95;
         
+        // Make ball size in cricket stadium 50% smaller (scale = 0.5)
+        const ballScale = (stadiumType === 'default') ? 0.5 : 1.0;
+        if (this.activeBall) this.activeBall.scale.setScalar(ballScale);
+        if (this.hawkeyeBall) this.hawkeyeBall.scale.setScalar(ballScale);
+        if (this.sequenceBall) this.sequenceBall.scale.setScalar(ballScale);
+        if (this.sandboxBall) this.sandboxBall.scale.setScalar(ballScale);
+        
         // Assign color based on stadium
-        const colors = { default: 0xff6600, berlin: 0x22d3ee, inuit: 0xf97316 };
+        const colors = { default: 0xff6600, berlin: 0x22d3ee, inuit: 0xf97316, butterflies: 0x10b981 };
         (this.activeBall.material as THREE.MeshBasicMaterial).color.setHex(colors[stadiumType]);
         (this.ballTrail.material as THREE.LineBasicMaterial).color.setHex(colors[stadiumType]);
 
@@ -1488,6 +1582,52 @@ export class DomainExpansionSystem extends createSystem({
         const desiredStadium = (window as any).selectedStadiumType || 'default';
         if (this.currentStadiumType !== desiredStadium) {
             this.setStadiumType(desiredStadium);
+        }
+
+        // --- Update Butterflies in the Minimap ---
+        if (this.currentStadiumType === 'butterflies' && this.butterflyGroup && this.tableGroup.visible) {
+            this.butterflies.forEach((b) => {
+                b.wanderTime -= dt;
+                if (b.wanderTime <= 0) {
+                    b.wanderTime = 1.0 + Math.random() * 3.0;
+                    b.vel.x += (Math.random() - 0.5) * 0.02;
+                    b.vel.y += (Math.random() - 0.5) * 0.015;
+                    b.vel.z += (Math.random() - 0.5) * 0.02;
+                    b.vel.clampLength(0.01, 0.04);
+                }
+                
+                // Position update
+                b.pos.addScaledVector(b.vel, dt);
+                
+                // Boundaries (radius = 0.16m, height = 0.01 to 0.1m)
+                const distFromCenter = Math.sqrt(b.pos.x * b.pos.x + b.pos.z * b.pos.z);
+                if (distFromCenter > 0.16) {
+                    b.vel.x *= -1;
+                    b.vel.z *= -1;
+                    b.pos.x = (b.pos.x / distFromCenter) * 0.158;
+                    b.pos.z = (b.pos.z / distFromCenter) * 0.158;
+                }
+                if (b.pos.y < 0.01) {
+                    b.pos.y = 0.01;
+                    b.vel.y *= -1;
+                } else if (b.pos.y > 0.1) {
+                    b.pos.y = 0.1;
+                    b.vel.y *= -1;
+                }
+                
+                b.mesh.position.copy(b.pos);
+                
+                // Heading rotation
+                if (b.vel.lengthSq() > 0.00001) {
+                    b.mesh.rotation.y = Math.atan2(b.vel.x, b.vel.z);
+                }
+                
+                // Flapping animation
+                b.phase += dt * b.speed;
+                const flap = Math.sin(b.phase) * (Math.PI / 3);
+                b.leftWing.rotation.z = flap;
+                b.rightWing.rotation.z = -flap;
+            });
         }
 
         // Expose a global window variable so Jugnu System ignores index pinches when this table is actively rotating
@@ -1846,7 +1986,7 @@ export class DomainExpansionSystem extends createSystem({
             
             this.players.forEach(p => {
                 // Organic Movement Simulation (Field adjustments & crease strolls)
-                if (triggerSimulation) {
+                if (triggerSimulation && !this.isSportSequenceActive) {
                     if (p.role === 'fielder') {
                         // Fielders shift organic sub-intervals (max 4mm drift from original base field position)
                         const angle = Math.random() * Math.PI * 2;
@@ -1868,8 +2008,10 @@ export class DomainExpansionSystem extends createSystem({
                 }
 
                 // Smooth position LERP — only update needed
-                p.group.position.lerp(p.targetPos, dt * 1.5);
-                p.currentPos.copy(p.group.position);
+                if (!this.isSportSequenceActive) {
+                    p.group.position.lerp(p.targetPos, dt * 1.5);
+                    p.currentPos.copy(p.group.position);
+                }
 
                 // Cyber-billboard floating tags to face player headset adaptively (Yaw-only in world space to prevent tilting!)
                 const tagWorldPos = new THREE.Vector3();
@@ -2528,19 +2670,41 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
 
-            this.updateFireworks(dt);
-            this.updateWeather(dt);
-            this.updateSandboxBall(dt);
-            this.updateSportSequence(dt);
-            this.updateNetsWiggling(dt);
-            // Buttons now use index-finger hover — pass index tip positions
-            this.updateTrackingButtons(
-                leftIndexPinchPos,
-                rightIndexPinchPos,
-                hasLeftIndex,
-                hasRightIndex,
-                dt
-            );
+            if (this.currentStadiumType === 'butterflies') {
+                if (this.weatherMesh) this.weatherMesh.visible = false;
+                if (this.sandboxBall) this.sandboxBall.visible = false;
+                if (this.activeBall) this.activeBall.visible = false;
+                if (this.ballTrail) this.ballTrail.visible = false;
+                if (this.sequenceBall) this.sequenceBall.visible = false;
+                if (this.sequenceBallTrail) this.sequenceBallTrail.visible = false;
+                if (this.tcdLauncherButton && this.tcdLauncherButton.parent) {
+                    this.tcdLauncherButton.parent.visible = false;
+                }
+                if (this.tcdPanelGroup) this.tcdPanelGroup.visible = false;
+                this.tcdVisible = false;
+                this.trackingButtons.forEach(b => b.visible = false);
+                this.buttonLabels.forEach(l => l.visible = false);
+                this.scoreDisplayMeshes.forEach(s => s.visible = false);
+                this.fireworkSeqTimer = -1.0;
+                this.fireworkSeqIndex = 0;
+                this.updateFireworks(dt);
+            } else {
+                this.updateFireworks(dt);
+                this.updateWeather(dt);
+                this.updateSandboxBall(dt);
+                this.updateSportSequence(dt);
+                this.updateNetsWiggling(dt);
+                if (this.tcdLauncherButton && this.tcdLauncherButton.parent) {
+                    this.tcdLauncherButton.parent.visible = true;
+                }
+                this.updateTrackingButtons(
+                    leftIndexPinchPos,
+                    rightIndexPinchPos,
+                    hasLeftIndex,
+                    hasRightIndex,
+                    dt
+                );
+            }
         } else {
             // Table is closed: hide close button instantly
             this.xButton.visible = false;
@@ -3658,7 +3822,8 @@ export class DomainExpansionSystem extends createSystem({
         this.billboardCtx = this.billboardCanvas.getContext('2d')!;
         this.billboardTexture = new THREE.CanvasTexture(this.billboardCanvas);
 
-        this.tableGroup.add(this.arBillboard);
+        this.arBillboard.visible = false;
+        // this.tableGroup.add(this.arBillboard);
     }
 
     private redrawBillboard() {
@@ -3882,43 +4047,50 @@ export class DomainExpansionSystem extends createSystem({
         const roster: PlayerEntry[] =
             this.currentStadiumType === 'berlin' ? rosterFootball
           : this.currentStadiumType === 'inuit'  ? rosterBasketball
+          : this.currentStadiumType === 'butterflies' ? []
           : rosterCricket;
 
-        // ── Shared Phong materials (created ONCE per team — not 22× per player) ───────
-        // This alone cuts shader compilations from 220 → 24 and avoids redundant GPU uploads
-        const mk = (col: number, shine: number, emissiveHex = 0x000000) =>
-            new THREE.MeshPhongMaterial({ color: col, shininess: shine,
-                emissive: new THREE.Color(emissiveHex) });
+        // ── Shared Phong glassmorphic materials (created ONCE per team — not 22× per player) ───────
+        const mkGlass = (col: number, emissiveHex: number, opacity: number = 0.82) =>
+            new THREE.MeshPhongMaterial({
+                color: col,
+                shininess: 120,
+                emissive: new THREE.Color(emissiveHex).multiplyScalar(0.75),
+                transparent: true,
+                opacity: opacity,
+                side: THREE.DoubleSide
+            });
 
         const sharedMats = {
             blue:    {
-                body:   mk(0xcc1111, 55, 0x1e0000),
-                sec:    mk(0xd4a017, 80, 0x100a00),
-                pants:  mk(0x1a1a2e, 28),
-                accent: mk(0xff4444, 60, 0x180000),
+                body:   mkGlass(0xee2222, 0xff0044, 0.82),  // Glowing ruby red
+                sec:    mkGlass(0xffcc00, 0xffb700, 0.95),  // Glowing neon gold
+                pants:  mkGlass(0x0f172a, 0x1e293b, 0.85),  // Holographic navy/slate
+                accent: mkGlass(0xff3355, 0xff0055, 0.90),
             },
             yellow:  {
-                body:   mk(0xd90f55, 55, 0x1a0010),
-                sec:    mk(0x1565c0, 80, 0x000a14),
-                pants:  mk(0xf0f0f0, 28),
-                accent: mk(0x64b5f6, 60, 0x001020),
+                body:   mkGlass(0xff0088, 0xff00cc, 0.82),  // Glowing cyber pink/magenta
+                sec:    mkGlass(0x0099ff, 0x00ccff, 0.95),  // Glowing electric blue
+                pants:  mkGlass(0xe2e8f0, 0xffffff, 0.85),  // Frosted silver glass
+                accent: mkGlass(0x00ffff, 0x00ffff, 0.90),
             },
             neutral: {
-                body:   mk(0x1e88e5, 55, 0x001220),
-                sec:    mk(0x263238, 60),
-                pants:  mk(0x0d1117, 28),
-                accent: mk(0x90caf9, 50, 0x001020),
+                body:   mkGlass(0x090d16, 0x0f172a, 0.85),  // Cyber obsidian
+                sec:    mkGlass(0x00ffff, 0x00ffff, 0.95),  // Glowing cyan trims
+                pants:  mkGlass(0x1e293b, 0x334155, 0.85),  // Dark slate pants
+                accent: mkGlass(0xffffff, 0xffffff, 0.90),
             },
         };
-        const sharedSkin  = mk(0xf5c5a3, 20);
-        const sharedBlack = mk(0x1a1a2e, 15);
-        const sharedWood  = mk(0xb5823a, 40, 0x080300);
-        const sharedMetal = mk(0x455a64, 130);
-        const sharedPad   = mk(0xfafafa, 50);
+        // Soft glowing frosted-ice holographic skin!
+        const sharedSkin  = mkGlass(0xe2e8f0, 0x00ffcc, 0.88);
+        const sharedBlack = mkGlass(0x05050f, 0x000000, 0.95);
+        const sharedWood  = mkGlass(0xb5823a, 0xe2af37, 0.95);
+        const sharedMetal = mkGlass(0x475569, 0x00ffff, 0.90);
+        const sharedPad   = mkGlass(0xf1f5f9, 0x00ffff, 0.90);
         const sharedLedMats = {
-            blue:    new THREE.MeshPhongMaterial({ color: 0xffd700, emissive: new THREE.Color(0xffd700).multiplyScalar(0.85), shininess: 200 }),
-            yellow:  new THREE.MeshPhongMaterial({ color: 0x00e5ff, emissive: new THREE.Color(0x00e5ff).multiplyScalar(0.85), shininess: 200 }),
-            neutral: new THREE.MeshPhongMaterial({ color: 0xe0f7fa, emissive: new THREE.Color(0xe0f7fa).multiplyScalar(0.5),  shininess: 200 }),
+            blue:    new THREE.MeshPhongMaterial({ color: 0xffcc00, emissive: new THREE.Color(0xffcc00).multiplyScalar(1.5), shininess: 200 }),
+            yellow:  new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: new THREE.Color(0x00ffff).multiplyScalar(1.5), shininess: 200 }),
+            neutral: new THREE.MeshPhongMaterial({ color: 0xffffff, emissive: new THREE.Color(0xffffff).multiplyScalar(1.5), shininess: 200 }),
         };
 
         // ── Figure proportions at 50% of previous scale ──────────────────────────────
@@ -3937,11 +4109,11 @@ export class DomainExpansionSystem extends createSystem({
         gTorso.translate(0, H_TORSO / 2, 0);
         const gStripe   = new THREE.BoxGeometry(W_TORSO * 1.8, H_TORSO * 0.18, W_TORSO * 0.25);
         const gNeck     = new THREE.CylinderGeometry(0.000275, 0.0003, 0.0006, 6);
-        const gHead     = new THREE.SphereGeometry(H_HEAD * 0.78, 8, 7);
-        const gHelmet   = new THREE.SphereGeometry(H_HEAD * 0.86, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.58);
+        const gHead     = new THREE.IcosahedronGeometry(H_HEAD * 0.78, 1); // Faceted crystal head!
+        const gHelmet   = new THREE.IcosahedronGeometry(H_HEAD * 0.86, 1); // Sleek cybernetic faceted headgear shell!
         const gBrim     = new THREE.CylinderGeometry(H_HEAD * 0.94, H_HEAD * 0.94, 0.00006, 10, 1, false, -Math.PI * 0.35, Math.PI * 0.7);
         const gGrill    = new THREE.CylinderGeometry(0.000048, 0.000048, H_HEAD, 4);
-        const gVisor    = new THREE.BoxGeometry(H_HEAD * 1.4, H_HEAD * 0.22, H_HEAD * 0.18);
+        const gVisor    = new THREE.BoxGeometry(H_HEAD * 1.5, H_HEAD * 0.25, H_HEAD * 0.22); // Wraparound VR-style visor!
         const gShoulder = new THREE.BoxGeometry(W_TORSO * 1.1, H_TORSO * 0.16, W_TORSO * 0.8);
         const gUArm     = (() => { const g = new THREE.CylinderGeometry(0.000325, 0.00026, UA_H, 6); g.translate(0, -UA_H / 2, 0); return g; })();
         const gFArm     = (() => { const g = new THREE.CylinderGeometry(0.00024, 0.00019, FA_H, 5); g.translate(0, -FA_H / 2, 0); return g; })();
@@ -6017,6 +6189,12 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     private updateSportSequence(dt: number) {
+        if (this.currentStadiumType === 'butterflies') {
+            this.isSportSequenceActive = false;
+            if (this.sequenceBall) this.sequenceBall.visible = false;
+            if (this.sequenceBallTrail) this.sequenceBallTrail.visible = false;
+            return;
+        }
         if (!this.isSportSequenceActive) return;
 
         this.sportSequenceTime += dt;
@@ -6028,182 +6206,667 @@ export class DomainExpansionSystem extends createSystem({
             this.arBillboard.visible = false;
         }
 
-        // --- 1. CRICKET CHOREOGRAPHY SEQUENCE ---
+        // Helper to locate players
+        const getPlayer = (id: string) => this.players.find(p => p.id === id);
+
+        // Helper to animate running player
+        const runPlayer = (p: any, targetX: number, targetZ: number, speedFactor: number) => {
+            const dx = targetX - p.group.position.x;
+            const dz = targetZ - p.group.position.z;
+            p.group.position.x += dx * speedFactor;
+            p.group.position.z += dz * speedFactor;
+            
+            if (Math.abs(dx) > 0.001 || Math.abs(dz) > 0.001) {
+                p.group.rotation.y = Math.atan2(dx, dz);
+                p.group.position.y = 0.009 + Math.abs(Math.sin(time * 15.0)) * 0.002; // bob up/down
+            }
+        };
+
+        const stopPlayer = (p: any) => {
+            p.group.position.y = 0.009;
+        };
+
+        // Helper to show/fade cards
+        const showPlayerCard = (playerId: string | null) => {
+            this.players.forEach(p => {
+                const cardMesh = p.statsCard.children[0] as THREE.Mesh;
+                const cardMat = cardMesh.material as THREE.MeshBasicMaterial;
+                if (playerId && p.id === playerId) {
+                    cardMat.opacity = 0.95;
+                    p.statsCard.visible = true;
+                    p.statsCard.children.forEach(child => {
+                        if (child instanceof THREE.Mesh) {
+                            const childMat = child.material as THREE.MeshBasicMaterial;
+                            if (childMat && child !== cardMesh) {
+                                const baseOpacity = child.userData.baseOpacity ?? 0.85;
+                                childMat.opacity = 0.85;
+                            }
+                            const baseY = p.statsCard.userData.baseY ?? 0.045;
+                            const baseZ = child.userData.baseZ ?? 0.0;
+                            child.position.y = baseY + 0.007;
+                            child.position.z = baseZ + 0.016;
+                        }
+                    });
+                } else {
+                    cardMat.opacity = 0.0;
+                    p.statsCard.visible = false;
+                }
+            });
+        };
+
+        // --- 1. CRICKET CHOREOGRAPHY SEQUENCE (20.0s over) ---
         if (stType === 'default') {
-            if (this.sportSequencePhase === 0) {
-                // Phase 0: Pitch delivery (0.0s - 0.5s)
-                const t = Math.min(time / 0.5, 1.0);
-                // Ball rolls/flies towards the bat at (0, 0.004, -0.035)
+            const bowler = getPlayer("f2");   // B. Kumar
+            const batsman = getPlayer("b2");  // S. Samson
+            const partner = getPlayer("b1");  // Y. Jaiswal
+            const keeper = getPlayer("f1");   // J. Cox
+            const fielder3 = getPlayer("f3"); // K. Pandya
+            const fielder7 = getPlayer("f7"); // J. Bethell
+            const fielder6 = getPlayer("f6"); // T. David
+            const fielder8 = getPlayer("f8"); // R. Shepherd
+
+            if (time < 3.0) {
+                // --- BALL 1: Defensive Block (0.0s - 3.0s) ---
+                showPlayerCard("b2"); // Show Samson card
+                const ballT = Math.min(time / 1.0, 1.0);
+                
+                // Bowler Kumar run up & bowl
+                if (bowler) runPlayer(bowler, 0.0, 0.035, dt * 5.0);
+                
+                // Ball delivery trajectory (Bowler to Crease)
                 const startX = 0.0, startY = 0.015, startZ = 0.045;
                 const endX = 0.0, endY = 0.004, endZ = -0.035;
                 this.sequenceBall.position.set(
-                    startX + (endX - startX) * t,
-                    startY + (endY - startY) * t - 0.005 * Math.sin(t * Math.PI), // slight dip
-                    startZ + (endZ - startZ) * t
+                    startX + (endX - startX) * ballT,
+                    startY + (endY - startY) * ballT - 0.002 * Math.sin(ballT * Math.PI),
+                    startZ + (endZ - startZ) * ballT
                 );
 
-                if (time >= 0.5) {
-                    this.sportSequencePhase = 1;
-                    // Snappy bat swing swing feedback
-                    if (this.cricketBatMesh) {
-                        this.cricketBatMesh.rotation.y = -Math.PI / 3;
-                    }
-                    // Trigger contact sparks
-                    this.triggerFirework(0.0, 0.004, -0.035, 0xffa500);
+                if (time >= 1.0 && time < 1.1) {
+                    if (this.cricketBatMesh) this.cricketBatMesh.rotation.y = -Math.PI / 4;
+                    this.triggerFirework(0.0, 0.004, -0.035, 0xffaa00, 0.015);
                 }
-            } else if (this.sportSequencePhase === 1) {
-                // Phase 1: High parabolic flight out of bounds (0.5s - 1.6s)
-                const flightT = Math.min((time - 0.5) / 1.1, 1.0);
-                
-                // Parabolic Bezier Curve: Bat -> High Peak -> Landing out of bounds
-                const x0 = 0.0, y0 = 0.004, z0 = -0.035;
-                const x1 = 0.0, y1 = 0.12, z1 = 0.02;
-                const x2 = 0.0, y2 = 0.01, z2 = 0.13;
 
-                // Bezier equation
-                const mt = 1 - flightT;
-                const bx = mt * mt * x0 + 2 * mt * flightT * x1 + flightT * flightT * x2;
-                const by = mt * mt * y0 + 2 * mt * flightT * y1 + flightT * flightT * y2;
-                const bz = mt * mt * z0 + 2 * mt * flightT * z1 + flightT * flightT * z2;
+                // Ball rebounds to Point fielder f3
+                if (time >= 1.0) {
+                    const reboundT = Math.min((time - 1.0) / 1.0, 1.0);
+                    this.sequenceBall.position.lerpVectors(
+                        new THREE.Vector3(0.0, 0.004, -0.035),
+                        new THREE.Vector3(0.022, 0.004, 0.026),
+                        reboundT
+                    );
+                    if (fielder3) runPlayer(fielder3, 0.022, 0.026, dt * 6.0);
+                }
+                
+                if (time >= 2.0) {
+                    const throwT = Math.min((time - 2.0) / 1.0, 1.0);
+                    this.sequenceBall.position.lerpVectors(
+                        new THREE.Vector3(0.022, 0.004, 0.026),
+                        new THREE.Vector3(0.0, 0.009, 0.035),
+                        throwT
+                    );
+                    if (this.cricketBatMesh) this.cricketBatMesh.rotation.y = 0;
+                    if (fielder3) stopPlayer(fielder3);
+                }
+            } else if (time >= 3.0 && time < 6.0) {
+                // --- BALL 2: High Bouncer (3.0s - 6.0s) ---
+                showPlayerCard("f1"); // Show Wicketkeeper Cox card
+                const ballT = Math.min((time - 3.0) / 1.2, 1.0);
+                
+                // Ball delivery trajectory (Bouncer - goes high)
+                const startX = 0.0, startY = 0.015, startZ = 0.045;
+                const endX = 0.0, endY = 0.025, endZ = -0.048; // Keeper gloves
+                
+                this.sequenceBall.position.set(
+                    startX + (endX - startX) * ballT,
+                    startY + (endY - startY) * ballT + 0.018 * Math.sin(ballT * Math.PI), // high bounce arc
+                    startZ + (endZ - startZ) * ballT
+                );
+
+                // Samson ducks!
+                if (batsman && ballT > 0.4 && ballT < 0.9) {
+                    batsman.mesh.rotation.x = Math.PI / 4;
+                } else if (batsman) {
+                    batsman.mesh.rotation.x = 0;
+                }
+
+                // Ball tossed back to bowler Kumar
+                if (time >= 4.5) {
+                    const tossT = Math.min((time - 4.5) / 1.2, 1.0);
+                    this.sequenceBall.position.lerpVectors(
+                        new THREE.Vector3(0.0, 0.025, -0.048),
+                        new THREE.Vector3(0.0, 0.009, 0.035),
+                        tossT
+                    );
+                }
+            } else if (time >= 6.0 && time < 9.5) {
+                // --- BALL 3: Elegant Off-Drive FOUR (6.0s - 9.5s) ---
+                showPlayerCard("b2"); // Highlight Samson
+                const ballT = Math.min((time - 6.0) / 1.1, 1.0);
+                
+                const startX = 0.0, startY = 0.015, startZ = 0.045;
+                const endX = 0.0, endY = 0.004, endZ = -0.035;
+                this.sequenceBall.position.set(
+                    startX + (endX - startX) * ballT,
+                    startY + (endY - startY) * ballT - 0.002 * Math.sin(ballT * Math.PI),
+                    startZ + (endZ - startZ) * ballT
+                );
+
+                if (time >= 7.1 && time < 7.2) {
+                    if (this.cricketBatMesh) this.cricketBatMesh.rotation.y = -Math.PI / 3;
+                    this.triggerFirework(0.0, 0.004, -0.035, 0x00ff66, 0.015);
+                }
+
+                // Ball runs to boundary, J. Bethell runs to field
+                if (time >= 7.1) {
+                    const flightT = Math.min((time - 7.1) / 1.4, 1.0);
+                    this.sequenceBall.position.lerpVectors(
+                        new THREE.Vector3(0.0, 0.004, -0.035),
+                        new THREE.Vector3(0.065, 0.002, 0.085), // boundary point
+                        flightT
+                    );
+                    
+                    if (fielder7) runPlayer(fielder7, 0.065, 0.085, dt * 4.0);
+                }
+
+                // Show FOUR celebration card near boundary
+                if (time >= 8.5) {
+                    this.sportCelebrationCard.position.set(0.055, this.ROOF_Y + 0.05, 0.075);
+                    this.sportCelebrationCard.visible = true;
+                    // Redraw canvas with FOUR
+                    const ctx = this.celebrationCardCtx;
+                    ctx.fillStyle = 'rgba(10, 15, 45, 0.9)';
+                    ctx.fillRect(0, 0, 256, 128);
+                    ctx.strokeStyle = '#00ff66';
+                    ctx.lineWidth = 6;
+                    ctx.strokeRect(4, 4, 248, 120);
+                    const grad = ctx.createLinearGradient(0, 0, 256, 0);
+                    grad.addColorStop(0, '#00ff66');
+                    grad.addColorStop(1, '#00ffff');
+                    ctx.fillStyle = grad;
+                    ctx.font = 'bold italic 48px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText("FOUR!!!", 128, 64);
+                    this.sportCelebrationTexture.needsUpdate = true;
+                }
+
+                // Batsmen swap crease ends!
+                if (time >= 7.5 && time < 9.5) {
+                    const runT = (time - 7.5) / 2.0;
+                    if (batsman) runPlayer(batsman, 0.013, 0.0, dt * 5.0);
+                    if (partner) runPlayer(partner, -0.013, 0.0, dt * 5.0);
+                }
+            } else if (time >= 9.5 && time < 12.5) {
+                // --- BALL 4: Clean Bowled Stumps flying (9.5s - 12.5s) ---
+                showPlayerCard("f2"); // Highlight Bowler Kumar
+                this.sportCelebrationCard.visible = false;
+                const ballT = Math.min((time - 9.5) / 1.0, 1.0);
+
+                const startX = 0.0, startY = 0.015, startZ = 0.045;
+                const endX = 0.0, endY = 0.002, endZ = -0.045; // Stumps
+                this.sequenceBall.position.set(
+                    startX + (endX - startX) * ballT,
+                    startY + (endY - startY) * ballT - 0.003 * Math.sin(ballT * Math.PI),
+                    startZ + (endZ - startZ) * ballT
+                );
+
+                if (batsman) stopPlayer(batsman);
+                if (partner) stopPlayer(partner);
+                if (fielder7) stopPlayer(fielder7);
+
+                // Wickets Fly & flash red!
+                if (time >= 10.5 && time < 11.5) {
+                    if (this.cricketStumpsMesh) {
+                        this.cricketStumpsMesh.rotation.x = -Math.PI / 4;
+                        this.cricketStumpsMesh.position.z = -0.049;
+                        this.cricketStumpsMesh.traverse((child: any) => {
+                            if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshBasicMaterial) {
+                                child.material.color.setHex(0xff0000); // glowing red dismissals!
+                            }
+                        });
+                    }
+                    if (time >= 10.5 && time < 10.6) {
+                        this.triggerFirework(0.0, 0.003, -0.045, 0xff0055, 0.02);
+                    }
+                }
+            } else if (time >= 12.5 && time < 15.5) {
+                // --- BALL 5: Fast throw and safe defend (12.5s - 15.5s) ---
+                showPlayerCard("b1"); // Highlight Jaiswal
+                // Restore stumps
+                if (this.cricketStumpsMesh) {
+                    this.cricketStumpsMesh.rotation.set(0, 0, 0);
+                    this.cricketStumpsMesh.position.set(0, 0.001, -0.045);
+                    this.cricketStumpsMesh.traverse((child: any) => {
+                        if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshBasicMaterial) {
+                            child.material.color.setHex(0x00ff66);
+                        }
+                    });
+                }
+                const ballT = Math.min((time - 12.5) / 1.0, 1.0);
+                
+                const startX = 0.0, startY = 0.015, startZ = 0.045;
+                const endX = 0.0, endY = 0.004, endZ = -0.035;
+                this.sequenceBall.position.set(
+                    startX + (endX - startX) * ballT,
+                    startY + (endY - startY) * ballT - 0.002 * Math.sin(ballT * Math.PI),
+                    startZ + (endZ - startZ) * ballT
+                );
+
+                if (time >= 13.5 && time < 14.5) {
+                    const reboundT = Math.min((time - 13.5) / 1.0, 1.0);
+                    this.sequenceBall.position.lerpVectors(
+                        new THREE.Vector3(0.0, 0.004, -0.035),
+                        new THREE.Vector3(0.022, 0.004, 0.026),
+                        reboundT
+                    );
+                }
+            } else if (time >= 15.5 && time < 20.0) {
+                // --- BALL 6: THE GRAND SIX FINALE (15.5s - 20.0s) ---
+                showPlayerCard("b2"); // Highlight Samson Card
+                const ballT = Math.min((time - 15.5) / 1.0, 1.0);
+                
+                const startX = 0.0, startY = 0.015, startZ = 0.045;
+                const endX = 0.0, endY = 0.004, endZ = -0.035;
+                this.sequenceBall.position.set(
+                    startX + (endX - startX) * ballT,
+                    startY + (endY - startY) * ballT - 0.002 * Math.sin(ballT * Math.PI),
+                    startZ + (endZ - startZ) * ballT
+                );
+
+                if (time >= 16.5 && time < 16.6) {
+                    if (this.cricketBatMesh) this.cricketBatMesh.rotation.y = -Math.PI / 2.5;
+                    this.triggerFirework(0.0, 0.004, -0.035, 0xff00ff, 0.02);
+                }
+
+                // Parabolic SIX flight out of the stadium
+                if (time >= 16.5) {
+                    const flightT = Math.min((time - 16.5) / 1.6, 1.0);
+                    const x0 = 0.0, y0 = 0.004, z0 = -0.035;
+                    const x1 = -0.05, y1 = 0.16, z1 = 0.04;
+                    const x2 = -0.09, y2 = 0.01, z2 = 0.115; // out of stadium
+
+                    const mt = 1 - flightT;
+                    const bx = mt * mt * x0 + 2 * mt * flightT * x1 + flightT * flightT * x2;
+                    const by = mt * mt * y0 + 2 * mt * flightT * y1 + flightT * flightT * y2;
+                    const bz = mt * mt * z0 + 2 * mt * flightT * z1 + flightT * flightT * z2;
+                    this.sequenceBall.position.set(bx, by, bz);
+
+                    // Deep fielder runs to boundary wall
+                    if (fielder8) runPlayer(fielder8, -0.075, 0.10, dt * 3.5);
+                }
+
+                // Show SIX celebration card
+                if (time >= 18.0) {
+                    this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.075, 0.0);
+                    this.sportCelebrationCard.visible = true;
+                    // Redraw canvas with SIX
+                    const ctx = this.celebrationCardCtx;
+                    ctx.fillStyle = 'rgba(10, 15, 45, 0.9)';
+                    ctx.fillRect(0, 0, 256, 128);
+                    ctx.strokeStyle = '#ff00ff';
+                    ctx.lineWidth = 6;
+                    ctx.strokeRect(4, 4, 248, 120);
+                    const grad = ctx.createLinearGradient(0, 0, 256, 0);
+                    grad.addColorStop(0, '#ff00ff');
+                    grad.addColorStop(1, '#ffaa00');
+                    ctx.fillStyle = grad;
+                    ctx.font = 'bold italic 48px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText("SIX!!!", 128, 64);
+                    this.sportCelebrationTexture.needsUpdate = true;
+                }
+            }
+        }
+
+        // --- 2. SOCCER CHOREOGRAPHY SEQUENCE (20.0s twist match) ---
+        else if (stType === 'berlin') {
+            const bellingham = getPlayer("a1"); // AM Attacking J. Bellingham
+            const sane = getPlayer("fw1");      // LW L. Sané
+            const kimmich = getPlayer("d3");    // RB J. Kimmich
+            const rudiger = getPlayer("d2");    // CB R. Rüdiger
+            const kane = getPlayer("fw3");      // ST H. Kane
+            const neuer = getPlayer("gk");      // GK M. Neuer
+            const goretzka = getPlayer("m2");   // CM Defensive L. Goretzka
+
+            if (time < 4.0) {
+                // --- Bellingham Dribbles & Passes (0.0s - 4.0s) ---
+                showPlayerCard("a1"); // Highlight Bellingham
+                const dribbleT = Math.min(time / 2.5, 1.0);
+                
+                // Bellingham runs and dribbles towards penalty box
+                const startX = 0.013, startZ = 0.040;
+                const endX = 0.0, endZ = 0.02;
+                
+                const bx = startX + (endX - startX) * dribbleT;
+                const bz = startZ + (endZ - startZ) * dribbleT;
+                const by = 0.003 + Math.abs(Math.sin(time * 25.0)) * 0.002;
+                
+                this.sequenceBall.position.set(bx, by, bz);
+                if (bellingham) runPlayer(bellingham, bx, bz, dt * 5.0);
+
+                // Goretzka runs to intercept
+                if (goretzka) runPlayer(goretzka, 0.015, 0.022, dt * 4.0);
+
+                // Bellingham passes to Sané
+                if (time >= 2.5) {
+                    const passT = Math.min((time - 2.5) / 1.5, 1.0);
+                    this.sequenceBall.position.lerpVectors(
+                        new THREE.Vector3(0.0, 0.003, 0.02),
+                        new THREE.Vector3(-0.055, 0.003, 0.015),
+                        passT
+                    );
+                    if (bellingham) stopPlayer(bellingham);
+                    if (goretzka) stopPlayer(goretzka);
+                }
+            } else if (time >= 4.0 && time < 8.0) {
+                // --- Sané Dribbles Wing & Crosses, Kimmich Slides (4.0s - 8.0s) ---
+                showPlayerCard("fw1"); // Highlight Sané
+                const runT = Math.min((time - 4.0) / 2.2, 1.0);
+
+                // Sané runs with ball
+                const startX = -0.055, startZ = 0.015;
+                const endX = -0.065, endZ = -0.035; // Deep wing
+
+                const bx = startX + (endX - startX) * runT;
+                const bz = startZ + (endZ - startZ) * runT;
+                const by = 0.003 + Math.abs(Math.sin(time * 25.0)) * 0.002;
 
                 this.sequenceBall.position.set(bx, by, bz);
+                if (sane) runPlayer(sane, bx, bz, dt * 6.0);
 
-                // Animate bat swinging back slowly
-                if (this.cricketBatMesh && flightT < 0.3) {
-                    this.cricketBatMesh.rotation.y = -Math.PI / 3 + (Math.PI / 3) * (flightT / 0.3);
-                } else if (this.cricketBatMesh) {
-                    this.cricketBatMesh.rotation.y = 0;
+                // Kimmich dashes and sliding tackles!
+                if (kimmich) {
+                    if (time < 6.0) {
+                        runPlayer(kimmich, -0.05, -0.015, dt * 5.5);
+                    } else {
+                        // Slide flat!
+                        kimmich.group.position.x += (-0.062 - kimmich.group.position.x) * dt * 5.0;
+                        kimmich.group.position.z += (-0.03 - kimmich.group.position.z) * dt * 5.0;
+                        kimmich.group.rotation.y = Math.PI / 4;
+                        kimmich.mesh.rotation.z = Math.PI / 2.5; // fall flat
+                    }
                 }
 
-                if (time >= 1.6) {
-                    this.sportSequencePhase = 2;
-                    // Trigger landing sparkles and boundary ripples
-                    this.triggerFirework(0.0, 0.01, 0.13, 0x00ff66);
+                // Sané crosses the ball high into box
+                if (time >= 6.5) {
+                    const crossT = Math.min((time - 6.5) / 1.5, 1.0);
+                    const startPos = new THREE.Vector3(-0.065, 0.003, -0.035);
+                    const endPos = new THREE.Vector3(0.0, 0.005, -0.065); // box center
+                    this.sequenceBall.position.set(
+                        startPos.x + (endPos.x - startPos.x) * crossT,
+                        startPos.y + (endPos.y - startPos.y) * crossT + 0.015 * Math.sin(crossT * Math.PI), // high cross arc
+                        startPos.z + (endPos.z - startPos.z) * crossT
+                    );
+                    if (sane) stopPlayer(sane);
                 }
-            } else if (this.sportSequencePhase === 2) {
-                // Phase 2: Boundary Landing & AR Reveal (1.6s - 2.0s)
-                if (time >= 1.9) {
-                    this.sportSequencePhase = 3;
-                    this.sportCelebrationCard.visible = true;
-                    // Trigger grand pyrotechnic fireworks sequence
-                    this.triggerManualFireworks();
+            } else if (time >= 8.0 && time < 12.0) {
+                // --- Kane/Rüdiger Header Duel & Rebound (8.0s - 12.0s) ---
+                showPlayerCard("fw3"); // Highlight Kane
+                if (sane) stopPlayer(sane);
+                if (kimmich) {
+                    kimmich.mesh.rotation.z = 0; // stand back up
+                    stopPlayer(kimmich);
                 }
-            }
-        }
+                const duelT = Math.min((time - 8.0) / 1.2, 1.0);
 
-        // --- 2. SOCCER CHOREOGRAPHY SEQUENCE ---
-        else if (stType === 'berlin') {
-            if (this.sportSequencePhase === 0) {
-                // Phase 0: Ball prep at center field (0.0s - 0.5s)
-                if (time >= 0.5) {
-                    this.sportSequencePhase = 1;
-                    // Trigger kick sparkler
-                    this.triggerFirework(0.0, 0.003, 0.0, 0x22d3ee);
+                // Kane and Rüdiger run to center of penalty box
+                if (kane) runPlayer(kane, 0.0, -0.065, dt * 6.5);
+                if (rudiger) runPlayer(rudiger, 0.003, -0.062, dt * 6.5);
+
+                // Contesting header: Kane leaps!
+                if (time >= 9.0 && time < 10.2) {
+                    if (kane) kane.group.position.y = 0.018; // jump 9mm high!
+                    if (time >= 9.0 && time < 9.1) {
+                        this.triggerFirework(0.0, 0.018, -0.065, 0x00ffff, 0.01);
+                    }
+                } else if (kane) {
+                    kane.group.position.y = 0.009;
                 }
-            } else if (this.sportSequencePhase === 1) {
-                // Phase 1: Kick flight straight to Berlin Goal (0.5s - 1.4s)
-                const flightT = Math.min((time - 0.5) / 0.9, 1.0);
+
+                // Ball rebounds off Rüdiger's block back to Bellingham
+                if (time >= 9.2) {
+                    const reboundT = Math.min((time - 9.2) / 1.8, 1.0);
+                    this.sequenceBall.position.lerpVectors(
+                        new THREE.Vector3(0.0, 0.018, -0.065),
+                        new THREE.Vector3(0.0, 0.003, -0.025), // bellingham rebound spot
+                        reboundT
+                    );
+                    if (bellingham) runPlayer(bellingham, 0.0, -0.025, dt * 5.0);
+                }
+            } else if (time >= 12.0 && time < 16.0) {
+                // --- Bellingham Beats Defender & Feeds Kane (12.0s - 16.0s) ---
+                showPlayerCard("a1"); // Highlight Bellingham again
+                const passT = Math.min((time - 12.0) / 1.8, 1.0);
+                if (kane) stopPlayer(kane);
+                if (rudiger) stopPlayer(rudiger);
+
+                // Bellingham runs onto ball and feeds short pass to Kane
+                if (bellingham) {
+                    const runY = 0.003 + Math.abs(Math.sin(time * 25.0)) * 0.002;
+                    bellingham.group.position.y = runY;
+                }
                 
-                // Kick trajectory: (0.0, 0.003, 0.0) -> (0.0, 0.005, 0.048) inside goal
-                const startX = 0.0, startY = 0.003, startZ = 0.0;
-                const endX = 0.0, endY = 0.005, endZ = 0.048;
-
+                // Ball passed to Kane at (0.0, 0.003, -0.068)
+                if (time >= 13.5) {
+                    const throwT = Math.min((time - 13.5) / 1.5, 1.0);
+                    this.sequenceBall.position.lerpVectors(
+                        new THREE.Vector3(0.0, 0.003, -0.025),
+                        new THREE.Vector3(0.0, 0.003, -0.068),
+                        throwT
+                    );
+                    if (bellingham) stopPlayer(bellingham);
+                }
+            } else if (time >= 16.0 && time < 20.0) {
+                // --- Kane Curving Goal Shot, Neuer Dives (16.0s - 20.0s) ---
+                showPlayerCard("fw3"); // Highlight Kane
+                const shotT = Math.min((time - 16.0) / 1.2, 1.0);
+                
+                // Ball flies into Goal 2 (bottom right corner of net)
+                const startX = 0.0, startY = 0.003, startZ = -0.068;
+                const endX = 0.008, endY = 0.004, endZ = -0.093; // Inside goal
+                
                 this.sequenceBall.position.set(
-                    startX + (endX - startX) * flightT,
-                    startY + (endY - startY) * flightT + 0.006 * Math.sin(flightT * Math.PI), // curve upward
-                    startZ + (endZ - startZ) * flightT
+                    startX + (endX - startX) * shotT,
+                    startY + (endY - startY) * shotT + 0.006 * Math.sin(shotT * Math.PI), // curve shot
+                    startZ + (endZ - startZ) * shotT
                 );
 
-                if (time >= 1.4) {
-                    this.sportSequencePhase = 2;
-                    // Score! Animate goal net wiggling
+                if (time >= 17.2 && time < 17.3) {
+                    // Net wiggles!
                     this.isGoalWiggling = true;
                     this.goalWiggleTime = 0.0;
-                    this.wigglingGoalNet = this.goal1NetMesh;
-                    // Sparkler celebration inside net
-                    this.triggerFirework(0.0, 0.005, 0.048, 0x22d3ee);
+                    this.wigglingGoalNet = this.goal2NetMesh;
+                    // Sparkler trigger
+                    this.triggerFirework(0.008, 0.004, -0.093, 0x22d3ee, 0.015);
                 }
-            } else if (this.sportSequencePhase === 2) {
-                // Phase 2: Score Reveal (1.4s - 1.8s)
-                if (time >= 1.7) {
-                    this.sportSequencePhase = 3;
+
+                // Keeper Neuer dives flat!
+                if (neuer && time >= 16.5) {
+                    neuer.group.position.x += (0.008 - neuer.group.position.x) * dt * 6.0;
+                    neuer.mesh.rotation.z = -Math.PI / 2.2; // side dive
+                }
+
+                // Show GOAL celebration card
+                if (time >= 17.5) {
+                    this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.075, 0.0);
                     this.sportCelebrationCard.visible = true;
-                    // Trigger staged fireworks show
-                    this.triggerManualFireworks();
+                    // Redraw canvas with GOAL
+                    const ctx = this.celebrationCardCtx;
+                    ctx.fillStyle = 'rgba(10, 15, 45, 0.9)';
+                    ctx.fillRect(0, 0, 256, 128);
+                    ctx.strokeStyle = '#00ffff';
+                    ctx.lineWidth = 6;
+                    ctx.strokeRect(4, 4, 248, 120);
+                    const grad = ctx.createLinearGradient(0, 0, 256, 0);
+                    grad.addColorStop(0, '#00ffff');
+                    grad.addColorStop(1, '#ffffff');
+                    ctx.fillStyle = grad;
+                    ctx.font = 'bold italic 48px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText("GOAL!!!", 128, 64);
+                    this.sportCelebrationTexture.needsUpdate = true;
                 }
             }
         }
 
-        // --- 3. BASKETBALL CHOREOGRAPHY SEQUENCE ---
+        // --- 3. BASKETBALL CHOREOGRAPHY SEQUENCE (20.0s steal & 3-pt) ---
         else {
-            if (this.sportSequencePhase === 0) {
-                // Phase 0: Basketball fast dribble to center court (0.0s - 0.5s)
-                const t = Math.min(time / 0.5, 1.0);
-                const startX = 0.03, startZ = 0.0;
-                const endX = 0.0, endZ = 0.02;
-                const dribbleY = 0.015 + Math.abs(Math.sin(time * 30.0)) * 0.006;
-                this.sequenceBall.position.set(
-                    startX + (endX - startX) * t,
-                    dribbleY,
-                    startZ + (endZ - startZ) * t
-                );
+            const james = getPlayer("p1");    // SF L. James
+            const russell = getPlayer("p5");  // PG D. Russell
+            const brown = getPlayer("a1");    // SG J. Brown
+            const tatum = getPlayer("a2");    // SF J Tatum
+            const reaves = getPlayer("p3");   // PG A. Reaves
+            const porzingis = getPlayer("a3"); // C K. Porzingis
+            const white = getPlayer("a4");    // SG D. White
 
-                if (time >= 0.5) {
-                    this.sportSequencePhase = 1;
-                }
-            } else if (this.sportSequencePhase === 1) {
-                // Phase 1: Dunk slam rise and fall (0.5s - 1.3s)
-                const flightT = Math.min((time - 0.5) / 0.8, 1.0);
-                
-                // Trajectory: (0.0, 0.015, 0.02) -> Dunk rise -> Slam down through rim at (0.0, 0.0125, 0.041)
-                const startX = 0.0, startY = 0.015, startZ = 0.02;
-                const peakY = 0.022;
-                const endX = 0.0, endY = 0.0135, endZ = 0.041;
+            if (time < 5.0) {
+                // --- Steal and break (0.0s - 5.0s) ---
+                showPlayerCard("p5"); // Highlight Russell
+                const dribbleT = Math.min(time / 3.0, 1.0);
 
-                let by = startY;
-                if (flightT < 0.65) {
-                    // Rise phase
-                    const rt = flightT / 0.65;
-                    by = startY + (peakY - startY) * rt;
+                // J. Brown dribbles near perimeter, guarded by Russell
+                const startX = 0.0, startZ = 0.035;
+                if (brown) runPlayer(brown, startX, startZ, dt * 5.0);
+
+                // Russell lunges and steals ball at 1.5s
+                if (time < 1.5) {
+                    if (russell) runPlayer(russell, 0.005, 0.02, dt * 4.0);
+                    this.sequenceBall.position.set(startX, 0.015 + Math.abs(Math.sin(time * 20.0)) * 0.005, startZ);
                 } else {
-                    // Slam down phase
-                    const st = (flightT - 0.65) / 0.35;
-                    by = peakY + (endY - peakY) * st;
+                    // D. Russell runs downcourt with ball
+                    const endX = 0.0, endZ = -0.015;
+                    const bx = startX + (endX - startX) * ((time - 1.5) / 2.0);
+                    const bz = startZ + (endZ - startZ) * ((time - 1.5) / 2.0);
+                    const by = 0.015 + Math.abs(Math.sin(time * 30.0)) * 0.006;
+                    
+                    if (time < 3.5) {
+                        this.sequenceBall.position.set(bx, by, bz);
+                        if (russell) runPlayer(russell, bx, bz, dt * 6.5);
+                    } else {
+                        // Pass to LeBron cutting baseline (-0.035, 0.0, -0.04)
+                        const passT = Math.min((time - 3.5) / 1.5, 1.0);
+                        this.sequenceBall.position.lerpVectors(
+                            new THREE.Vector3(0.0, 0.015, -0.015),
+                            new THREE.Vector3(-0.035, 0.015, -0.04),
+                            passT
+                        );
+                        if (russell) stopPlayer(russell);
+                    }
+                    if (brown) stopPlayer(brown);
                 }
+            } else if (time >= 5.0 && time < 10.0) {
+                // --- LeBron catches, pump fakes, draws defender (5.0s - 10.0s) ---
+                showPlayerCard("p1"); // Highlight LeBron
+                const pumpT = Math.min((time - 5.0) / 2.5, 1.0);
+                if (russell) stopPlayer(russell);
 
-                this.sequenceBall.position.set(
-                    startX + (endX - startX) * flightT,
-                    by,
-                    startZ + (endZ - startZ) * flightT
+                // LeBron catches ball at (-0.035, 0.015, -0.04)
+                if (james) runPlayer(james, -0.035, -0.04, dt * 5.0);
+                this.sequenceBall.position.set(-0.035, 0.015, -0.04);
+
+                // Defender Tatum runs to contest LeBron
+                if (tatum) runPlayer(tatum, -0.03, -0.038, dt * 6.0);
+
+                // LeBron does a pump fake (Bellingham crossover style)
+                if (time >= 7.5) {
+                    if (tatum) {
+                        // Tatum leaps in the air, falling for pump fake!
+                        tatum.group.position.y = 0.020;
+                    }
+                    // LeBron prepares to pass to A. Reaves at (0.03, 0.009, -0.035)
+                    const passT = Math.min((time - 7.5) / 2.0, 1.0);
+                    this.sequenceBall.position.lerpVectors(
+                        new THREE.Vector3(-0.035, 0.015, -0.04),
+                        new THREE.Vector3(0.03, 0.015, -0.035), // Reaves behind 3-pt line
+                        passT
+                    );
+                }
+            } else if (time >= 10.0 && time < 15.0) {
+                // --- Reaves catches, Jumps & shoots 3-Pointer (10.0s - 15.0s) ---
+                showPlayerCard("p3"); // Highlight Reaves card
+                if (tatum) {
+                    tatum.group.position.y = 0.009; // stand back down
+                    stopPlayer(tatum);
+                }
+                if (james) stopPlayer(james);
+
+                // Reaves runs to spot, catches ball
+                if (reaves) runPlayer(reaves, 0.03, -0.035, dt * 5.0);
+                this.sequenceBall.position.set(0.03, 0.015, -0.035);
+
+                // Reaves Jumps high!
+                if (time >= 11.5) {
+                    if (reaves) reaves.group.position.y = 0.022; // jump shot
+                    
+                    // High parabolic 3-pointer flight to Goal 1 Hoop at (0.0, 0.0125, -0.041)
+                    const flightT = Math.min((time - 12.0) / 2.5, 1.0);
+                    if (time >= 12.0) {
+                        const startPos = new THREE.Vector3(0.03, 0.022, -0.035);
+                        const endPos = new THREE.Vector3(0.0, 0.0135, -0.041);
+                        this.sequenceBall.position.set(
+                            startPos.x + (endPos.x - startPos.x) * flightT,
+                            startPos.y + (endPos.y - startPos.y) * flightT + 0.025 * Math.sin(flightT * Math.PI), // elegant high 3-pt arc
+                            startPos.z + (endPos.z - startPos.z) * flightT
+                        );
+                    }
+                }
+            } else if (time >= 15.0 && time < 20.0) {
+                // --- Ball swooshes through net, Hoop wiggles, scoring celebrate (15.0s - 20.0s) ---
+                showPlayerCard("p3"); // Highlight Reaves
+                if (reaves) reaves.group.position.y = 0.009; // land back on court
+                if (reaves) stopPlayer(reaves);
+
+                // Ball swooshes through hoop
+                const swishT = Math.min((time - 15.0) / 0.8, 1.0);
+                this.sequenceBall.position.lerpVectors(
+                    new THREE.Vector3(0.0, 0.0135, -0.041),
+                    new THREE.Vector3(0.0, 0.005, -0.041),
+                    swishT
                 );
 
-                if (time >= 1.3) {
-                    this.sportSequencePhase = 2;
-                    // Animate basketball net compression/wiggle
+                if (time >= 15.8 && time < 15.9) {
+                    // Net wiggles!
                     this.isHoopWiggling = true;
                     this.hoopWiggleTime = 0.0;
                     this.wigglingHoopNet = this.hoop1NetMesh;
-                    // Flash basketball rim orange
+                    // Flash basketball rim crimson red
                     if (this.basketballHoop1 && (this.basketballHoop1 as any).rimMesh) {
                         const rim = (this.basketballHoop1 as any).rimMesh as THREE.Mesh;
-                        (rim.material as THREE.MeshBasicMaterial).color.setHex(0xff3300); // flashing crimson red rim
+                        (rim.material as THREE.MeshBasicMaterial).color.setHex(0xff3300);
                     }
-                    // Trigger sparks inside rim
-                    this.triggerFirework(0.0, 0.013, 0.041, 0xf97316);
+                    // Trigger sparkler
+                    this.triggerFirework(0.0, 0.0125, -0.041, 0xf97316, 0.015);
                 }
-            } else if (this.sportSequencePhase === 2) {
-                // Phase 2: Dunk Score Reveal (1.3s - 1.7s)
-                if (time >= 1.6) {
-                    this.sportSequencePhase = 3;
+
+                // Show 3-POINTER celebration card
+                if (time >= 16.5) {
+                    this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.075, 0.0);
                     this.sportCelebrationCard.visible = true;
-                    // Trigger staged fireworks show
-                    this.triggerManualFireworks();
+                    // Redraw canvas with 3-POINTER
+                    const ctx = this.celebrationCardCtx;
+                    ctx.fillStyle = 'rgba(10, 15, 45, 0.9)';
+                    ctx.fillRect(0, 0, 256, 128);
+                    ctx.strokeStyle = '#f97316';
+                    ctx.lineWidth = 6;
+                    ctx.strokeRect(4, 4, 248, 120);
+                    const grad = ctx.createLinearGradient(0, 0, 256, 0);
+                    grad.addColorStop(0, '#f97316');
+                    grad.addColorStop(1, '#ffff00');
+                    ctx.fillStyle = grad;
+                    ctx.font = 'bold italic 38px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText("3-POINTER!!!", 128, 64);
+                    this.sportCelebrationTexture.needsUpdate = true;
                 }
             }
         }
 
         // --- 4. TRAIL RECORDING ---
-        if (this.sportSequencePhase < 3) {
+        if (time < 20.0) {
             this.sequenceBallPoints.push(this.sequenceBall.position.clone());
             if (this.sequenceBallPoints.length > 50) this.sequenceBallPoints.shift();
             this.sequenceBallTrail.geometry.setFromPoints(this.sequenceBallPoints);
@@ -6213,9 +6876,22 @@ export class DomainExpansionSystem extends createSystem({
             this.sequenceBallTrail.visible = false;
         }
 
-        // --- 5. CELEBRATION AR TEXT CARD BOUNCY ANIMATION & FLOAT ---
-        if (this.sportSequencePhase === 3) {
-            const cardTime = time - 1.8; // celebration timer duration
+        // --- 5. AUTOMATIC CELEBRATION CHOREOGRAPHED STAGED FIREWORKS & RESET ---
+        if (time >= 20.0 && this.sportSequencePhase < 4) {
+            this.sportSequencePhase = 4; // Finished stage
+            this.sportCelebrationCard.visible = false;
+            this.sequenceBall.visible = false;
+            this.sequenceBallTrail.visible = false;
+            showPlayerCard(null); // Hide all stats cards
+            
+            // Trigger the ultimate 4-stage choreographed spatial pyrotechnics sequence!
+            this.triggerManualFireworks();
+            console.log("[SportSequence] 20s Replay complete! Staged pyrotechnics triggered.");
+        }
+
+        // --- 6. CELEBRATION CARD FLOAT ---
+        if (time < 20.0 && this.sportCelebrationCard.visible) {
+            const cardTime = Math.max(time - 8.0, 0.0);
             
             // Bouncy spring scale LERP
             const targetScale = 1.3;
@@ -6223,28 +6899,50 @@ export class DomainExpansionSystem extends createSystem({
             const scaleFactor = Math.sin(currentScale * Math.PI / 2.0) * targetScale;
             this.sportCelebrationCard.scale.set(scaleFactor, scaleFactor, scaleFactor);
 
-            // Gentle floating lookAt orientation towards player/camera
+            // Gentle floating orientation towards player/camera
             this.sportCelebrationCard.position.y = this.ROOF_Y + 0.075 + Math.sin(time * 4.5) * 0.003;
             this.sportCelebrationCard.rotation.y = Math.sin(time * 0.8) * 0.08;
+        }
 
-            // Restoring rim colors / flashing net resets after wiggling
-            if (cardTime > 2.0) {
-                // Gradually dry/reset rim colors
-                if (this.basketballHoop1 && (this.basketballHoop1 as any).rimMesh) {
-                    const rim = (this.basketballHoop1 as any).rimMesh as THREE.Mesh;
-                    (rim.material as THREE.MeshBasicMaterial).color.setHex(0xf97316); // restore orange rim
-                }
+        // --- 7. AUTO-RESET AND SHUT DOWN REPLAY STATE AFTER SHOW ENDS (26.0s) ---
+        if (time >= 26.0) {
+            this.isSportSequenceActive = false;
+            this.sportCelebrationCard.visible = false;
+            if (this.arBillboard) {
+                this.arBillboard.visible = true; // restore match scoreboard
+            }
+            
+            // Restore rim colors if they were changed
+            if (this.basketballHoop1 && (this.basketballHoop1 as any).rimMesh) {
+                const rim = (this.basketballHoop1 as any).rimMesh as THREE.Mesh;
+                (rim.material as THREE.MeshBasicMaterial).color.setHex(0xf97316); // restore orange rim
             }
 
-            // End Sequence Timer (6.0s duration)
-            if (time >= 6.0) {
-                this.isSportSequenceActive = false;
-                this.sportCelebrationCard.visible = false;
-                if (this.arBillboard) {
-                    this.arBillboard.visible = true; // restore match scoreboard
+            // Restore players to their exact original base positions
+            this.players.forEach(p => {
+                p.group.position.copy(p.originalBasePos);
+                p.group.position.y = 0.009;
+                if (p.originalBasePos.x !== 0 || p.originalBasePos.z !== 0) {
+                    p.group.rotation.y = Math.atan2(-p.originalBasePos.x, -p.originalBasePos.z);
+                } else {
+                    p.group.rotation.y = 0;
                 }
-                console.log("[SportSequence] Sequence complete, scoreboard restored.");
+                p.mesh.rotation.set(0, 0, 0);
+                showPlayerCard(null);
+            });
+
+            // Restore wickets
+            if (this.cricketStumpsMesh) {
+                this.cricketStumpsMesh.rotation.set(0, 0, 0);
+                this.cricketStumpsMesh.position.set(0, 0.001, -0.045);
+                this.cricketStumpsMesh.traverse((child: any) => {
+                    if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshBasicMaterial) {
+                        child.material.color.setHex(0x00ff66);
+                    }
+                });
             }
+
+            console.log("[SportSequence] Full replay lifecycle complete. Minimap state restored.");
         }
     }
 
@@ -6303,5 +7001,124 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
         }
+    }
+
+    private createButterflyGroup() {
+        this.butterflyGroup = new THREE.Group();
+        
+        // 1. Create a flat ground for Butterfly Park
+        const groundGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.002, 64);
+        const groundMat = new THREE.MeshStandardMaterial({
+            color: 0x064e3b, // Deep rich forest/emerald green
+            roughness: 0.85,
+            metalness: 0.1,
+            transparent: true,
+            opacity: 0.95
+        });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.position.y = 0.001;
+        ground.receiveShadow = true;
+        this.butterflyGroup.add(ground);
+        
+        // 2. Add an elegant grid on top of the ground
+        const gridHelper = new THREE.GridHelper(0.36, 12, 0x10b981, 0x064e3b);
+        gridHelper.position.y = 0.00205;
+        this.butterflyGroup.add(gridHelper);
+        
+        // 3. Add a glowing green border ring
+        const borderGeo = new THREE.TorusGeometry(0.18, 0.0015, 8, 100);
+        borderGeo.rotateX(Math.PI / 2);
+        const borderMat = new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.8 });
+        const border = new THREE.Mesh(borderGeo, borderMat);
+        border.position.y = 0.00205;
+        this.butterflyGroup.add(border);
+        
+        // 4. Create and add 12 butterflies fluttering above the ground
+        this.butterflies = [];
+        const numButterflies = 12;
+        
+        const bodyGeo = new THREE.CylinderGeometry(0.0006, 0.0006, 0.005, 8);
+        bodyGeo.rotateX(Math.PI / 2);
+        const bodyMat = new THREE.MeshBasicMaterial({ color: 0x022c22 }); // Very dark green body
+        
+        const wingMatLeft = new THREE.MeshBasicMaterial({
+            color: 0x34d399,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.9,
+            depthWrite: false
+        });
+        const wingMatRight = new THREE.MeshBasicMaterial({
+            color: 0x059669,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.9,
+            depthWrite: false
+        });
+        
+        for (let i = 0; i < numButterflies; i++) {
+            const bGroup = new THREE.Group();
+            
+            // Butterfly body
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            bGroup.add(body);
+            
+            // Left wing
+            const leftWingGeo = new THREE.BufferGeometry();
+            const leftVertices = new Float32Array([
+                0, 0, 0,
+                -0.006, 0, 0.004,
+                -0.005, 0, -0.004
+            ]);
+            leftWingGeo.setAttribute('position', new THREE.BufferAttribute(leftVertices, 3));
+            const leftWing = new THREE.Mesh(leftWingGeo, wingMatLeft);
+            bGroup.add(leftWing);
+            
+            // Right wing
+            const rightWingGeo = new THREE.BufferGeometry();
+            const rightVertices = new Float32Array([
+                0, 0, 0,
+                0.005, 0, -0.004,
+                0.006, 0, 0.004
+            ]);
+            rightWingGeo.setAttribute('position', new THREE.BufferAttribute(rightVertices, 3));
+            const rightWing = new THREE.Mesh(rightWingGeo, wingMatRight);
+            bGroup.add(rightWing);
+            
+            // Position
+            const theta = Math.random() * Math.PI * 2;
+            const r = 0.02 + Math.random() * 0.12;
+            const pos = new THREE.Vector3(
+                r * Math.cos(theta),
+                0.02 + Math.random() * 0.08,
+                r * Math.sin(theta)
+            );
+            
+            const vel = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.03,
+                (Math.random() - 0.5) * 0.02,
+                (Math.random() - 0.5) * 0.03
+            );
+            
+            const baseScale = 0.8 + Math.random() * 0.6;
+            bGroup.scale.setScalar(baseScale);
+            bGroup.position.copy(pos);
+            
+            this.butterflyGroup.add(bGroup);
+            
+            this.butterflies.push({
+                mesh: bGroup,
+                leftWing,
+                rightWing,
+                speed: 12 + Math.random() * 8,
+                phase: Math.random() * Math.PI * 2,
+                pos,
+                vel,
+                wanderTime: Math.random() * 2.0,
+                baseScale
+            });
+        }
+        
+        this.tableGroup.add(this.butterflyGroup);
     }
 }

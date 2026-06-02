@@ -150,6 +150,17 @@ const assets: AssetManifest = {
   inuit360_4_thumb: { url: "./360Videos/Inuit_04_thumb.jpg", type: AssetType.Texture, priority: "background" },
   inuit360_5_thumb: { url: "./360Videos/Inuit_05_thumb.jpg", type: AssetType.Texture, priority: "background" },
   inuit360_6_thumb: { url: "./360Videos/Inuit_06_thumb.jpg", type: AssetType.Texture, priority: "background" },
+  // ── Butterflies 360 panoramas — 10 views ──────────────────────────────────
+  butterfly360_1:  { url: "./Domains/ButterFly/ButterflyPark (1).png",  type: AssetType.Texture, priority: "critical" },
+  butterfly360_2:  { url: "./Domains/ButterFly/ButterflyPark (2).png",  type: AssetType.Texture, priority: "critical" },
+  butterfly360_3:  { url: "./Domains/ButterFly/ButterflyPark (3).png",  type: AssetType.Texture, priority: "critical" },
+  butterfly360_4:  { url: "./Domains/ButterFly/ButterflyPark (4).png",  type: AssetType.Texture, priority: "critical" },
+  butterfly360_5:  { url: "./Domains/ButterFly/ButterflyPark (5).png",  type: AssetType.Texture, priority: "critical" },
+  butterfly360_6:  { url: "./Domains/ButterFly/ButterflyPark (6).png",  type: AssetType.Texture, priority: "critical" },
+  butterfly360_7:  { url: "./Domains/ButterFly/ButterflyPark (7).png",  type: AssetType.Texture, priority: "critical" },
+  butterfly360_8:  { url: "./Domains/ButterFly/ButterflyPark (8).png",  type: AssetType.Texture, priority: "critical" },
+  butterfly360_9:  { url: "./Domains/ButterFly/ButterflyPark (9).png",  type: AssetType.Texture, priority: "critical" },
+  butterfly360_10: { url: "./Domains/ButterFly/ButterflyPark (10).png", type: AssetType.Texture, priority: "critical" },
   // RCB Player Cards (IPL 2026 Final) — full squad
   rcbKohli:       { url: "./RCBCards/RCB_Name_VIRAT KOHLI.jpeg",        type: AssetType.Texture, priority: "background" },
   rcbPatidar:     { url: "./RCBCards/RCB_Name_RAJAT PATIDAR.jpeg",      type: AssetType.Texture, priority: "background" },
@@ -176,8 +187,8 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     sessionMode: SessionMode.ImmersiveAR,
     features: {
       handTracking: true,
-      meshDetection: true,
-      planeDetection: true,
+      meshDetection: false,
+      planeDetection: false,
       hitTest: true,
       anchors: true
     }
@@ -186,7 +197,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     locomotion: { useWorker: true },
     grabbing: true,
     physics: true,
-    sceneUnderstanding: true,
+    sceneUnderstanding: false,
     environmentRaycast: true,
   },
 }).then((world) => {
@@ -337,5 +348,5 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   logoBanner.rotateY(Math.PI);
   */
 
-  world.registerSystem(PanelSystem).registerSystem(JugnuSystem).registerSystem(RoomVisualizerSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem).registerSystem(ObjectDetectionSystem);
+  world.registerSystem(PanelSystem).registerSystem(JugnuSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem);
 });

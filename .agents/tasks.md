@@ -280,7 +280,7 @@
   - `[x]` Lowered TCD backplane opacity from `0.92` to `0.45` to match the glassmorphic transparent tabs of the compass menu
   - `[x]` Cut TCD launcher and grid buttons progress dwell timers from `1.0s` / `1.2s` to a snappy `0.5s` hold
   - `[x]` Successfully compiled client production bundle via `npm run build` with zero errors
-- `[x]` 3D Sport Sequences & Celebration Engine (Current Run)
+- `[x]` 3D Sport Sequences & Celebration Engine
   - `[x]` Implement `createBasketballHoop()` to procedurally generate holographic orange rims, glass backboards, and cybernetic nets
   - `[x]` Initialize Cricket stumps and swinging bat meshes dynamically in `initSportSequenceSystem()`
   - `[x]` Position and attach basketball hoops to Inuit arena elliptical boundaries inside `setStadiumType()`
@@ -291,4 +291,47 @@
   - `[x]` Hide standard matchup scoreboard during celebration and automatically trigger staged pyrotechnics show
   - `[x]` Resolve static type safety checks (`npx tsc --noEmit`) with zero warnings
   - `[x]` Compile client production bundle successfully (`npm run build`) in 9.24s
+- `[x]` Suppress CV Features for Now
+  - `[x]` Disabled WebXR camera scene-understanding systems (`meshDetection: false`, `planeDetection: false`, `sceneUnderstanding: false`) inside `src/index.ts`
+  - `[x]` Removed active registration of `RoomVisualizerSystem` and `ObjectDetectionSystem` from world builder in `src/index.ts`
+  - `[x]` Ran typecheck check (`npx tsc --noEmit`) to verify compiler safety
+  - `[x]` Ran full client production bundling (`npm run build`) with zero errors
+- `[x]` Choreographed 20s Sports Replay & Cricket Ball Scaling
+  - `[x]` Implemented dynamic 50% ball scale reduction for `activeBall`, `hawkeyeBall`, `sequenceBall`, and `sandboxBall` in Cricket (Wankhede) stadium
+  - `[x]` Overhauled `updateSportSequence()` to script a highly detailed 20-second choreographed replay for all 3 sports
+  - `[x]` **Cricket over choreography:** 6 distinct bowling/batting/fielding ball phases featuring wickets flying, four boundary celebrations, and a massive parabolic SIX out of the stadium
+  - `[x]` **Football twist choreography:** Bellingham steal and pass, Sané wing run, Kimmich sliding tackle, Rüdiger/Kane header duel, Bellingham rebound beat, Kane goal, and Neuer diving save
+  - `[x]` **Basketball steal & 3-point choreography:** Russell perimeter lunge steal, fast dribble transition downcourt, LeBron lob cut pump-fake, Reaves jump shot parabolic 3-pointer, and net wiggle
+  - `[x]` **AR Player Card highlights:** Dynamically floated and revealed high-contrast glassmorphic player stats cards/RCB portrait cards matching active player sequence phase
+  - `[x]` Integrated automatic firework trigger sequence spawning the grand 4-stage pyrotechnic show at the exact 20.0s completion mark
+  - `[x]` Disabled standard player drift random walk simulation while sports sequence replay is active
+  - `[x]` Verified clean type safety compilation (`npx tsc --noEmit`) and client production bundling (`npm run build`) with zero errors
+- `[x]` Holographic Cyberpunk 3D Player Makeover (Current Run)
+  - `[x]` Re-engineered player materials with reflective, semi-transparent frosted glass (`mkGlass`) generator
+  - `[x]` Mapped custom team colors (ruby red/neon gold for RCB, hot pink/electric blue for RR, obsidian glass/cyan for officials)
+  - `[x]` Set standard cyber-cyan glowing frosted glass skin (`sharedSkin`) across all 22 players for unified holographic look
+  - `[x]` Redesigned head and helmet geometries to low-poly faceted icosahedrons that catch spatial lighting
+  - `[x]` Replaced visors with elongated neon-emissive wraparound VR goggles
+- `[x]` Butterflies Immersive Map & Animated Swarm (Current Run)
+  - `[x]` Copy and serve 10 Butterfly Park 360-degree png panoramas to `public/Domains/ButterFly`
+  - `[x]` Register new `butterfly360_1` to `butterfly360_10` textures in `AssetManifest` inside `src/index.ts`
+  - `[x]` Expand selection bubble buffer capacity to 10 inside `init()` in `src/domainExpansion.ts`
+  - `[x]` Program dynamic symmetrical decagon/hexagon bubble arrangement inside `setStadiumType()`
+  - `[x]` Overhaul Compass menu layout to cleanly display 4 options, shrinking button heights to 55px in `src/jugnu.ts`
+  - `[x]` Add 'butterflies' choice, Y-offset hover raycast checks, and selection hooks in `src/jugnu.ts`
+  - `[x]` Build flat circular emerald-green grassy ground with glowing outlines and neon grids
+  - `[x]` Spawn and simulate 12 animated holographic butterflies wandering organically and flapping wings above the table
+  - `[x]` Strip out and suppress TCD launchers, weather, sandbox ball, player rosters, and rim fireworks from the Butterflies map
+  - `[x]` Run static typecheck check `npx tsc --noEmit` and confirm zero warnings
+  - `[x]` Verify production bundling `npm run build` and ensure Vite compiles client successfully
+- `[x]` Butterflies Map Base Z-Fighting Resolution (Current Run)
+  - `[x]` Hide standard tactical roads blueprint (`minimapMapPlane`) when Butterflies map is active
+  - `[x]` Hide tactical rotating telemetry rings (`techRing1`, `techRing2`, `techRing3`) on the peaceful Butterflies map
+  - `[x]` Elevate emerald-green grassy ground grid helper Y-position to `0.00205` to prevent ground mesh Z-fighting
+  - `[x]` Elevate border torus Y-position to `0.00205` to clear the base cylinder edge
+  - `[x]` Confirm static type check (`npx tsc --noEmit`) compiles perfectly
+  - `[x]` Build the production client bundle using `npm run build` with zero errors
+
+
+
 
