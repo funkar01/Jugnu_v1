@@ -600,3 +600,17 @@
   - `[x]` Built custom Node/Edge Street View proxy API in `api/sv.js` handling session creation, panoid lookup, and binary tile byte streaming
   - `[x]` Enforced request-origin CORS locks on headers in `api/sv.js` and `api/gemini.js`
   - `[x]` Confirmed zero static type errors (`npx tsc --noEmit`) and successful Vite client build (`npm run build`)
+
+- `[x]` Formula 1 Immersive Features (Dynamic Telemetry HUD, Tire Thermals & Brake Glow, Vortex Vapor Trails, and Wet Track/Tire Spray Particles) (Current Run)
+  - `[x]` Setup class fields for F1 Telemetry HUD, unique Wheel Materials, Vortex Lines, and Instanced Spray Particles inside `src/domainExpansion.ts`
+  - `[x]` Cache track asphalt material as `nurburgringTrackMat` in `createNurburgringGroup()`
+  - `[x]` Construct unique wheels materials and dynamic telemetry HUD mesh in `createNurburgringF1Car()`
+  - `[x]` Construct vortex line geometries and instanced tire spray mesh in `createNurburgringF1Car()`
+  - `[x]` Implement track material updates (roughness/metalness reflection changes) under rain mode in `src/domainExpansion.ts`
+  - `[x]` Profile speed, gear, RPM, throttle, and brake outputs based on lap progression $t$
+  - `[x]` Render dynamic canvas dashboard HUD text and input bars, updating the look-at orientation
+  - `[x]` Update wheel emissive colors to simulate brake disc glow and cornering thermals
+  - `[x]` Record rear-wing tips and render trailing vortex lines
+  - `[x]` Simulate wet spray particles emitted from rear tires when raining
+  - `[x]` Verified zero compile warnings or static type check errors (`npx tsc --noEmit`)
+  - `[x]` Verified Vite production bundle compiles cleanly (`npm run build`)

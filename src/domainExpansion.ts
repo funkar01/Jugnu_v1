@@ -294,8 +294,29 @@ export class DomainExpansionSystem extends createSystem({
     private holoCylinderWire!: THREE.LineSegments;
     private nurburgringF1Car!: THREE.Group;
     private nurburgringF1Wheels: THREE.Mesh[] = [];
+    private nurburgringF1WheelMats: THREE.MeshStandardMaterial[] = [];
     private nurburgringF1Progress = 0.0;
     private nurburgringF1Speed = 0.052;
+    private nurburgringTrackMat!: THREE.MeshStandardMaterial;
+
+    // F1 Telemetry HUD System
+    private f1HudCanvas!: HTMLCanvasElement;
+    private f1HudCtx!: CanvasRenderingContext2D;
+    private f1HudTexture!: THREE.CanvasTexture;
+    private f1HudMat!: THREE.MeshBasicMaterial;
+    private f1HudMesh!: THREE.Mesh;
+
+    // F1 Vortex Vapor Trails
+    private f1VortexLeft!: THREE.Line;
+    private f1VortexRight!: THREE.Line;
+    private f1VortexLeftPoints: THREE.Vector3[] = [];
+    private f1VortexRightPoints: THREE.Vector3[] = [];
+
+    // F1 Wet Spray Particles
+    private f1SprayMesh!: THREE.InstancedMesh;
+    private f1SprayData!: Float32Array; // 60 particles: x, y, z, vx, vy, vz, age, active (8 values per particle)
+    private f1SprayEmitSlot = 0;
+    private f1SprayDummy = new THREE.Object3D();
     private isNavLayerActive = false;
     private navPlaceholdersGroup!: THREE.Group;
 
@@ -1878,9 +1899,260 @@ export class DomainExpansionSystem extends createSystem({
                 this.nurburgringF1Wheels.forEach((wheel) => {
                     wheel.rotation.x += dt * 35.0; // Local spin speed
                 });
+
+                // ── 1. DYNAMIC WET TRACK REFLECTION ──
+                if (this.nurburgringTrackMat) {
+                    if (this.weatherMode === 'rain') {
+                        this.nurburgringTrackMat.roughness = 0.15;
+                        this.nurburgringTrackMat.metalness = 0.85;
+                        this.nurburgringTrackMat.color.setHex(0x0a0a0f); // darker when wet
+                    } else {
+                        this.nurburgringTrackMat.roughness = 0.75;
+                        this.nurburgringTrackMat.metalness = 0.25;
+                        this.nurburgringTrackMat.color.setHex(0x1b1b22);
+                    }
+                }
+
+                // ── 2. SPEED, GEAR, RPM, THROTTLE, BRAKE PROFILING ──
+                const fProgress = this.nurburgringF1Progress;
+                let speed = 220;
+                let gear = 5;
+                let rpm = 11500;
+                let throttle = 1.0;
+                let brake = 0.0;
+
+                if (fProgress >= 0.85 && fProgress < 0.98) {
+                    // Main straight
+                    const ratio = (fProgress - 0.85) / 0.13;
+                    speed = Math.floor(290 + ratio * 55); // 290 to 345 km/h
+                    gear = 8;
+                    rpm = Math.floor(11500 + ratio * 1600);
+                    throttle = 1.0;
+                    brake = 0.0;
+                } else if (fProgress >= 0.98 || fProgress < 0.04) {
+                    // Heavy braking into T1
+                    const ratio = fProgress >= 0.98 ? (fProgress - 0.98) / 0.06 : (fProgress + 0.02) / 0.06;
+                    speed = Math.floor(345 - ratio * 230); // 345 down to 115 km/h
+                    gear = Math.max(2, Math.floor(8 - ratio * 6));
+                    rpm = Math.floor(13100 - ratio * 3900);
+                    throttle = 0.0;
+                    brake = Math.sin(ratio * Math.PI) * 1.0; // spikes up
+                } else if (fProgress >= 0.04 && fProgress < 0.35) {
+                    // Hatzenbach twisty curves
+                    const ratio = (fProgress - 0.04) / 0.31;
+                    speed = Math.floor(130 + Math.sin(ratio * Math.PI * 4) * 40 + ratio * 80);
+                    gear = Math.floor(3 + ratio * 3);
+                    rpm = Math.floor(9500 + Math.sin(ratio * Math.PI * 6) * 1500);
+                    throttle = 0.6 + Math.sin(ratio * Math.PI * 4) * 0.3;
+                    brake = Math.max(0.0, -Math.sin(ratio * Math.PI * 4) * 0.4);
+                } else if (fProgress >= 0.35 && fProgress < 0.60) {
+                    // Adenauer Forst & Wehrseifen corners
+                    const ratio = (fProgress - 0.35) / 0.25;
+                    speed = Math.floor(180 - ratio * 90);
+                    gear = Math.max(2, Math.floor(5 - ratio * 3));
+                    rpm = Math.floor(11000 - ratio * 2000);
+                    throttle = 0.2 + ratio * 0.3;
+                    brake = Math.max(0.0, Math.sin(ratio * Math.PI * 2) * 0.7);
+                } else {
+                    // Preparing and entering Döttinger straight
+                    const ratio = (fProgress - 0.60) / 0.25;
+                    speed = Math.floor(90 + ratio * 200);
+                    gear = Math.floor(2 + ratio * 6);
+                    rpm = Math.floor(8500 + ratio * 3000);
+                    throttle = 1.0;
+                    brake = 0.0;
+                }
+
+                // ── 3. DYNAMIC TELEMETRY HUD CANVAS DRAW ──
+                if (this.f1HudCtx) {
+                    const ctx = this.f1HudCtx;
+                    ctx.clearRect(0, 0, 256, 128);
+
+                    // Translucent backing panel
+                    ctx.fillStyle = 'rgba(10, 15, 30, 0.82)';
+                    ctx.fillRect(0, 0, 256, 128);
+
+                    // Tech glowing border
+                    ctx.strokeStyle = '#00ffff';
+                    ctx.lineWidth = 4;
+                    ctx.strokeRect(4, 4, 248, 120);
+
+                    // Speed display
+                    ctx.font = 'bold 38px monospace';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(`${speed}`, 20, 50);
+                    ctx.font = '14px monospace';
+                    ctx.fillStyle = '#00ffff';
+                    ctx.fillText("KM/H", 102, 46);
+
+                    // Gear selection
+                    ctx.fillStyle = '#f59e0b'; // Amber gear
+                    ctx.font = 'bold 44px monospace';
+                    ctx.fillText(`${gear}`, 192, 54);
+                    ctx.font = '11px monospace';
+                    ctx.fillText("GEAR", 192, 18);
+
+                    // Input visual progress bars
+                    ctx.fillStyle = '#374151'; // dark slate
+                    ctx.fillRect(20, 80, 100, 10);
+                    ctx.fillStyle = '#10b981'; // Green throttle
+                    ctx.fillRect(20, 80, Math.floor(throttle * 100), 10);
+
+                    ctx.fillStyle = '#374151';
+                    ctx.fillRect(136, 80, 100, 10);
+                    ctx.fillStyle = '#ef4444'; // Red brake
+                    ctx.fillRect(136, 80, Math.floor(brake * 100), 10);
+
+                    ctx.font = '10px monospace';
+                    ctx.fillStyle = '#9ca3af';
+                    ctx.fillText("THR", 20, 74);
+                    ctx.fillText("BRK", 136, 74);
+
+                    // RPM visual bar
+                    const rpmRatio = Math.max(0, Math.min(1.0, (rpm - 5000) / 10000));
+                    ctx.fillStyle = '#374151';
+                    ctx.fillRect(20, 105, 216, 8);
+                    const rpmColor = rpm > 12000 ? '#ec4899' : '#06b6d4'; // shifts to pink/limiter
+                    ctx.fillStyle = rpmColor;
+                    ctx.fillRect(20, 105, Math.floor(rpmRatio * 216), 8);
+
+                    this.f1HudTexture.needsUpdate = true;
+                    this.f1HudMesh.visible = true;
+
+                    // Face the player head
+                    if (this.player && this.player.head) {
+                        const headPos = new THREE.Vector3();
+                        this.player.head.getWorldPosition(headPos);
+                        const localHeadPos = headPos.clone().applyMatrix4(this.nurburgringF1Car.matrixWorld.clone().invert());
+                        this.f1HudMesh.lookAt(localHeadPos);
+                    }
+                }
+
+                // ── 4. WHEEL THERMALS & BRAKE DISC GLOW ──
+                this.nurburgringF1WheelMats.forEach((wMat) => {
+                    if (brake > 0.05) {
+                        wMat.emissive.setHex(0xff3300).multiplyScalar(brake);
+                    } else if (throttle < 0.85 && speed < 240) {
+                        wMat.emissive.setHex(0x992200).multiplyScalar(0.4);
+                    } else {
+                        wMat.emissive.setHex(0x000000);
+                    }
+                });
+
+                // ── 5. VORTEX VAPOR TRAILS ──
+                if (this.f1VortexLeft && this.f1VortexRight) {
+                    this.f1VortexLeft.visible = true;
+                    this.f1VortexRight.visible = true;
+                    (this.f1VortexLeft.material as THREE.LineBasicMaterial).opacity = 0.85;
+                    (this.f1VortexRight.material as THREE.LineBasicMaterial).opacity = 0.85;
+
+                    // Shift points array back to keep buffer pre-allocated (Zero-GC)
+                    for (let i = 0; i < 24; i++) {
+                        this.f1VortexLeftPoints[i].copy(this.f1VortexLeftPoints[i + 1]);
+                        this.f1VortexRightPoints[i].copy(this.f1VortexRightPoints[i + 1]);
+                    }
+
+                    // Copy new wing tip positions in track local coordinates
+                    this.f1VortexLeftPoints[24].set(-0.0035, 0.0035, -0.007).applyMatrix4(this.nurburgringF1Car.matrix);
+                    this.f1VortexRightPoints[24].set(0.0035, 0.0035, -0.007).applyMatrix4(this.nurburgringF1Car.matrix);
+
+                    this.f1VortexLeft.geometry.setFromPoints(this.f1VortexLeftPoints);
+                    this.f1VortexRight.geometry.setFromPoints(this.f1VortexRightPoints);
+                }
+
+                // ── 6. WET SPRAY INSTANCED PARTICLES ──
+                if (this.f1SprayMesh) {
+                    if (this.weatherMode === 'rain') {
+                        this.f1SprayMesh.visible = true;
+                        (this.f1SprayMesh.material as THREE.MeshBasicMaterial).opacity = 0.45;
+
+                        // Emit 2 new particles from rear tire contacts
+                        const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(this.nurburgringF1Car.matrix);
+                        const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(this.nurburgringF1Car.matrix);
+                        const heading = this.scratchVector3.subVectors(target, pos).normalize();
+
+                        // FL slot
+                        let idx = this.f1SprayEmitSlot * 8;
+                        this.f1SprayData[idx + 0] = lRearPos.x;
+                        this.f1SprayData[idx + 1] = lRearPos.y;
+                        this.f1SprayData[idx + 2] = lRearPos.z;
+                        this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
+                        this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
+                        this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
+                        this.f1SprayData[idx + 6] = 0.0;
+                        this.f1SprayData[idx + 7] = 1.0; // active
+
+                        // FR slot
+                        idx = ((this.f1SprayEmitSlot + 1) % 60) * 8;
+                        this.f1SprayData[idx + 0] = rRearPos.x;
+                        this.f1SprayData[idx + 1] = rRearPos.y;
+                        this.f1SprayData[idx + 2] = rRearPos.z;
+                        this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
+                        this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
+                        this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
+                        this.f1SprayData[idx + 6] = 0.0;
+                        this.f1SprayData[idx + 7] = 1.0; // active
+
+                        this.f1SprayEmitSlot = (this.f1SprayEmitSlot + 2) % 60;
+
+                        // Update all spray particles
+                        for (let i = 0; i < 60; i++) {
+                            const offset = i * 8;
+                            if (this.f1SprayData[offset + 7] === 1.0) {
+                                // move
+                                this.f1SprayData[offset + 0] += this.f1SprayData[offset + 3];
+                                this.f1SprayData[offset + 1] += this.f1SprayData[offset + 4];
+                                this.f1SprayData[offset + 2] += this.f1SprayData[offset + 5];
+
+                                // apply gravity / drag
+                                this.f1SprayData[offset + 4] -= 0.005 * dt;
+                                this.f1SprayData[offset + 3] *= 0.94;
+                                this.f1SprayData[offset + 5] *= 0.94;
+
+                                this.f1SprayData[offset + 6] += dt; // age
+                                if (this.f1SprayData[offset + 6] > 0.35) {
+                                    this.f1SprayData[offset + 7] = 0.0; // deactivate
+                                    this.f1SprayDummy.position.set(0, -999, 0); // hide
+                                    this.f1SprayDummy.updateMatrix();
+                                    this.f1SprayMesh.setMatrixAt(i, this.f1SprayDummy.matrix);
+                                } else {
+                                    // Scale down as it ages
+                                    const ageRatio = this.f1SprayData[offset + 6] / 0.35;
+                                    const scale = 1.0 - ageRatio;
+
+                                    this.f1SprayDummy.position.set(
+                                        this.f1SprayData[offset + 0],
+                                        this.f1SprayData[offset + 1],
+                                        this.f1SprayData[offset + 2]
+                                    );
+                                    this.f1SprayDummy.scale.set(scale, scale, scale);
+                                    this.f1SprayDummy.updateMatrix();
+                                    this.f1SprayMesh.setMatrixAt(i, this.f1SprayDummy.matrix);
+                                }
+                            } else {
+                                this.f1SprayDummy.position.set(0, -999, 0);
+                                this.f1SprayDummy.updateMatrix();
+                                this.f1SprayMesh.setMatrixAt(i, this.f1SprayDummy.matrix);
+                            }
+                        }
+                        this.f1SprayMesh.instanceMatrix.needsUpdate = true;
+                    } else {
+                        this.f1SprayMesh.visible = false;
+                    }
+                }
+
             } else {
                 // Hide F1 car
                 this.nurburgringF1Car.visible = false;
+                if (this.f1HudMesh) this.f1HudMesh.visible = false;
+                if (this.f1VortexLeft) {
+                    this.f1VortexLeft.visible = false;
+                    this.f1VortexRight.visible = false;
+                    this.f1VortexLeftPoints.forEach(p => p.set(0, 0, 0));
+                    this.f1VortexRightPoints.forEach(p => p.set(0, 0, 0));
+                }
+                if (this.f1SprayMesh) this.f1SprayMesh.visible = false;
 
                 // Show & update tiny cars
                 this.nurburgringCars.forEach((car) => {
@@ -7810,12 +8082,12 @@ export class DomainExpansionSystem extends createSystem({
             extrudePath: this.nurburgringCurve
         };
         const trackGeo = new THREE.ExtrudeGeometry(roadShape, extrudeSettings);
-        const trackMat = new THREE.MeshStandardMaterial({
+        this.nurburgringTrackMat = new THREE.MeshStandardMaterial({
             color: 0x1b1b22, // Dark asphalt gray
             roughness: 0.75,
             metalness: 0.25
         });
-        const trackMesh = new THREE.Mesh(trackGeo, trackMat);
+        const trackMesh = new THREE.Mesh(trackGeo, this.nurburgringTrackMat);
         trackMesh.receiveShadow = true;
         trackMesh.castShadow = true;
         this.nurburgringGroup.add(trackMesh);
@@ -8037,13 +8309,87 @@ export class DomainExpansionSystem extends createSystem({
             { x: 0.0037, z: -0.0048 }   // RR
         ];
 
+        this.nurburgringF1WheelMats = [];
         wheelOffsets.forEach((offset) => {
-            const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+            const wMat = new THREE.MeshStandardMaterial({
+                color: 0x09090b, // Matte Black tire rubber
+                roughness: 0.9,
+                metalness: 0.1,
+                emissive: new THREE.Color(0x000000)
+            });
+            this.nurburgringF1WheelMats.push(wMat);
+
+            const wheel = new THREE.Mesh(wheelGeo, wMat);
             wheel.position.set(offset.x, 0.001, offset.z);
             wheel.castShadow = true;
             this.nurburgringF1Car.add(wheel);
             this.nurburgringF1Wheels.push(wheel);
         });
+
+        // --- 8. F1 TELEMETRY HUD INITIALIZATION ---
+        this.f1HudCanvas = document.createElement('canvas');
+        this.f1HudCanvas.width = 256;
+        this.f1HudCanvas.height = 128;
+        this.f1HudCtx = this.f1HudCanvas.getContext('2d')!;
+
+        this.f1HudTexture = new THREE.CanvasTexture(this.f1HudCanvas);
+        this.f1HudTexture.colorSpace = THREE.SRGBColorSpace;
+
+        this.f1HudMat = new THREE.MeshBasicMaterial({
+            map: this.f1HudTexture,
+            transparent: true,
+            opacity: 0.85,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+
+        const hudGeom = new THREE.PlaneGeometry(0.010, 0.005);
+        this.f1HudMesh = new THREE.Mesh(hudGeom, this.f1HudMat);
+        // Position it floating directly above the driver helmet (y = 0.0026 + 0.0035 = 0.0061)
+        this.f1HudMesh.position.set(0, 0.0065, -0.0015);
+        this.nurburgringF1Car.add(this.f1HudMesh);
+
+        // --- 9. F1 VORTEX VAPOR TRAILS INITIALIZATION ---
+        const vortexLeftGeo = new THREE.BufferGeometry();
+        const vortexRightGeo = new THREE.BufferGeometry();
+        
+        const vortexMat = new THREE.LineBasicMaterial({
+            color: 0x22d3ee, // Cyberpunk cyan glow
+            transparent: true,
+            opacity: 0.0, // starts hidden
+            linewidth: 2,
+            depthWrite: false
+        });
+
+        this.f1VortexLeft = new THREE.Line(vortexLeftGeo, vortexMat);
+        this.f1VortexRight = new THREE.Line(vortexRightGeo, vortexMat);
+        if (this.nurburgringGroup) {
+            this.nurburgringGroup.add(this.f1VortexLeft, this.f1VortexRight);
+        }
+        this.f1VortexLeftPoints = [];
+        this.f1VortexRightPoints = [];
+        for (let i = 0; i < 25; i++) {
+            this.f1VortexLeftPoints.push(new THREE.Vector3());
+            this.f1VortexRightPoints.push(new THREE.Vector3());
+        }
+
+        // --- 10. F1 WET SPRAY INSTANCED PARTICLES ---
+        const sprayGeom = new THREE.BoxGeometry(0.0006, 0.0006, 0.0006);
+        const sprayMat = new THREE.MeshBasicMaterial({
+            color: 0xddddff,
+            transparent: true,
+            opacity: 0.0, // starts hidden/faded
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        // 60 particles max
+        this.f1SprayMesh = new THREE.InstancedMesh(sprayGeom, sprayMat, 60);
+        if (this.nurburgringGroup) {
+            this.nurburgringGroup.add(this.f1SprayMesh);
+        }
+
+        // Pre-allocate Float32Array for particle states (60 particles * 8 values: x, y, z, vx, vy, vz, age, active)
+        this.f1SprayData = new Float32Array(60 * 8);
 
         // Hide initially
         this.nurburgringF1Car.visible = false;
