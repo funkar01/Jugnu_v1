@@ -508,7 +508,7 @@ export class DomainExpansionSystem extends createSystem({
         });
         this.techRing1 = new THREE.Mesh(techRing1Geom, techRing1Mat);
         this.techRing1.rotation.x = -Math.PI / 2;
-        this.techRing1.position.y = 0.0015;
+        this.techRing1.position.y = 0.0002;
         this.tableGroup.add(this.techRing1);
 
         // Concentric Tech Ring 2 (Middle counter-rotating telemetry ring)
@@ -522,7 +522,7 @@ export class DomainExpansionSystem extends createSystem({
         });
         this.techRing2 = new THREE.Mesh(techRing2Geom, techRing2Mat);
         this.techRing2.rotation.x = -Math.PI / 2;
-        this.techRing2.position.y = 0.0015;
+        this.techRing2.position.y = 0.0002;
         this.tableGroup.add(this.techRing2);
 
         // Concentric Tech Ring 3 (Outer rotating telemetry ring)
@@ -536,7 +536,7 @@ export class DomainExpansionSystem extends createSystem({
         });
         this.techRing3 = new THREE.Mesh(techRing3Geom, techRing3Mat);
         this.techRing3.rotation.x = -Math.PI / 2;
-        this.techRing3.position.y = 0.0015;
+        this.techRing3.position.y = 0.0002;
         this.tableGroup.add(this.techRing3);
 
         // Glowing outer neon ring (Pure triangle geometry)
@@ -550,7 +550,7 @@ export class DomainExpansionSystem extends createSystem({
         });
         const ringMesh = new THREE.Mesh(ringGeom, ringMat);
         ringMesh.rotation.x = -Math.PI / 2;
-        ringMesh.position.y = 0.001;
+        ringMesh.position.y = 0.0001;
         this.tableGroup.add(ringMesh);
 
         // 2D dynamic Map Plane layered on the table base (renders realistic roads procedurally)
@@ -563,7 +563,7 @@ export class DomainExpansionSystem extends createSystem({
         });
         this.minimapMapPlane = new THREE.Mesh(mapPlaneGeom, this.minimapMapPlaneMat);
         this.minimapMapPlane.rotation.x = -Math.PI / 2;
-        this.minimapMapPlane.position.y = 0.002;
+        this.minimapMapPlane.position.y = 0.00015;
         this.tableGroup.add(this.minimapMapPlane);
 
         // Draw realistic high-tech urban blueprint roadmap on a procedural canvas
@@ -600,7 +600,7 @@ export class DomainExpansionSystem extends createSystem({
         });
         this.radarRing = new THREE.Mesh(radarGeom, radarMat);
         this.radarRing.rotation.x = -Math.PI / 2;
-        this.radarRing.position.y = 0.013;
+        this.radarRing.position.y = 0.003;
         this.tableGroup.add(this.radarRing);
 
         // Procedural Holographic Buildings using InstancedMesh (100% stable triangle geometry and standard materials - NO transmission)
@@ -706,7 +706,11 @@ export class DomainExpansionSystem extends createSystem({
             const maxDim = Math.max(size.x, size.z);
             this.stadiumBaseScale = 0.24 / (maxDim || 1.0);
             this.stadiumMesh.scale.setScalar(this.stadiumBaseScale);
-            this.stadiumMesh.position.set(0, -0.002, 0);
+            // Recompute bounding box after scaling to determine exact bottom Y
+            this.stadiumMesh.updateMatrixWorld(true);
+            const scaledBox = new THREE.Box3().setFromObject(this.stadiumMesh);
+            const wankhedeMinY = scaledBox.min.y;
+            this.stadiumMesh.position.set(0, -wankhedeMinY + 0.0005, 0);
             this.tableGroup.add(this.stadiumMesh);
 
             // Spawn floating 3D TV-style AR matchup broadcast graphic
@@ -1362,7 +1366,11 @@ export class DomainExpansionSystem extends createSystem({
                 const maxDim = Math.max(size.x, size.z);
                 const berlinScale = 0.24 / (maxDim || 1.0);
                 mesh.scale.setScalar(berlinScale);
-                mesh.position.set(0, -0.002, 0);
+                // Align base of Berlin stadium to table surface dynamically
+                mesh.updateMatrixWorld(true);
+                const berlinBox = new THREE.Box3().setFromObject(mesh);
+                const berlinMinY = berlinBox.min.y;
+                mesh.position.set(0, -berlinMinY + 0.0005, 0);
                 berlinGroup.add(mesh);
                 
                 // Find field mesh and attach football goal posts at opposite ends
@@ -1468,7 +1476,11 @@ export class DomainExpansionSystem extends createSystem({
                 const maxDim = Math.max(size.x, size.z);
                 const inuitScale = (0.24 / (maxDim || 1.0)) * 1.30;
                 mesh.scale.setScalar(inuitScale);
-                mesh.position.set(0, 0.010, 0);
+                // Align base of Inuit/Crypto stadium to table surface dynamically
+                mesh.updateMatrixWorld(true);
+                const inuitBox = new THREE.Box3().setFromObject(mesh);
+                const inuitMinY = inuitBox.min.y;
+                mesh.position.set(0, -inuitMinY + 0.0005, 0);
                 inuitGroup.add(mesh);
                 
                 // Traverse child meshes and recursively apply PBR materials
@@ -2114,6 +2126,8 @@ export class DomainExpansionSystem extends createSystem({
                         this.scratchMatrix.copy(this.nurburgringF1Car.matrixWorld).invert();
                         localHeadPos.applyMatrix4(this.scratchMatrix);
                         this.f1HudMesh.lookAt(localHeadPos);
+                        // Flip 180° so the plane's front face (correct text side) faces the user
+                        this.f1HudMesh.rotateY(Math.PI);
                     }
                 }
 
@@ -2265,26 +2279,7 @@ export class DomainExpansionSystem extends createSystem({
                 });
             }
 
-            // 2. Spectator camera flashes and flare sparks
-            if (Math.random() < 0.25) {
-                const isFlare = Math.random() < 0.40;
-                const randomProgress = Math.random();
-                const trackPoint = this.nurburgringCurve.getPointAt(randomProgress);
-
-                // Offset slightly outward from track center to simulate trackside crowd
-                const tangent = this.nurburgringCurve.getTangentAt(randomProgress).normalize();
-                const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-                const offsetDistance = (Math.random() > 0.5 ? 1 : -1) * (0.006 + Math.random() * 0.012);
-                
-                const flashX = trackPoint.x + normal.x * offsetDistance;
-                const flashZ = trackPoint.z + normal.z * offsetDistance;
-                const flashY = trackPoint.y + 0.002 + Math.random() * 0.008;
-
-                const color = isFlare ? 0xff4500 : 0xffffff;
-                const burstScale = isFlare ? 0.008 : 0.002;
-                
-                this.triggerFirework(flashX, flashY, flashZ, color, 0.001, 0.0, 0.002, 0.0, burstScale);
-            }
+            // Spectator particle effects removed — keep the map clean
         }
 
         // Expose a global window variable so Jugnu System ignores index pinches when this table is actively rotating
@@ -8433,10 +8428,10 @@ export class DomainExpansionSystem extends createSystem({
             depthWrite: false
         });
 
-        const hudGeom = new THREE.PlaneGeometry(0.020, 0.010);
+        const hudGeom = new THREE.PlaneGeometry(0.030, 0.015); // 50% larger than original 0.020 x 0.010
         this.f1HudMesh = new THREE.Mesh(hudGeom, this.f1HudMat);
-        // Position it floating directly above the driver helmet (y = 0.0026 + 0.0035 = 0.0061, raised to 0.0095 to prevent clipping)
-        this.f1HudMesh.position.set(0, 0.0095, -0.0015);
+        // Position it floating directly above the driver helmet — raised to y=0.012 for larger panel
+        this.f1HudMesh.position.set(0, 0.012, -0.0015);
         this.nurburgringF1Car.add(this.f1HudMesh);
 
         // --- 9. F1 VORTEX VAPOR TRAILS INITIALIZATION ---
