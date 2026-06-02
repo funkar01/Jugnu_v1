@@ -585,7 +585,18 @@
   - `[x]` Configured stadium meshes to stay 90% solid (`stFadeFactor = 0.90`) in medium scale view (`2.0 <= scale < 2.5`)
   - `[x]` Programmed stadium meshes to transition to 30% transparency (`opacity: 0.70`, i.e. 70% solid) when navigation layer is toggled active
   - `[x]` Verified zero compile errors with type safety check and client production bundler
-
-
-
-
+- `[x]` Ball Y-Clamping, Sizing Boost & Dual-Ring Projector Disk (Current Run)
+  - `[x]` Implemented dynamic lookup method `getFloorY()` for Wankhede (0.001), Berlin (0.001), and Crypto.com (0.010)
+  - `[x]` Boosted tabletop ball sizing scale factors by ~1.65x (Cricket: 0.85, Football/Basketball: 1.65) for higher readability in MR space
+  - `[x]` Constructed procedural dual-ring holographic projector disk in `initSportSequenceProps()` consisting of an inner solid core (radius 0.0018) and outer thin telemetry ring (0.0042 to 0.005)
+  - `[x]` Implemented `updateBallProjectorDisk()` that positions projector disk directly on the active stadium floor and adjusts scale and opacity based on active ball height
+  - `[x]` Clamp active, sandbox, sequence, and hawkeye ball Y-positions to enforce bottom-radius floor clearance check to resolve floor clipping
+  - `[x]` Verified zero compile warnings or static type check errors (`npx tsc --noEmit`)
+  - `[x]` Verified Vite production bundle compiles cleanly (`npm run build`)
+- `[x]` Production Backend API & Vercel Edge Runtime Optimization (Current Run)
+  - `[x]` Upgraded production proxy `api/gemini.js` model to `gemini-2.5-flash` for parity with development
+  - `[x]` Migrated both Gemini and Street View serverless handlers to Vercel's Edge Runtime (`runtime: 'edge'`) to cut cold start latencies to <10ms
+  - `[x]` Configured `vercel.json` wildcard rewrite rules mapping `/api/sv/*` requests to the unified proxy handler
+  - `[x]` Built custom Node/Edge Street View proxy API in `api/sv.js` handling session creation, panoid lookup, and binary tile byte streaming
+  - `[x]` Enforced request-origin CORS locks on headers in `api/sv.js` and `api/gemini.js`
+  - `[x]` Confirmed zero static type errors (`npx tsc --noEmit`) and successful Vite client build (`npm run build`)

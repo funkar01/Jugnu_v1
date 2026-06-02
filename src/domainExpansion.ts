@@ -357,6 +357,10 @@ export class DomainExpansionSystem extends createSystem({
     private sequenceBallTrail!: THREE.Line;
     private sequenceBallPoints: THREE.Vector3[] = [];
     
+    // Holographic Telemetry Projector Disk System
+    private ballProjectorDisk!: THREE.Group;
+    private ballProjectorDiskMat!: THREE.MeshBasicMaterial;
+    
     // Cricket Wankhede props
     private cricketBatMesh!: THREE.Group;
     private cricketStumpsMesh!: THREE.Group;
@@ -1623,8 +1627,8 @@ export class DomainExpansionSystem extends createSystem({
         (this.activeBall.material as THREE.MeshBasicMaterial).opacity = 1.0;
         (this.ballTrail.material as THREE.LineBasicMaterial).opacity = 0.95;
         
-        // Make ball size in cricket stadium 50% smaller (scale = 0.5)
-        const ballScale = (stadiumType === 'default') ? 0.5 : 1.0;
+        // Make ball size in cricket stadium 50% smaller (relative to enhanced baseline)
+        const ballScale = (stadiumType === 'default') ? 0.85 : 1.65;
         if (this.activeBall) this.activeBall.scale.setScalar(ballScale);
         if (this.hawkeyeBall) this.hawkeyeBall.scale.setScalar(ballScale);
         if (this.sequenceBall) this.sequenceBall.scale.setScalar(ballScale);
@@ -2996,6 +3000,7 @@ export class DomainExpansionSystem extends createSystem({
                 this.updateSandboxBall(dt);
                 this.updateSportSequence(dt);
                 this.updateNetsWiggling(dt);
+                this.updateBallProjectorDisk();
 
                 // - Small Version (Minimized): [1.0, 2.0) -> fully visible (stFadeFactor = 1.0)
                 // - Medium Version: [2.0, 2.5) -> if isNavLayerActive, fade to 0.70 (30% transparency), else 0.90 (90% solid)
@@ -4361,6 +4366,13 @@ export class DomainExpansionSystem extends createSystem({
         const ballPos = this.hawkeyeCurve.getPointAt(this.hawkeyeProgress);
         this.hawkeyeBall.position.copy(ballPos);
 
+        // Clamp height above floor
+        const floorY = this.getFloorY();
+        const ballRadius = 0.0022 * this.hawkeyeBall.scale.x;
+        if (this.hawkeyeBall.position.y < floorY + ballRadius) {
+            this.hawkeyeBall.position.y = floorY + ballRadius;
+        }
+
         // Animate radar bounce ring as the ball passes the bounce point (~30% progress)
         if (this.hawkeyeProgress >= 0.28 && this.hawkeyeProgress <= 0.55) {
             const rippleRatio = (this.hawkeyeProgress - 0.28) / 0.27; // goes 0 to 1
@@ -5434,6 +5446,32 @@ export class DomainExpansionSystem extends createSystem({
         const cardPlane = new THREE.Mesh(cardPlaneGeom, this.sportCelebrationCardMat);
         cardPlane.position.z = 0.0015;
         this.sportCelebrationCard.add(cardPlane);
+
+        // --- 4. DUAL-RING HOLOGRAPHIC PROJECTOR GLOW DISK ---
+        const projGroup = new THREE.Group();
+        this.ballProjectorDiskMat = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.0,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        
+        // Inner glowing core
+        const innerGeom = new THREE.CircleGeometry(0.0018, 16);
+        const innerMesh = new THREE.Mesh(innerGeom, this.ballProjectorDiskMat);
+        projGroup.add(innerMesh);
+
+        // Outer thin telemetry ring
+        const outerGeom = new THREE.RingGeometry(0.0042, 0.005, 32);
+        const outerMesh = new THREE.Mesh(outerGeom, this.ballProjectorDiskMat);
+        projGroup.add(outerMesh);
+
+        projGroup.rotation.x = -Math.PI / 2;
+        projGroup.visible = false;
+        this.ballProjectorDisk = projGroup;
+        this.tableGroup.add(this.ballProjectorDisk);
     }
 
     private triggerFirework(
@@ -5838,7 +5876,9 @@ export class DomainExpansionSystem extends createSystem({
         } else {
             // --- Euler physics simulation ---
             const GRAVITY = 0.45;
-            const FLOOR_Y = 0.009;
+            const floorY = this.getFloorY();
+            const ballRadius = 0.0022 * this.sandboxBall.scale.x;
+            const limitY = floorY + ballRadius;
             const RESTITUTION = 0.65;
             const DAMPING = Math.pow(0.992, dt * 90);
 
@@ -5848,15 +5888,15 @@ export class DomainExpansionSystem extends createSystem({
             this.sandboxBall.position.addScaledVector(this.sandboxBallVel, dt);
 
             // --- Bound Bouncing solver ---
-            if (this.sandboxBall.position.y <= FLOOR_Y) {
-                this.sandboxBall.position.y = FLOOR_Y;
+            if (this.sandboxBall.position.y <= limitY) {
+                this.sandboxBall.position.y = limitY;
                 this.sandboxBallVel.y = Math.abs(this.sandboxBallVel.y) * RESTITUTION;
                 this.sandboxBallVel.x *= RESTITUTION;
                 this.sandboxBallVel.z *= RESTITUTION;
 
                 if (Math.abs(this.sandboxBallVel.y) > 0.02) {
                     this.triggerFirework(
-                        this.sandboxBall.position.x, FLOOR_Y, this.sandboxBall.position.z, 
+                        this.sandboxBall.position.x, limitY, this.sandboxBall.position.z, 
                         0xffaa00, 0.012, 0.0, 0.04, 0.0, 0.6
                     );
                 }
@@ -6192,7 +6232,9 @@ export class DomainExpansionSystem extends createSystem({
         // ── Berlin / Inuit: Euler physics with wall bouncing ─────────────────
         if (stType === 'berlin' || stType === 'inuit') {
             const GRAVITY = 0.45; // m/s² at minimap scale
-            const FLOOR_Y  = 0.009;
+            const floorY = this.getFloorY();
+            const ballRadius = 0.0022 * this.activeBall.scale.x;
+            const limitY = floorY + ballRadius;
             const RESTITUTION = 0.58; // energy kept on bounce
             const DAMPING = 0.994;    // air resistance per frame
 
@@ -6208,13 +6250,13 @@ export class DomainExpansionSystem extends createSystem({
             this.activeBall.position.z += this.ballVelocity.z * safeDt;
 
             // Floor bounce
-            if (this.activeBall.position.y <= FLOOR_Y) {
-                this.activeBall.position.y = FLOOR_Y;
+            if (this.activeBall.position.y <= limitY) {
+                this.activeBall.position.y = limitY;
                 
                 // Trigger localized mini sparkler burst on strong floor bounce
                 if (Math.abs(this.ballVelocity.y) > 0.04) {
                     const colHex = stType === 'berlin' ? 0x22d3ee : 0xf97316;
-                    this.triggerFirework(this.activeBall.position.x, FLOOR_Y, this.activeBall.position.z, colHex);
+                    this.triggerFirework(this.activeBall.position.x, limitY, this.activeBall.position.z, colHex);
                 }
 
                 this.ballVelocity.y = Math.abs(this.ballVelocity.y) * RESTITUTION;
@@ -6384,6 +6426,13 @@ export class DomainExpansionSystem extends createSystem({
 
         // Set active ball position
         this.activeBall.position.copy(ballPos);
+
+        // Clamp height above floor
+        const floorY = this.getFloorY();
+        const ballRadius = 0.0022 * this.activeBall.scale.x;
+        if (this.activeBall.position.y < floorY + ballRadius) {
+            this.activeBall.position.y = floorY + ballRadius;
+        }
 
         // Add to trail
         this.trailPoints.push(ballPos.clone());
@@ -6641,6 +6690,16 @@ export class DomainExpansionSystem extends createSystem({
         this.sportCelebrationTexture.needsUpdate = true;
         this.sportCelebrationCard.scale.set(0.001, 0.001, 0.001); // start tiny for bounce scaling animation
         this.sportCelebrationCard.visible = false;
+    }
+
+    private getFloorY(): number {
+        const stType = this.currentStadiumType;
+        if (stType === 'inuit') {
+            return 0.010;
+        } else if (stType === 'berlin') {
+            return 0.001;
+        }
+        return 0.001;
     }
 
     private updateSportSequence(dt: number) {
@@ -7387,6 +7446,12 @@ export class DomainExpansionSystem extends createSystem({
 
         // --- 4. TRAIL RECORDING ---
         if (time < 20.0) {
+            const floorY = this.getFloorY();
+            const ballRadius = 0.0022 * this.sequenceBall.scale.x;
+            if (this.sequenceBall.position.y < floorY + ballRadius) {
+                this.sequenceBall.position.y = floorY + ballRadius;
+            }
+
             this.sequenceBallPoints.push(this.sequenceBall.position.clone());
             if (this.sequenceBallPoints.length > 50) this.sequenceBallPoints.shift();
             this.sequenceBallTrail.geometry.setFromPoints(this.sequenceBallPoints);
@@ -7463,6 +7528,47 @@ export class DomainExpansionSystem extends createSystem({
             }
 
             console.log("[SportSequence] Full replay lifecycle complete. Minimap state restored.");
+        }
+    }
+
+    private updateBallProjectorDisk() {
+        if (!this.ballProjectorDisk) return;
+
+        let activeBall: THREE.Mesh | null = null;
+
+        if (this.isSportSequenceActive && this.sequenceBall && this.sequenceBall.visible) {
+            activeBall = this.sequenceBall;
+        } else if (this.isBallAnimating && this.activeBall && this.activeBall.visible) {
+            activeBall = this.activeBall;
+        } else if (this.isSandboxBallActive && this.sandboxBall && this.sandboxBall.visible) {
+            activeBall = this.sandboxBall;
+        } else if (this.isHawkeyeRunning && this.hawkeyeBall && this.hawkeyeBall.visible) {
+            activeBall = this.hawkeyeBall;
+        }
+
+        if (activeBall) {
+            this.ballProjectorDisk.visible = true;
+            const floorY = this.getFloorY();
+            const ballRadius = 0.0022 * activeBall.scale.x;
+            
+            // Position projector disk on the stadium floor directly under the ball
+            this.ballProjectorDisk.position.set(activeBall.position.x, floorY + 0.0005, activeBall.position.z);
+            
+            // Color match with ball
+            const ballColor = (activeBall.material as THREE.MeshBasicMaterial).color;
+            if (ballColor) {
+                this.ballProjectorDiskMat.color.copy(ballColor);
+            }
+            
+            // Scale and opacity adjustment based on altitude/height above floor
+            const height = Math.max(activeBall.position.y - (floorY + ballRadius), 0.0);
+            const scaleFactor = 1.0 + Math.min(height * 20.0, 2.0);
+            this.ballProjectorDisk.scale.setScalar(scaleFactor);
+            
+            // Projector beam fades out as the ball ascends higher
+            this.ballProjectorDiskMat.opacity = Math.max(0.7 - height * 8.0, 0.0);
+        } else {
+            this.ballProjectorDisk.visible = false;
         }
     }
 

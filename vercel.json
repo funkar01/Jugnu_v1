@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/api/sv/(.*)", "destination": "/api/sv.js" }
+  ]
+}
