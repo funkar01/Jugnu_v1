@@ -616,7 +616,7 @@
   - `[x]` Verified Vite production bundle compiles cleanly (`npm run build`)
 
 - `[x]` Spatial Orientation, Dynamic Floor Height & HUD Size Expansion (Current Run)
-  - `[x]` Replaced lookAt and rotateY calculations for detailed F1 car and tiny sports cars with 1000-point precomputed Frenet frames basis quaternions to align vehicles perfectly with road elevations and bank angles
+  - `[x]` Replaced Frenet frame lookups with continuous LookAt-based Parallel Transport Frame orientation math for both detailed F1 car and tiny sports cars (using tangent, worldUp, and cross-products) to align vehicles upright, pointing exactly forward, and sitting flat on the track.
   - `[x]` Double F1 HUD mesh scale size by 100% (to 0.020m x 0.010m) and raise its vertical position above the helmet (y = 0.0095) to prevent helmet clipping
   - `[x]` Implemented `calculateDynamicFloorY()` that traverses active GLTF stadium models recursively, finds the playing surface mesh (pitch, grass, or court), and computes its local bounding box to transform its top Y coordinate into table-local space
   - `[x]` Modified `getFloorY()` to dynamically return the computed stadium surface level, preventing ball clipping into various elevated stadium geometries

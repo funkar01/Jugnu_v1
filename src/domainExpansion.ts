@@ -322,6 +322,8 @@ export class DomainExpansionSystem extends createSystem({
 
     private nurburgringFrenetFrames: any = null;
     private dynamicFloorY = 0.001;
+    private f1Pos = new THREE.Vector3();
+    private tinyCarPos = new THREE.Vector3();
     private f1xAxis = new THREE.Vector3();
     private f1yAxis = new THREE.Vector3();
     private f1zAxis = new THREE.Vector3();
@@ -1962,23 +1964,20 @@ export class DomainExpansionSystem extends createSystem({
                 this.nurburgringF1Progress += dt * this.nurburgringF1Speed;
                 if (this.nurburgringF1Progress > 1.0) this.nurburgringF1Progress -= 1.0;
 
-                const pos = this.nurburgringCurve.getPointAt(this.nurburgringF1Progress);
-                this.nurburgringF1Car.position.copy(pos);
+                this.nurburgringCurve.getPointAt(this.nurburgringF1Progress, this.f1Pos);
+                this.nurburgringF1Car.position.copy(this.f1Pos);
                 // Offset Y upward to prevent wheels clipping on the flat road surface
                 this.nurburgringF1Car.position.y += 0.0011;
 
-                if (this.nurburgringFrenetFrames) {
-                    const frameIndex = Math.floor(this.nurburgringF1Progress * 1000) % 1000;
-                    const tangent = this.nurburgringFrenetFrames.tangents[frameIndex];
-                    const normal = this.nurburgringFrenetFrames.normals[frameIndex];
+                this.nurburgringCurve.getTangentAt(this.nurburgringF1Progress, this.f1zAxis);
+                this.f1zAxis.normalize();
 
-                    this.f1zAxis.copy(tangent);
-                    this.f1yAxis.copy(normal);
-                    this.f1xAxis.crossVectors(this.f1yAxis, this.f1zAxis).normalize();
+                const worldUp = this.scratchVector1.set(0, 1, 0);
+                this.f1xAxis.crossVectors(worldUp, this.f1zAxis).normalize();
+                this.f1yAxis.crossVectors(this.f1zAxis, this.f1xAxis).normalize();
 
-                    this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
-                    this.nurburgringF1Car.quaternion.setFromRotationMatrix(this.f1RotationMatrix);
-                }
+                this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
+                this.nurburgringF1Car.quaternion.setFromRotationMatrix(this.f1RotationMatrix);
 
                 // Spin wheels locally (roll forward)
                 this.nurburgringF1Wheels.forEach((wheel) => {
@@ -2159,8 +2158,7 @@ export class DomainExpansionSystem extends createSystem({
                         // Emit 2 new particles from rear tire contacts
                         const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(this.nurburgringF1Car.matrix);
                         const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(this.nurburgringF1Car.matrix);
-                        const frameIndex = Math.floor(this.nurburgringF1Progress * 1000) % 1000;
-                        const heading = this.nurburgringFrenetFrames ? this.nurburgringFrenetFrames.tangents[frameIndex] : new THREE.Vector3(0, 0, 1);
+                        const heading = this.f1zAxis;
 
                         // FL slot
                         let idx = this.f1SprayEmitSlot * 8;
@@ -2250,24 +2248,20 @@ export class DomainExpansionSystem extends createSystem({
                     car.progress += dt * car.speed;
                     if (car.progress > 1.0) car.progress -= 1.0;
 
-                    const pos = this.nurburgringCurve.getPointAt(car.progress);
-                    car.group.position.copy(pos);
+                    this.nurburgringCurve.getPointAt(car.progress, this.tinyCarPos);
+                    car.group.position.copy(this.tinyCarPos);
                     // Offset Y upward to prevent chassis clipping on the flat road surface
                     car.group.position.y += 0.0006;
 
-                    // Set orientation from Frenet frames
-                    if (this.nurburgringFrenetFrames) {
-                        const carFrameIndex = Math.floor(car.progress * 1000) % 1000;
-                        const carTangent = this.nurburgringFrenetFrames.tangents[carFrameIndex];
-                        const carNormal = this.nurburgringFrenetFrames.normals[carFrameIndex];
+                    this.nurburgringCurve.getTangentAt(car.progress, this.f1zAxis);
+                    this.f1zAxis.normalize();
 
-                        this.f1zAxis.copy(carTangent);
-                        this.f1yAxis.copy(carNormal);
-                        this.f1xAxis.crossVectors(this.f1yAxis, this.f1zAxis).normalize();
+                    const worldUp = this.scratchVector1.set(0, 1, 0);
+                    this.f1xAxis.crossVectors(worldUp, this.f1zAxis).normalize();
+                    this.f1yAxis.crossVectors(this.f1zAxis, this.f1xAxis).normalize();
 
-                        this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
-                        car.group.quaternion.setFromRotationMatrix(this.f1RotationMatrix);
-                    }
+                    this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
+                    car.group.quaternion.setFromRotationMatrix(this.f1RotationMatrix);
                 });
             }
 
