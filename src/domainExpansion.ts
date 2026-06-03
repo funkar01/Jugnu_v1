@@ -315,10 +315,22 @@ export class DomainExpansionSystem extends createSystem({
     private f1VortexLeftPoints: THREE.Vector3[] = [];
     private f1VortexRightPoints: THREE.Vector3[] = [];
 
+    private f1VortexLeft_RB!: THREE.Line;
+    private f1VortexRight_RB!: THREE.Line;
+    private f1VortexLeftPoints_RB: THREE.Vector3[] = [];
+    private f1VortexRightPoints_RB: THREE.Vector3[] = [];
+
+    private f1VortexLeft_FE!: THREE.Line;
+    private f1VortexRight_FE!: THREE.Line;
+    private f1VortexLeftPoints_FE: THREE.Vector3[] = [];
+    private f1VortexRightPoints_FE: THREE.Vector3[] = [];
+
     // F1 Wet Spray Particles
     private f1SprayMesh!: THREE.InstancedMesh;
-    private f1SprayData!: Float32Array; // 60 particles: x, y, z, vx, vy, vz, age, active (8 values per particle)
+    private f1SprayData!: Float32Array; // 180 particles: x, y, z, vx, vy, vz, age, active (8 values per particle)
     private f1SprayEmitSlot = 0;
+    private f1SprayEmitSlot_RB = 0;
+    private f1SprayEmitSlot_FE = 0;
     private f1SprayDummy = new THREE.Object3D();
     private isNavLayerActive = false;
     private navPlaceholdersGroup!: THREE.Group;
@@ -332,12 +344,17 @@ export class DomainExpansionSystem extends createSystem({
     private f1zAxis = new THREE.Vector3();
     private f1RotationMatrix = new THREE.Matrix4();
     private scratchMatrix = new THREE.Matrix4();
+    private scratchMatrix2 = new THREE.Matrix4();
 
     private scratchVector1 = new THREE.Vector3();
     private scratchVector2 = new THREE.Vector3();
     private scratchVector3 = new THREE.Vector3();
+    private scratchVector4 = new THREE.Vector3();
+    private scratchVector5 = new THREE.Vector3();
+    private scratchVector6 = new THREE.Vector3();
     private scratchQuat1 = new THREE.Quaternion();
     private scratchQuat2 = new THREE.Quaternion();
+    private sequenceBallTrailCount = 0;
 
     // Highly Optimized, Zero-GC Holographic Fireworks System
     private fireworksMesh!: THREE.InstancedMesh;
@@ -391,7 +408,7 @@ export class DomainExpansionSystem extends createSystem({
     private sportPropsGroup!: THREE.Group;
     private sequenceBall!: THREE.Mesh;
     private sequenceBallTrail!: THREE.Line;
-    private sequenceBallPoints: THREE.Vector3[] = [];
+
     
     // Holographic Telemetry Projector Disk System
     private ballProjectorDisk!: THREE.Group;
@@ -1992,12 +2009,12 @@ export class DomainExpansionSystem extends createSystem({
             const dot = t1.normalize().dot(t2.normalize());
             const isCorner = dot < 0.992; // high curvature = corner
 
+            const targetPhase = Math.round(this.nurburgringOvertakePhase / Math.PI) * Math.PI;
             if (isCorner) {
                 // Advance overtake phase in corners
                 this.nurburgringOvertakePhase += dt * 1.5;
             } else {
                 // Snap/lerp to nearest lead state on straights (drafting in single file)
-                const targetPhase = Math.round(this.nurburgringOvertakePhase / Math.PI) * Math.PI;
                 this.nurburgringOvertakePhase += (targetPhase - this.nurburgringOvertakePhase) * 5.0 * dt;
             }
 
@@ -2044,6 +2061,12 @@ export class DomainExpansionSystem extends createSystem({
                 // Apply spatial rotation matrix to match curves and track elevations
                 this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
                 car.group.quaternion.setFromRotationMatrix(this.f1RotationMatrix);
+
+                // Apply a realistic steering slip angle based on lateral offset rate of change
+                const phaseSpeed = isCorner ? 1.5 : (targetPhase - this.nurburgringOvertakePhase) * 5.0;
+                const lateralVelocity = Math.cos(this.nurburgringOvertakePhase) * phaseSpeed;
+                const steerAngle = lateralVelocity * (car.colorType === 'redbull' ? -0.055 : car.colorType === 'merc' ? 0.055 : 0.0);
+                car.group.rotateY(steerAngle);
 
                 // Spin wheels locally
                 car.wheels.forEach((wheel) => {
@@ -2226,18 +2249,90 @@ export class DomainExpansionSystem extends createSystem({
                     (this.f1VortexLeft.material as THREE.LineBasicMaterial).opacity = 0.85;
                     (this.f1VortexRight.material as THREE.LineBasicMaterial).opacity = 0.85;
 
+                    const rbCar = this.nurburgringCars.find(c => c.colorType === 'redbull')?.group;
+                    if (rbCar && this.f1VortexLeft_RB) {
+                        this.f1VortexLeft_RB.visible = true;
+                        this.f1VortexRight_RB.visible = true;
+                        (this.f1VortexLeft_RB.material as THREE.LineBasicMaterial).opacity = 0.85;
+                        (this.f1VortexRight_RB.material as THREE.LineBasicMaterial).opacity = 0.85;
+                    }
+
+                    const feCar = this.nurburgringCars.find(c => c.colorType === 'ferrari')?.group;
+                    if (feCar && this.f1VortexLeft_FE) {
+                        this.f1VortexLeft_FE.visible = true;
+                        this.f1VortexRight_FE.visible = true;
+                        (this.f1VortexLeft_FE.material as THREE.LineBasicMaterial).opacity = 0.85;
+                        (this.f1VortexRight_FE.material as THREE.LineBasicMaterial).opacity = 0.85;
+                    }
+
                     // Shift points array back to keep buffer pre-allocated (Zero-GC)
                     for (let i = 0; i < 24; i++) {
                         this.f1VortexLeftPoints[i].copy(this.f1VortexLeftPoints[i + 1]);
                         this.f1VortexRightPoints[i].copy(this.f1VortexRightPoints[i + 1]);
+
+                        this.f1VortexLeftPoints_RB[i].copy(this.f1VortexLeftPoints_RB[i + 1]);
+                        this.f1VortexRightPoints_RB[i].copy(this.f1VortexRightPoints_RB[i + 1]);
+
+                        this.f1VortexLeftPoints_FE[i].copy(this.f1VortexLeftPoints_FE[i + 1]);
+                        this.f1VortexRightPoints_FE[i].copy(this.f1VortexRightPoints_FE[i + 1]);
                     }
 
                     // Copy new wing tip positions in track local coordinates
                     this.f1VortexLeftPoints[24].set(-0.0035, 0.0035, -0.007).applyMatrix4(this.nurburgringF1Car.matrix);
                     this.f1VortexRightPoints[24].set(0.0035, 0.0035, -0.007).applyMatrix4(this.nurburgringF1Car.matrix);
 
-                    this.f1VortexLeft.geometry.setFromPoints(this.f1VortexLeftPoints);
-                    this.f1VortexRight.geometry.setFromPoints(this.f1VortexRightPoints);
+                    if (rbCar) {
+                        rbCar.updateMatrix();
+                        this.f1VortexLeftPoints_RB[24].set(-0.0035, 0.0035, -0.007).applyMatrix4(rbCar.matrix);
+                        this.f1VortexRightPoints_RB[24].set(0.0035, 0.0035, -0.007).applyMatrix4(rbCar.matrix);
+                    }
+
+                    if (feCar) {
+                        feCar.updateMatrix();
+                        this.f1VortexLeftPoints_FE[24].set(-0.0035, 0.0035, -0.007).applyMatrix4(feCar.matrix);
+                        this.f1VortexRightPoints_FE[24].set(0.0035, 0.0035, -0.007).applyMatrix4(feCar.matrix);
+                    }
+
+                    // Copy vectors directly to buffer attribute array (Zero-GC)
+                    const arrL = this.f1VortexLeft.geometry.attributes.position.array as Float32Array;
+                    const arrR = this.f1VortexRight.geometry.attributes.position.array as Float32Array;
+                    const arrL_RB = this.f1VortexLeft_RB.geometry.attributes.position.array as Float32Array;
+                    const arrR_RB = this.f1VortexRight_RB.geometry.attributes.position.array as Float32Array;
+                    const arrL_FE = this.f1VortexLeft_FE.geometry.attributes.position.array as Float32Array;
+                    const arrR_FE = this.f1VortexRight_FE.geometry.attributes.position.array as Float32Array;
+                    
+                    for (let i = 0; i < 25; i++) {
+                        const idx = i * 3;
+                        arrL[idx] = this.f1VortexLeftPoints[i].x;
+                        arrL[idx + 1] = this.f1VortexLeftPoints[i].y;
+                        arrL[idx + 2] = this.f1VortexLeftPoints[i].z;
+
+                        arrR[idx] = this.f1VortexRightPoints[i].x;
+                        arrR[idx + 1] = this.f1VortexRightPoints[i].y;
+                        arrR[idx + 2] = this.f1VortexRightPoints[i].z;
+
+                        arrL_RB[idx] = this.f1VortexLeftPoints_RB[i].x;
+                        arrL_RB[idx + 1] = this.f1VortexLeftPoints_RB[i].y;
+                        arrL_RB[idx + 2] = this.f1VortexLeftPoints_RB[i].z;
+
+                        arrR_RB[idx] = this.f1VortexRightPoints_RB[i].x;
+                        arrR_RB[idx + 1] = this.f1VortexRightPoints_RB[i].y;
+                        arrR_RB[idx + 2] = this.f1VortexRightPoints_RB[i].z;
+
+                        arrL_FE[idx] = this.f1VortexLeftPoints_FE[i].x;
+                        arrL_FE[idx + 1] = this.f1VortexLeftPoints_FE[i].y;
+                        arrL_FE[idx + 2] = this.f1VortexLeftPoints_FE[i].z;
+
+                        arrR_FE[idx] = this.f1VortexRightPoints_FE[i].x;
+                        arrR_FE[idx + 1] = this.f1VortexRightPoints_FE[i].y;
+                        arrR_FE[idx + 2] = this.f1VortexRightPoints_FE[i].z;
+                    }
+                    (this.f1VortexLeft.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+                    (this.f1VortexRight.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+                    (this.f1VortexLeft_RB.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+                    (this.f1VortexRight_RB.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+                    (this.f1VortexLeft_FE.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+                    (this.f1VortexRight_FE.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
                 }
 
                 // ── 6. WET SPRAY INSTANCED PARTICLES ──
@@ -2246,37 +2341,98 @@ export class DomainExpansionSystem extends createSystem({
                         this.f1SprayMesh.visible = true;
                         (this.f1SprayMesh.material as THREE.MeshBasicMaterial).opacity = 0.45;
 
-                        // Emit 2 new particles from rear tire contacts
-                        const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(this.nurburgringF1Car.matrix);
-                        const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(this.nurburgringF1Car.matrix);
+                        const rbCar = this.nurburgringCars.find(c => c.colorType === 'redbull')?.group;
+                        const feCar = this.nurburgringCars.find(c => c.colorType === 'ferrari')?.group;
                         const heading = this.f1zAxis;
 
-                        // FL slot
-                        let idx = this.f1SprayEmitSlot * 8;
-                        this.f1SprayData[idx + 0] = lRearPos.x;
-                        this.f1SprayData[idx + 1] = lRearPos.y;
-                        this.f1SprayData[idx + 2] = lRearPos.z;
-                        this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
-                        this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
-                        this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
-                        this.f1SprayData[idx + 6] = 0.0;
-                        this.f1SprayData[idx + 7] = 1.0; // active
+                        // Emit Mercedes (slots 0 - 59)
+                        if (this.nurburgringF1Car) {
+                            const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(this.nurburgringF1Car.matrix);
+                            const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(this.nurburgringF1Car.matrix);
+                            
+                            let idx = this.f1SprayEmitSlot * 8;
+                            this.f1SprayData[idx + 0] = lRearPos.x;
+                            this.f1SprayData[idx + 1] = lRearPos.y;
+                            this.f1SprayData[idx + 2] = lRearPos.z;
+                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
+                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 6] = 0.0;
+                            this.f1SprayData[idx + 7] = 1.0;
 
-                        // FR slot
-                        idx = ((this.f1SprayEmitSlot + 1) % 60) * 8;
-                        this.f1SprayData[idx + 0] = rRearPos.x;
-                        this.f1SprayData[idx + 1] = rRearPos.y;
-                        this.f1SprayData[idx + 2] = rRearPos.z;
-                        this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
-                        this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
-                        this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
-                        this.f1SprayData[idx + 6] = 0.0;
-                        this.f1SprayData[idx + 7] = 1.0; // active
+                            idx = ((this.f1SprayEmitSlot + 1) % 60) * 8;
+                            this.f1SprayData[idx + 0] = rRearPos.x;
+                            this.f1SprayData[idx + 1] = rRearPos.y;
+                            this.f1SprayData[idx + 2] = rRearPos.z;
+                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
+                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 6] = 0.0;
+                            this.f1SprayData[idx + 7] = 1.0;
 
-                        this.f1SprayEmitSlot = (this.f1SprayEmitSlot + 2) % 60;
+                            this.f1SprayEmitSlot = (this.f1SprayEmitSlot + 2) % 60;
+                        }
 
-                        // Update all spray particles
-                        for (let i = 0; i < 60; i++) {
+                        // Emit Red Bull (slots 60 - 119)
+                        if (rbCar) {
+                            rbCar.updateMatrix();
+                            const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(rbCar.matrix);
+                            const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(rbCar.matrix);
+
+                            let idx = (60 + this.f1SprayEmitSlot_RB) * 8;
+                            this.f1SprayData[idx + 0] = lRearPos.x;
+                            this.f1SprayData[idx + 1] = lRearPos.y;
+                            this.f1SprayData[idx + 2] = lRearPos.z;
+                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
+                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 6] = 0.0;
+                            this.f1SprayData[idx + 7] = 1.0;
+
+                            idx = (60 + ((this.f1SprayEmitSlot_RB + 1) % 60)) * 8;
+                            this.f1SprayData[idx + 0] = rRearPos.x;
+                            this.f1SprayData[idx + 1] = rRearPos.y;
+                            this.f1SprayData[idx + 2] = rRearPos.z;
+                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
+                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 6] = 0.0;
+                            this.f1SprayData[idx + 7] = 1.0;
+
+                            this.f1SprayEmitSlot_RB = (this.f1SprayEmitSlot_RB + 2) % 60;
+                        }
+
+                        // Emit Ferrari (slots 120 - 179)
+                        if (feCar) {
+                            feCar.updateMatrix();
+                            const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(feCar.matrix);
+                            const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(feCar.matrix);
+
+                            let idx = (120 + this.f1SprayEmitSlot_FE) * 8;
+                            this.f1SprayData[idx + 0] = lRearPos.x;
+                            this.f1SprayData[idx + 1] = lRearPos.y;
+                            this.f1SprayData[idx + 2] = lRearPos.z;
+                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
+                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 6] = 0.0;
+                            this.f1SprayData[idx + 7] = 1.0;
+
+                            idx = (120 + ((this.f1SprayEmitSlot_FE + 1) % 60)) * 8;
+                            this.f1SprayData[idx + 0] = rRearPos.x;
+                            this.f1SprayData[idx + 1] = rRearPos.y;
+                            this.f1SprayData[idx + 2] = rRearPos.z;
+                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
+                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 6] = 0.0;
+                            this.f1SprayData[idx + 7] = 1.0;
+
+                            this.f1SprayEmitSlot_FE = (this.f1SprayEmitSlot_FE + 2) % 60;
+                        }
+
+                        // Update all 180 spray particles
+                        for (let i = 0; i < 180; i++) {
                             const offset = i * 8;
                             if (this.f1SprayData[offset + 7] === 1.0) {
                                 // move
@@ -2330,6 +2486,18 @@ export class DomainExpansionSystem extends createSystem({
                     this.f1VortexRight.visible = false;
                     this.f1VortexLeftPoints.forEach(p => p.set(0, 0, 0));
                     this.f1VortexRightPoints.forEach(p => p.set(0, 0, 0));
+                }
+                if (this.f1VortexLeft_RB) {
+                    this.f1VortexLeft_RB.visible = false;
+                    this.f1VortexRight_RB.visible = false;
+                    this.f1VortexLeftPoints_RB.forEach(p => p.set(0, 0, 0));
+                    this.f1VortexRightPoints_RB.forEach(p => p.set(0, 0, 0));
+                }
+                if (this.f1VortexLeft_FE) {
+                    this.f1VortexLeft_FE.visible = false;
+                    this.f1VortexRight_FE.visible = false;
+                    this.f1VortexLeftPoints_FE.forEach(p => p.set(0, 0, 0));
+                    this.f1VortexRightPoints_FE.forEach(p => p.set(0, 0, 0));
                 }
                 if (this.f1SprayMesh) this.f1SprayMesh.visible = false;
             }
@@ -5816,6 +5984,7 @@ export class DomainExpansionSystem extends createSystem({
         this.tableGroup.add(this.sequenceBall);
 
         const trailGeom = new THREE.BufferGeometry();
+        trailGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(150), 3));
         const trailMat = new THREE.LineBasicMaterial({
             color: 0xff00ff,
             transparent: true,
@@ -6259,12 +6428,12 @@ export class DomainExpansionSystem extends createSystem({
 
         this.sandboxBall.visible = true;
 
-        const leftTip = new THREE.Vector3();
-        const rightTip = new THREE.Vector3();
+        const leftTip = this.scratchVector4;
+        const rightTip = this.scratchVector5;
         const leftPinch = this.getIndexPinchData('left', leftTip);
         const rightPinch = this.getIndexPinchData('right', rightTip);
 
-        const ballWorldPos = new THREE.Vector3();
+        const ballWorldPos = this.scratchVector6;
         this.sandboxBall.getWorldPosition(ballWorldPos);
 
         // --- Grabbing state check ---
@@ -6292,9 +6461,11 @@ export class DomainExpansionSystem extends createSystem({
                 this.sandboxBallVel.multiplyScalar(1.4);
             } else {
                 const targetHandPos = isLeftGrab ? leftTip : rightTip;
-                const localHandPos = targetHandPos.clone().applyMatrix4(this.tableGroup.matrixWorld.clone().invert());
+                const localHandPos = this.scratchVector1.copy(targetHandPos);
+                const invMat = this.scratchMatrix.copy(this.tableGroup.matrixWorld).invert();
+                localHandPos.applyMatrix4(invMat);
                 
-                const instVel = new THREE.Vector3().subVectors(localHandPos, this.sandboxBall.position).multiplyScalar(1.0 / Math.max(dt, 0.001));
+                const instVel = this.scratchVector2.subVectors(localHandPos, this.sandboxBall.position).multiplyScalar(1.0 / Math.max(dt, 0.001));
                 this.sandboxBallVel.lerp(instVel, 0.35);
 
                 this.sandboxBall.position.copy(localHandPos);
@@ -7033,10 +7204,13 @@ export class DomainExpansionSystem extends createSystem({
         if (this.tcdPanelGroup) this.tcdPanelGroup.visible = false;
         this.sportSequenceTime = 0.0;
         this.sportSequencePhase = 0;
-        this.sequenceBallPoints = [];
+        this.sequenceBallTrailCount = 0;
 
         // Clear existing trails
-        this.sequenceBallTrail.geometry.setFromPoints([]);
+        this.sequenceBallTrail.geometry.setDrawRange(0, 0);
+        if (this.sequenceBallTrail.geometry.attributes.position) {
+            (this.sequenceBallTrail.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+        }
 
         // Make ball and trail visible, reset sequence ball positions
         this.sequenceBall.visible = true;
@@ -7246,8 +7420,8 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 1.0) {
                     const reboundT = Math.min((time - 1.0) / 1.0, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.035, 0.012, 0.0),
-                        new THREE.Vector3(0.026, 0.012, 0.022),
+                        this.scratchVector4.set(0.035, 0.012, 0.0),
+                        this.scratchVector5.set(0.026, 0.012, 0.022),
                         reboundT
                     );
                     if (fielder3) runPlayer(fielder3, 0.026, 0.022, dt * 6.0);
@@ -7256,8 +7430,8 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 2.0) {
                     const throwT = Math.min((time - 2.0) / 1.0, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.026, 0.012, 0.022),
-                        new THREE.Vector3(-0.035, 0.009, 0.0),
+                        this.scratchVector4.set(0.026, 0.012, 0.022),
+                        this.scratchVector5.set(-0.035, 0.009, 0.0),
                         throwT
                     );
                     if (this.cricketBatMesh) this.cricketBatMesh.rotation.y = 0;
@@ -7289,8 +7463,8 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 4.5) {
                     const tossT = Math.min((time - 4.5) / 1.2, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.048, 0.025, 0.0),
-                        new THREE.Vector3(-0.035, 0.009, 0.0),
+                        this.scratchVector4.set(0.048, 0.025, 0.0),
+                        this.scratchVector5.set(-0.035, 0.009, 0.0),
                         tossT
                     );
                 }
@@ -7316,8 +7490,8 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 7.1) {
                     const flightT = Math.min((time - 7.1) / 1.4, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.035, 0.012, 0.0),
-                        new THREE.Vector3(0.065, -0.010, 0.085), // boundary point at grass level (-0.010)
+                        this.scratchVector4.set(0.035, 0.012, 0.0),
+                        this.scratchVector5.set(0.065, -0.010, 0.085), // boundary point at grass level (-0.010)
                         flightT
                     );
                     
@@ -7414,8 +7588,8 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 13.5 && time < 14.5) {
                     const reboundT = Math.min((time - 13.5) / 1.0, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.035, 0.012, 0.0),
-                        new THREE.Vector3(0.026, 0.012, 0.022),
+                        this.scratchVector4.set(0.035, 0.012, 0.0),
+                        this.scratchVector5.set(0.026, 0.012, 0.022),
                         reboundT
                     );
                 }
@@ -7523,8 +7697,8 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 2.5) {
                     const passT = Math.min((time - 2.5) / 1.5, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.0 * S, 0.003, 0.02 * S),
-                        new THREE.Vector3(-0.055 * S, 0.003, 0.015 * S),
+                        this.scratchVector4.set(0.0 * S, 0.003, 0.02 * S),
+                        this.scratchVector5.set(-0.055 * S, 0.003, 0.015 * S),
                         passT
                     );
                     if (bellingham) stopPlayer(bellingham);
@@ -7574,8 +7748,8 @@ export class DomainExpansionSystem extends createSystem({
                 // Sané crosses the ball high into box
                 if (time >= 6.5) {
                     const crossT = Math.min((time - 6.5) / 1.5, 1.0);
-                    const startPos = new THREE.Vector3(-0.065 * S, 0.003, -0.035 * S);
-                    const endPos = new THREE.Vector3(0.0 * S, 0.005, -0.065 * S); // box center
+                    const startPos = this.scratchVector4.set(-0.065 * S, 0.003, -0.035 * S);
+                    const endPos = this.scratchVector5.set(0.0 * S, 0.005, -0.065 * S); // box center
                     this.sequenceBall.position.set(
                         startPos.x + (endPos.x - startPos.x) * crossT,
                         startPos.y + (endPos.y - startPos.y) * crossT + 0.015 * Math.sin(crossT * Math.PI), // high cross arc
@@ -7611,8 +7785,8 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 9.2) {
                     const reboundT = Math.min((time - 9.2) / 1.8, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.0 * S, 0.018, -0.065 * S),
-                        new THREE.Vector3(0.0 * S, 0.003, -0.025 * S), // bellingham rebound spot
+                        this.scratchVector4.set(0.0 * S, 0.018, -0.065 * S),
+                        this.scratchVector5.set(0.0 * S, 0.003, -0.025 * S), // bellingham rebound spot
                         reboundT
                     );
                     // Bellingham Rebound (Soccer, phase 4): Accelerate run speed to dt * 20.0
@@ -7635,8 +7809,8 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 13.5) {
                     const throwT = Math.min((time - 13.5) / 1.5, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.0 * S, 0.003, -0.025 * S),
-                        new THREE.Vector3(0.0 * S, 0.003, -0.068 * S),
+                        this.scratchVector4.set(0.0 * S, 0.003, -0.025 * S),
+                        this.scratchVector5.set(0.0 * S, 0.003, -0.068 * S),
                         throwT
                     );
                     if (bellingham) stopPlayer(bellingham);
@@ -7749,8 +7923,8 @@ export class DomainExpansionSystem extends createSystem({
                         // Pass to LeBron cutting baseline (-0.035, 0.0, -0.04)
                         const passT = Math.min((time - 3.5) / 1.5, 1.0);
                         this.sequenceBall.position.lerpVectors(
-                            new THREE.Vector3(0.0, 0.015, -0.015),
-                            new THREE.Vector3(-0.035, 0.015, -0.04),
+                            this.scratchVector4.set(0.0, 0.015, -0.015),
+                            this.scratchVector5.set(-0.035, 0.015, -0.04),
                             passT
                         );
                         if (russell) stopPlayer(russell);
@@ -7783,8 +7957,8 @@ export class DomainExpansionSystem extends createSystem({
                     // LeBron prepares to pass to A. Reaves at (0.03, 0.009, -0.035)
                     const passT = Math.min((time - 7.5) / 2.0, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(-0.035, 0.015, -0.04),
-                        new THREE.Vector3(0.03, 0.015, -0.035), // Reaves behind 3-pt line
+                        this.scratchVector4.set(-0.035, 0.015, -0.04),
+                        this.scratchVector5.set(0.03, 0.015, -0.035), // Reaves behind 3-pt line
                         passT
                     );
                     // Reaves Receive (Basketball, phase 3): Accelerate run to dt * 20.0
@@ -7813,8 +7987,8 @@ export class DomainExpansionSystem extends createSystem({
                     // High parabolic 3-pointer flight to Goal 1 Hoop at (0.0, 0.0125, -0.041)
                     const flightT = Math.min((time - 12.0) / 2.5, 1.0);
                     if (time >= 12.0) {
-                        const startPos = new THREE.Vector3(0.03, 0.022, -0.035);
-                        const endPos = new THREE.Vector3(0.0, 0.0135, -0.041);
+                        const startPos = this.scratchVector4.set(0.03, 0.022, -0.035);
+                        const endPos = this.scratchVector5.set(0.0, 0.0135, -0.041);
                         this.sequenceBall.position.set(
                             startPos.x + (endPos.x - startPos.x) * flightT,
                             startPos.y + (endPos.y - startPos.y) * flightT + 0.025 * Math.sin(flightT * Math.PI), // elegant high 3-pt arc
@@ -7831,8 +8005,8 @@ export class DomainExpansionSystem extends createSystem({
                 // Ball swooshes through hoop
                 const swishT = Math.min((time - 15.0) / 0.8, 1.0);
                 this.sequenceBall.position.lerpVectors(
-                    new THREE.Vector3(0.0, 0.0135, -0.041),
-                    new THREE.Vector3(0.0, 0.005, -0.041),
+                    this.scratchVector4.set(0.0, 0.0135, -0.041),
+                    this.scratchVector5.set(0.0, 0.005, -0.041),
                     swishT
                 );
 
@@ -7882,9 +8056,31 @@ export class DomainExpansionSystem extends createSystem({
                 this.sequenceBall.position.y = floorY + ballRadius;
             }
 
-            this.sequenceBallPoints.push(this.sequenceBall.position.clone());
-            if (this.sequenceBallPoints.length > 50) this.sequenceBallPoints.shift();
-            this.sequenceBallTrail.geometry.setFromPoints(this.sequenceBallPoints);
+            const geom = this.sequenceBallTrail.geometry;
+            const posAttr = geom.attributes.position as THREE.BufferAttribute;
+            const arr = posAttr.array as Float32Array;
+
+            if (this.sequenceBallTrailCount < 50) {
+                const idx = this.sequenceBallTrailCount * 3;
+                arr[idx] = this.sequenceBall.position.x;
+                arr[idx + 1] = this.sequenceBall.position.y;
+                arr[idx + 2] = this.sequenceBall.position.z;
+                this.sequenceBallTrailCount++;
+            } else {
+                for (let i = 0; i < 49; i++) {
+                    const to = i * 3;
+                    const from = (i + 1) * 3;
+                    arr[to] = arr[from];
+                    arr[to + 1] = arr[from + 1];
+                    arr[to + 2] = arr[from + 2];
+                }
+                const idx = 49 * 3;
+                arr[idx] = this.sequenceBall.position.x;
+                arr[idx + 1] = this.sequenceBall.position.y;
+                arr[idx + 2] = this.sequenceBall.position.z;
+            }
+            geom.setDrawRange(0, this.sequenceBallTrailCount);
+            posAttr.needsUpdate = true;
         } else {
             // Ball and trail fade out
             this.sequenceBall.visible = false;
@@ -8479,7 +8675,9 @@ export class DomainExpansionSystem extends createSystem({
     private initNurburgringVortexAndSpray() {
         // --- 9. F1 VORTEX VAPOR TRAILS INITIALIZATION ---
         const vortexLeftGeo = new THREE.BufferGeometry();
+        vortexLeftGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(25 * 3), 3));
         const vortexRightGeo = new THREE.BufferGeometry();
+        vortexRightGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(25 * 3), 3));
         
         const vortexMat = new THREE.LineBasicMaterial({
             color: 0x22d3ee, // Cyberpunk cyan glow
@@ -8491,14 +8689,59 @@ export class DomainExpansionSystem extends createSystem({
 
         this.f1VortexLeft = new THREE.Line(vortexLeftGeo, vortexMat);
         this.f1VortexRight = new THREE.Line(vortexRightGeo, vortexMat);
+
+        // Red Bull
+        const vortexLeftGeo_RB = new THREE.BufferGeometry();
+        vortexLeftGeo_RB.setAttribute('position', new THREE.BufferAttribute(new Float32Array(25 * 3), 3));
+        const vortexRightGeo_RB = new THREE.BufferGeometry();
+        vortexRightGeo_RB.setAttribute('position', new THREE.BufferAttribute(new Float32Array(25 * 3), 3));
+        const vortexMat_RB = new THREE.LineBasicMaterial({
+            color: 0x3b82f6, // Red Bull blue/neon glow
+            transparent: true,
+            opacity: 0.0,
+            linewidth: 2,
+            depthWrite: false
+        });
+        this.f1VortexLeft_RB = new THREE.Line(vortexLeftGeo_RB, vortexMat_RB);
+        this.f1VortexRight_RB = new THREE.Line(vortexRightGeo_RB, vortexMat_RB);
+
+        // Ferrari
+        const vortexLeftGeo_FE = new THREE.BufferGeometry();
+        vortexLeftGeo_FE.setAttribute('position', new THREE.BufferAttribute(new Float32Array(25 * 3), 3));
+        const vortexRightGeo_FE = new THREE.BufferGeometry();
+        vortexRightGeo_FE.setAttribute('position', new THREE.BufferAttribute(new Float32Array(25 * 3), 3));
+        const vortexMat_FE = new THREE.LineBasicMaterial({
+            color: 0xef4444, // Ferrari red glow
+            transparent: true,
+            opacity: 0.0,
+            linewidth: 2,
+            depthWrite: false
+        });
+        this.f1VortexLeft_FE = new THREE.Line(vortexLeftGeo_FE, vortexMat_FE);
+        this.f1VortexRight_FE = new THREE.Line(vortexRightGeo_FE, vortexMat_FE);
+
         if (this.nurburgringGroup) {
-            this.nurburgringGroup.add(this.f1VortexLeft, this.f1VortexRight);
+            this.nurburgringGroup.add(
+                this.f1VortexLeft, this.f1VortexRight,
+                this.f1VortexLeft_RB, this.f1VortexRight_RB,
+                this.f1VortexLeft_FE, this.f1VortexRight_FE
+            );
         }
+
         this.f1VortexLeftPoints = [];
         this.f1VortexRightPoints = [];
+        this.f1VortexLeftPoints_RB = [];
+        this.f1VortexRightPoints_RB = [];
+        this.f1VortexLeftPoints_FE = [];
+        this.f1VortexRightPoints_FE = [];
+
         for (let i = 0; i < 25; i++) {
             this.f1VortexLeftPoints.push(new THREE.Vector3());
             this.f1VortexRightPoints.push(new THREE.Vector3());
+            this.f1VortexLeftPoints_RB.push(new THREE.Vector3());
+            this.f1VortexRightPoints_RB.push(new THREE.Vector3());
+            this.f1VortexLeftPoints_FE.push(new THREE.Vector3());
+            this.f1VortexRightPoints_FE.push(new THREE.Vector3());
         }
 
         // --- 10. F1 WET SPRAY INSTANCED PARTICLES ---
@@ -8510,14 +8753,14 @@ export class DomainExpansionSystem extends createSystem({
             blending: THREE.AdditiveBlending,
             depthWrite: false
         });
-        // 60 particles max
-        this.f1SprayMesh = new THREE.InstancedMesh(sprayGeom, sprayMat, 60);
+        // 180 particles max (60 per car)
+        this.f1SprayMesh = new THREE.InstancedMesh(sprayGeom, sprayMat, 180);
         if (this.nurburgringGroup) {
             this.nurburgringGroup.add(this.f1SprayMesh);
         }
 
-        // Pre-allocate Float32Array for particle states (60 particles * 8 values: x, y, z, vx, vy, vz, age, active)
-        this.f1SprayData = new Float32Array(60 * 8);
+        // Pre-allocate Float32Array for particle states (180 particles * 8 values: x, y, z, vx, vy, vz, age, active)
+        this.f1SprayData = new Float32Array(180 * 8);
 
         // Hide initially
         if (this.nurburgringF1Car) this.nurburgringF1Car.visible = false;
