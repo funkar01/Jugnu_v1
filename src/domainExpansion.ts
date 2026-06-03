@@ -709,12 +709,12 @@ export class DomainExpansionSystem extends createSystem({
             this.stadiumBaseScale = 0.24 / (maxDim || 1.0);
             this.stadiumMesh.scale.setScalar(this.stadiumBaseScale);
 
-            // Bring the green pitch/field/grass mesh Y coordinate up by 1cm
+            // Bring the green pitch/field/grass mesh Y coordinate down by 1cm (2cm lower than prior)
             this.stadiumMesh.traverse((child: any) => {
                 if (child instanceof THREE.Mesh) {
                     const name = child.name.toLowerCase();
                     if (name.includes('pitch') || name.includes('field') || name.includes('grass')) {
-                        child.position.y += 0.01 / this.stadiumBaseScale;
+                        child.position.y -= 0.01 / this.stadiumBaseScale;
                     }
                 }
             });
@@ -4681,19 +4681,19 @@ export class DomainExpansionSystem extends createSystem({
         
         if (pathType === 'SIX') {
             points.push(new THREE.Vector3(-0.045, 0.02, 0.0));    // Bowler crease release
-            points.push(new THREE.Vector3(0.015, 0.001, 0.0));   // Center bounce coordinate
+            points.push(new THREE.Vector3(0.015, 0.009, 0.0));   // Center bounce coordinate
             points.push(new THREE.Vector3(0.038, 0.016, 0.0));   // Strike zone contact
             points.push(new THREE.Vector3(0.065, 0.05, 0.03));   // Sky rise arc
             points.push(new THREE.Vector3(0.09, 0.075, 0.06));   // High peak over stand canopy
             points.push(new THREE.Vector3(0.11, 0.045, 0.08));   // Landing in stands
         } else if (pathType === 'WICKET') {
             points.push(new THREE.Vector3(-0.045, 0.02, 0.002)); // Release slightly off-center
-            points.push(new THREE.Vector3(0.018, 0.001, -0.001));// Bounce close to crease
+            points.push(new THREE.Vector3(0.018, 0.009, -0.001));// Bounce close to crease
             points.push(new THREE.Vector3(0.042, 0.012, -0.002));// Directly striking stumps!
-            points.push(new THREE.Vector3(0.048, 0.002, -0.004));// Bumping away
+            points.push(new THREE.Vector3(0.048, 0.010, -0.004));// Bumping away
         } else { // DOT
             points.push(new THREE.Vector3(-0.045, 0.02, -0.002));
-            points.push(new THREE.Vector3(0.014, 0.001, 0.001));
+            points.push(new THREE.Vector3(0.014, 0.009, 0.001));
             points.push(new THREE.Vector3(0.038, 0.015, 0.003)); // Swing & miss
             points.push(new THREE.Vector3(0.047, 0.02, 0.004));  // Safely caught by keeper
         }
@@ -5740,7 +5740,7 @@ export class DomainExpansionSystem extends createSystem({
         const bailGeom = new THREE.BoxGeometry(0.0002, 0.0002, 0.003);
         const bail = new THREE.Mesh(bailGeom, stumpMat); bail.position.set(0, 0.006, 0);
         stumpsGroup.add(s1, s2, s3, bail);
-        stumpsGroup.position.set(0.045, 0.001, 0);
+        stumpsGroup.position.set(0.045, 0.009, 0);
         this.cricketStumpsMesh = stumpsGroup;
         this.sportPropsGroup.add(this.cricketStumpsMesh);
 
@@ -5759,7 +5759,7 @@ export class DomainExpansionSystem extends createSystem({
         const handle = new THREE.Mesh(handleGeom, handleMat);
         handle.position.y = 0.0085;
         batGroup.add(blade, handle);
-        batGroup.position.set(0.035, 0.001, 0);
+        batGroup.position.set(0.035, 0.009, 0);
         this.cricketBatMesh = batGroup;
         this.sportPropsGroup.add(this.cricketBatMesh);
 
@@ -7007,6 +7007,7 @@ export class DomainExpansionSystem extends createSystem({
         // Reset bat swing rotation in case it was left rotated
         if (this.cricketBatMesh) {
             this.cricketBatMesh.rotation.set(0, 0, 0);
+            this.cricketBatMesh.position.set(0.035, 0.009, 0);
         }
 
         const stType = this.currentStadiumType;
@@ -7189,7 +7190,7 @@ export class DomainExpansionSystem extends createSystem({
                 
                 // Ball delivery trajectory (Bowler to Crease)
                 const startX = -0.045, startY = 0.015, startZ = 0.0;
-                const endX = 0.035, endY = 0.004, endZ = 0.0;
+                const endX = 0.035, endY = 0.012, endZ = 0.0;
                 this.sequenceBall.position.set(
                     startX + (endX - startX) * ballT,
                     startY + (endY - startY) * ballT - 0.002 * Math.sin(ballT * Math.PI),
@@ -7198,15 +7199,15 @@ export class DomainExpansionSystem extends createSystem({
 
                 if (time >= 1.0 && time < 1.1) {
                     if (this.cricketBatMesh) this.cricketBatMesh.rotation.y = -Math.PI / 4;
-                    this.triggerFirework(0.035, 0.004, 0.0, 0xffaa00, 0.015);
+                    this.triggerFirework(0.035, 0.012, 0.0, 0xffaa00, 0.015);
                 }
 
                 // Ball rebounds to Point fielder f3
                 if (time >= 1.0) {
                     const reboundT = Math.min((time - 1.0) / 1.0, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.035, 0.004, 0.0),
-                        new THREE.Vector3(0.026, 0.004, 0.022),
+                        new THREE.Vector3(0.035, 0.012, 0.0),
+                        new THREE.Vector3(0.026, 0.012, 0.022),
                         reboundT
                     );
                     if (fielder3) runPlayer(fielder3, 0.026, 0.022, dt * 6.0);
@@ -7215,7 +7216,7 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 2.0) {
                     const throwT = Math.min((time - 2.0) / 1.0, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.026, 0.004, 0.022),
+                        new THREE.Vector3(0.026, 0.012, 0.022),
                         new THREE.Vector3(-0.035, 0.009, 0.0),
                         throwT
                     );
@@ -7259,7 +7260,7 @@ export class DomainExpansionSystem extends createSystem({
                 const ballT = Math.min((time - 6.0) / 1.1, 1.0);
                 
                 const startX = -0.045, startY = 0.015, startZ = 0.0;
-                const endX = 0.035, endY = 0.004, endZ = 0.0;
+                const endX = 0.035, endY = 0.012, endZ = 0.0;
                 this.sequenceBall.position.set(
                     startX + (endX - startX) * ballT,
                     startY + (endY - startY) * ballT - 0.002 * Math.sin(ballT * Math.PI),
@@ -7268,15 +7269,15 @@ export class DomainExpansionSystem extends createSystem({
 
                 if (time >= 7.1 && time < 7.2) {
                     if (this.cricketBatMesh) this.cricketBatMesh.rotation.y = -Math.PI / 3;
-                    this.triggerFirework(0.035, 0.004, 0.0, 0x00ff66, 0.015);
+                    this.triggerFirework(0.035, 0.012, 0.0, 0x00ff66, 0.015);
                 }
 
                 // Ball runs to boundary, J. Bethell runs to field
                 if (time >= 7.1) {
                     const flightT = Math.min((time - 7.1) / 1.4, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.035, 0.004, 0.0),
-                        new THREE.Vector3(0.065, 0.002, 0.085), // boundary point
+                        new THREE.Vector3(0.035, 0.012, 0.0),
+                        new THREE.Vector3(0.065, -0.010, 0.085), // boundary point at grass level (-0.010)
                         flightT
                     );
                     
@@ -7317,7 +7318,7 @@ export class DomainExpansionSystem extends createSystem({
                 const ballT = Math.min((time - 9.5) / 1.0, 1.0);
 
                 const startX = -0.045, startY = 0.015, startZ = 0.0;
-                const endX = 0.045, endY = 0.002, endZ = 0.0; // Stumps
+                const endX = 0.045, endY = 0.010, endZ = 0.0; // Stumps
                 this.sequenceBall.position.set(
                     startX + (endX - startX) * ballT,
                     startY + (endY - startY) * ballT - 0.003 * Math.sin(ballT * Math.PI),
@@ -7340,26 +7341,30 @@ export class DomainExpansionSystem extends createSystem({
                         });
                     }
                     if (time >= 10.5 && time < 10.6) {
-                        this.triggerFirework(0.045, 0.003, 0.0, 0xff0055, 0.02);
+                        this.triggerFirework(0.045, 0.010, 0.0, 0xff0055, 0.02);
                     }
                 }
             } else if (time >= 12.5 && time < 15.5) {
                 // --- BALL 5: Fast throw and safe defend (12.5s - 15.5s) ---
                 showPlayerCard("b1"); // Highlight Jaiswal
-                // Restore stumps
+                // Restore stumps & bat
                 if (this.cricketStumpsMesh) {
                     this.cricketStumpsMesh.rotation.set(0, 0, 0);
-                    this.cricketStumpsMesh.position.set(0.045, 0.001, 0);
+                    this.cricketStumpsMesh.position.set(0.045, 0.009, 0);
                     this.cricketStumpsMesh.traverse((child: any) => {
                         if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshBasicMaterial) {
                             child.material.color.setHex(0x00ff66);
                         }
                     });
                 }
+                if (this.cricketBatMesh) {
+                    this.cricketBatMesh.rotation.set(0, 0, 0);
+                    this.cricketBatMesh.position.set(0.035, 0.009, 0);
+                }
                 const ballT = Math.min((time - 12.5) / 1.0, 1.0);
                 
                 const startX = -0.045, startY = 0.015, startZ = 0.0;
-                const endX = 0.035, endY = 0.004, endZ = 0.0;
+                const endX = 0.035, endY = 0.012, endZ = 0.0;
                 this.sequenceBall.position.set(
                     startX + (endX - startX) * ballT,
                     startY + (endY - startY) * ballT - 0.002 * Math.sin(ballT * Math.PI),
@@ -7369,8 +7374,8 @@ export class DomainExpansionSystem extends createSystem({
                 if (time >= 13.5 && time < 14.5) {
                     const reboundT = Math.min((time - 13.5) / 1.0, 1.0);
                     this.sequenceBall.position.lerpVectors(
-                        new THREE.Vector3(0.035, 0.004, 0.0),
-                        new THREE.Vector3(0.026, 0.004, 0.022),
+                        new THREE.Vector3(0.035, 0.012, 0.0),
+                        new THREE.Vector3(0.026, 0.012, 0.022),
                         reboundT
                     );
                 }
@@ -7380,7 +7385,7 @@ export class DomainExpansionSystem extends createSystem({
                 const ballT = Math.min((time - 15.5) / 1.0, 1.0);
                 
                 const startX = -0.045, startY = 0.015, startZ = 0.0;
-                const endX = 0.035, endY = 0.004, endZ = 0.0;
+                const endX = 0.035, endY = 0.012, endZ = 0.0;
                 this.sequenceBall.position.set(
                     startX + (endX - startX) * ballT,
                     startY + (endY - startY) * ballT - 0.002 * Math.sin(ballT * Math.PI),
@@ -7389,13 +7394,13 @@ export class DomainExpansionSystem extends createSystem({
 
                 if (time >= 16.5 && time < 16.6) {
                     if (this.cricketBatMesh) this.cricketBatMesh.rotation.y = -Math.PI / 2.5;
-                    this.triggerFirework(0.035, 0.004, 0.0, 0xff00ff, 0.02);
+                    this.triggerFirework(0.035, 0.012, 0.0, 0xff00ff, 0.02);
                 }
 
                 // Parabolic SIX flight out of the stadium
                 if (time >= 16.5) {
                     const flightT = Math.min((time - 16.5) / 1.6, 1.0);
-                    const x0 = 0.035, y0 = 0.004, z0 = 0.0;
+                    const x0 = 0.035, y0 = 0.012, z0 = 0.0;
                     const x1 = 0.04, y1 = 0.16, z1 = -0.05;
                     const x2 = 0.115, y2 = 0.01, z2 = -0.09; // out of stadium
 
@@ -7901,15 +7906,19 @@ export class DomainExpansionSystem extends createSystem({
                 showPlayerCard(null);
             });
 
-            // Restore wickets
+            // Restore wickets & bat
             if (this.cricketStumpsMesh) {
                 this.cricketStumpsMesh.rotation.set(0, 0, 0);
-                this.cricketStumpsMesh.position.set(0.045, 0.001, 0);
+                this.cricketStumpsMesh.position.set(0.045, 0.009, 0);
                 this.cricketStumpsMesh.traverse((child: any) => {
                     if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshBasicMaterial) {
                         child.material.color.setHex(0x00ff66);
                     }
                 });
+            }
+            if (this.cricketBatMesh) {
+                this.cricketBatMesh.rotation.set(0, 0, 0);
+                this.cricketBatMesh.position.set(0.035, 0.009, 0);
             }
 
             console.log("[SportSequence] Full replay lifecycle complete. Minimap state restored.");

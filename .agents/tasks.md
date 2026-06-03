@@ -634,7 +634,6 @@
   - `[x]` Removed the dynamic AR celebration banner (`sportCelebrationCard`) completely from replay sequences by forcing it to `visible = false` inside `updateSportSequence` for all sports.
   - `[x]` Solved player mesh rendering corruption during zoom-in states by dynamically setting `child.visible = false` on invisible stadium meshes when their material opacity falls below `0.005`.
   - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
-
 - `[x]` Nurburgring Wider Track, F1 Racing Simulation & Scale Range Expansion (Current Run)
   - `[x]` Expanded maximum userTableScale clamp limit from 3.5 to 4.5.
   - `[x]` Updated mapLinear range boundaries to [2.5, 4.5] for smooth stFadeFactor, cylinderAlpha, and wireframeAlpha transitions.
@@ -642,5 +641,8 @@
   - `[x]` Redesigned vehicle simulation to instantiate three distinct detailed F1 cars scaled down by 20% (0.8 scale): Mercedes (silver), Red Bull (dark blue/yellow), and Ferrari (red).
   - `[x]` Programmed parallel F1 racing simulation in update loop: Mercedes and Red Bull weave and swap leads via harmonic sine progress offsets and lateral lane offsets, while Ferrari chases in 3rd.
   - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
-
-
+- `[x]` Pitch Offset Lowering & Wickets/Bat Raising (Current Run)
+  - `[x]` Lowered the green pitch/field/grass mesh coordinate Y-axis by 2cm relative to its raised position (setting offset to `-0.01 / stadiumBaseScale` locally).
+  - `[x]` Raised the wickets (`cricketStumpsMesh`) and bat (`cricketBatMesh`) to Y=0.009 to sit flush with where the players are standing.
+  - `[x]` Updated all cricket sports sequence ball and firework strike Y-coordinates to match the raised stumps and bat height (Y=0.010 for wickets, Y=0.012 for bat hits).
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
