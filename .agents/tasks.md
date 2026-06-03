@@ -629,3 +629,10 @@
   - `[x]` Set high `renderOrder` (990) for `arBillboard` scoreboard and banner elements to prevent similar transparent depth occlusion issues.
   - `[x]` Verified compilation via `npx tsc --noEmit` and successfully bundled client assets with `npm run build`.
 
+- `[x]` Pitch Offset, Replay Banner Removal & Zoom Occlusion Fix (Current Run)
+  - `[x]` Raised the cricket stadium pitch/field/grass meshes vertically by exactly 1cm in the local Y axis inside the loader inside `src/domainExpansion.ts`.
+  - `[x]` Removed the dynamic AR celebration banner (`sportCelebrationCard`) completely from replay sequences by forcing it to `visible = false` inside `updateSportSequence` for all sports.
+  - `[x]` Solved player mesh rendering corruption during zoom-in states by dynamically setting `child.visible = false` on invisible stadium meshes when their material opacity falls below `0.005`.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+

@@ -706,6 +706,17 @@ export class DomainExpansionSystem extends createSystem({
             const maxDim = Math.max(size.x, size.z);
             this.stadiumBaseScale = 0.24 / (maxDim || 1.0);
             this.stadiumMesh.scale.setScalar(this.stadiumBaseScale);
+
+            // Bring the green pitch/field/grass mesh Y coordinate up by 1cm
+            this.stadiumMesh.traverse((child: any) => {
+                if (child instanceof THREE.Mesh) {
+                    const name = child.name.toLowerCase();
+                    if (name.includes('pitch') || name.includes('field') || name.includes('grass')) {
+                        child.position.y += 0.01 / this.stadiumBaseScale;
+                    }
+                }
+            });
+
             // Recompute bounding box after scaling to determine exact bottom Y
             this.stadiumMesh.updateMatrixWorld(true);
             const scaledBox = new THREE.Box3().setFromObject(this.stadiumMesh);
@@ -3399,6 +3410,7 @@ export class DomainExpansionSystem extends createSystem({
                             );
 
                             const mats = Array.isArray(child.material) ? child.material : [child.material];
+                            let hasVisibleMat = false;
                             mats.forEach((mat: any) => {
                                 if (mat) {
                                     // Store original material opacity and transparency in userData so we can scale relative to it!
@@ -3414,8 +3426,13 @@ export class DomainExpansionSystem extends createSystem({
 
                                     // Dynamic transparency to avoid sorting bugs when fully opaque
                                     mat.transparent = mat.userData.originallyTransparent || (mat.opacity < 0.99);
+
+                                    if (mat.opacity > 0.005) {
+                                        hasVisibleMat = true;
+                                    }
                                 }
                             });
+                            child.visible = hasVisibleMat;
                         }
                     });
                 }
@@ -7265,7 +7282,7 @@ export class DomainExpansionSystem extends createSystem({
                 // Show FOUR celebration card near boundary
                 if (time >= 8.5) {
                     this.sportCelebrationCard.position.set(0.055, this.ROOF_Y + 0.05, 0.075);
-                    this.sportCelebrationCard.visible = true;
+                    this.sportCelebrationCard.visible = false;
                     // Redraw canvas with FOUR
                     const ctx = this.celebrationCardCtx;
                     ctx.fillStyle = 'rgba(10, 15, 45, 0.9)';
@@ -7391,7 +7408,7 @@ export class DomainExpansionSystem extends createSystem({
                 // Show SIX celebration card
                 if (time >= 18.0) {
                     this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.075, 0.0);
-                    this.sportCelebrationCard.visible = true;
+                    this.sportCelebrationCard.visible = false;
                     // Redraw canvas with SIX
                     const ctx = this.celebrationCardCtx;
                     ctx.fillStyle = 'rgba(10, 15, 45, 0.9)';
@@ -7613,7 +7630,7 @@ export class DomainExpansionSystem extends createSystem({
                 // Show GOAL celebration card
                 if (time >= 17.5) {
                     this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.075, 0.0);
-                    this.sportCelebrationCard.visible = true;
+                    this.sportCelebrationCard.visible = false;
                     // Redraw canvas with GOAL
                     const ctx = this.celebrationCardCtx;
                     ctx.fillStyle = 'rgba(10, 15, 45, 0.9)';
@@ -7787,7 +7804,7 @@ export class DomainExpansionSystem extends createSystem({
                 // Show 3-POINTER celebration card
                 if (time >= 16.5) {
                     this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.075, 0.0);
-                    this.sportCelebrationCard.visible = true;
+                    this.sportCelebrationCard.visible = false;
                     // Redraw canvas with 3-POINTER
                     const ctx = this.celebrationCardCtx;
                     ctx.fillStyle = 'rgba(10, 15, 45, 0.9)';
