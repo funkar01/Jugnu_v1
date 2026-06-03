@@ -3401,17 +3401,19 @@ export class DomainExpansionSystem extends createSystem({
                             const mats = Array.isArray(child.material) ? child.material : [child.material];
                             mats.forEach((mat: any) => {
                                 if (mat) {
-                                    mat.transparent = true;
-                                    
-                                    // Store original material opacity in userData so we can scale relative to it!
+                                    // Store original material opacity and transparency in userData so we can scale relative to it!
                                     if (mat.userData.baseOpacity === undefined) {
                                         mat.userData.baseOpacity = mat.opacity ?? 1.0;
+                                        mat.userData.originallyTransparent = mat.transparent ?? false;
                                     }
                                     
                                     const factor = isGameplay ? 1.0 : stFadeFactor;
                                     const targetOp = mat.userData.baseOpacity * factor;
                                     // Smoothly interpolate opacity to prevent jarring flashes
                                     mat.opacity += (targetOp - mat.opacity) * dt * 10.0;
+
+                                    // Dynamic transparency to avoid sorting bugs when fully opaque
+                                    mat.transparent = mat.userData.originallyTransparent || (mat.opacity < 0.99);
                                 }
                             });
                         }
@@ -4574,6 +4576,7 @@ export class DomainExpansionSystem extends createSystem({
     private initARBillboard() {
         this.arBillboard = new THREE.Group();
         this.arBillboard.position.set(0, 0.175, 0); // Spawning at 0.175m (brought down by 4cm)
+        this.arBillboard.renderOrder = 990;
 
         const bannerGeom = new THREE.PlaneGeometry(0.108, 0.0688);
         const bannerMat = new THREE.MeshBasicMaterial({ 
@@ -4583,6 +4586,7 @@ export class DomainExpansionSystem extends createSystem({
         });
         const banner = new THREE.Mesh(bannerGeom, bannerMat);
         banner.userData.defaultOpacity = 1.0;
+        banner.renderOrder = 990;
         this.arBillboard.add(banner);
         
         const texLoader = new THREE.TextureLoader();
@@ -5766,6 +5770,7 @@ export class DomainExpansionSystem extends createSystem({
         this.sportCelebrationCard = new THREE.Group();
         this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.075, 0.0);
         this.sportCelebrationCard.visible = false;
+        this.sportCelebrationCard.renderOrder = 999;
         this.tableGroup.add(this.sportCelebrationCard);
 
         // Glass backing card
@@ -5777,12 +5782,14 @@ export class DomainExpansionSystem extends createSystem({
             depthWrite: false
         });
         const cardBack = new THREE.Mesh(cardBackGeom, cardBackMat);
+        cardBack.renderOrder = 999;
         this.sportCelebrationCard.add(cardBack);
 
         // Glowing border outline
         const cardBorderGeom = new THREE.EdgesGeometry(cardBackGeom);
         const cardBorderMat = new THREE.LineBasicMaterial({ color: 0xff00ff, linewidth: 2 });
         const cardBorder = new THREE.LineSegments(cardBorderGeom, cardBorderMat);
+        cardBorder.renderOrder = 1000;
         this.sportCelebrationCard.add(cardBorder);
 
         // Draw Canvas texture
@@ -5805,6 +5812,7 @@ export class DomainExpansionSystem extends createSystem({
         const cardPlaneGeom = new THREE.PlaneGeometry(0.088, 0.043);
         const cardPlane = new THREE.Mesh(cardPlaneGeom, this.sportCelebrationCardMat);
         cardPlane.position.z = 0.0015;
+        cardPlane.renderOrder = 1000;
         this.sportCelebrationCard.add(cardPlane);
 
         // --- 4. DUAL-RING HOLOGRAPHIC PROJECTOR GLOW DISK ---

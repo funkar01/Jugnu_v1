@@ -622,3 +622,10 @@
   - `[x]` Modified `getFloorY()` to dynamically return the computed stadium surface level, preventing ball clipping into various elevated stadium geometries
   - `[x]` Programmed auto-retraction for the TCD command panel and Compass UI upon starting any sports sequence replay, restoring visibility after the sequence finishes
   - `[x]` Confirmed zero static type errors (`npx tsc --noEmit`) and successful Vite client build (`npm run build`)
+
+- `[x]` Stadium Mesh Replay Sorting & Transparency Fix (Current Run)
+  - `[x]` Optimized stadium mesh material traversal in `src/domainExpansion.ts` to dynamically set `material.transparent = false` when opacity is at or near 1.0 (fully visible), restoring the meshes to the opaque queue to avoid transparent sorting artifacts.
+  - `[x]` Set high `renderOrder` (999 and 1000) for all transparent `sportCelebrationCard` elements (glass backing, neon borders, text planes) to ensure they are rendered last and sit cleanly on top of the stadium mesh.
+  - `[x]` Set high `renderOrder` (990) for `arBillboard` scoreboard and banner elements to prevent similar transparent depth occlusion issues.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully bundled client assets with `npm run build`.
+
