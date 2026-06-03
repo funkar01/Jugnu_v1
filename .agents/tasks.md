@@ -646,3 +646,10 @@
   - `[x]` Raised the wickets (`cricketStumpsMesh`) and bat (`cricketBatMesh`) to Y=0.009 to sit flush with where the players are standing.
   - `[x]` Updated all cricket sports sequence ball and firework strike Y-coordinates to match the raised stumps and bat height (Y=0.010 for wickets, Y=0.012 for bat hits).
   - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Nurburgring Elevation, Overtaking Physics & HUD Orientation Fix (Current Run)
+  - `[x]` Raised the entire Nürburgring racetrack group (`nurburgringGroup`) UP by 1cm (`position.y = 0.01`).
+  - `[x]` Implemented corner-aware F1 racing and overtaking logic using curvature tangent dot product checking (only advancing overtake phase when in corners).
+  - `[x]` Prevented F1 car clipping by separating vehicles laterally by 7mm (`+-0.0035m` offsets) during overtake transitions, and snapping to single-file center drafting on straightaways.
+  - `[x]` Fixed F1 telemetry HUD world-space lookAt orientation to adaptively face the user's headset without carrying driver helmet pitch or roll tilts.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.

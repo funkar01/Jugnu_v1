@@ -298,6 +298,7 @@ export class DomainExpansionSystem extends createSystem({
     private nurburgringF1Wheels: THREE.Mesh[] = [];
     private nurburgringF1WheelMats: THREE.MeshStandardMaterial[] = [];
     private nurburgringF1Progress = 0.0;
+    private nurburgringOvertakePhase = 0.0;
     private nurburgringF1Speed = 0.052;
     private nurburgringTrackMat!: THREE.MeshStandardMaterial;
 
@@ -335,6 +336,8 @@ export class DomainExpansionSystem extends createSystem({
     private scratchVector1 = new THREE.Vector3();
     private scratchVector2 = new THREE.Vector3();
     private scratchVector3 = new THREE.Vector3();
+    private scratchQuat1 = new THREE.Quaternion();
+    private scratchQuat2 = new THREE.Quaternion();
 
     // Highly Optimized, Zero-GC Holographic Fireworks System
     private fireworksMesh!: THREE.InstancedMesh;
@@ -1981,6 +1984,23 @@ export class DomainExpansionSystem extends createSystem({
             this.nurburgringF1Progress += dt * this.nurburgringF1Speed;
             if (this.nurburgringF1Progress > 1.0) this.nurburgringF1Progress -= 1.0;
 
+            // Determine if the track is in a corner at current progress using tangent change curvature check
+            const t1 = this.scratchVector1;
+            const t2 = this.scratchVector2;
+            this.nurburgringCurve.getTangentAt(this.nurburgringF1Progress, t1);
+            this.nurburgringCurve.getTangentAt((this.nurburgringF1Progress + 0.015) % 1.0, t2);
+            const dot = t1.normalize().dot(t2.normalize());
+            const isCorner = dot < 0.992; // high curvature = corner
+
+            if (isCorner) {
+                // Advance overtake phase in corners
+                this.nurburgringOvertakePhase += dt * 1.5;
+            } else {
+                // Snap/lerp to nearest lead state on straights (drafting in single file)
+                const targetPhase = Math.round(this.nurburgringOvertakePhase / Math.PI) * Math.PI;
+                this.nurburgringOvertakePhase += (targetPhase - this.nurburgringOvertakePhase) * 5.0 * dt;
+            }
+
             // Update all three detailed F1 cars
             this.nurburgringCars.forEach((car) => {
                 car.group.visible = true;
@@ -1990,13 +2010,15 @@ export class DomainExpansionSystem extends createSystem({
                 let lateralOffset = 0.0;
 
                 if (car.colorType === 'merc') {
-                    // Mercedes F1 car (fighting for 1st)
-                    carProgress = (this.nurburgringF1Progress + 0.003 + Math.sin(this.nurburgringF1Progress * Math.PI * 6.0) * 0.005 + 1.0) % 1.0;
-                    lateralOffset = Math.sin(this.nurburgringF1Progress * Math.PI * 6.0) * 0.0035;
+                    // Mercedes F1 car
+                    const progressDiff = Math.cos(this.nurburgringOvertakePhase) * 0.007; // split the total 0.014 difference
+                    carProgress = (this.nurburgringF1Progress + progressDiff + 1.0) % 1.0;
+                    lateralOffset = Math.sin(this.nurburgringOvertakePhase) * 0.0035;
                 } else if (car.colorType === 'redbull') {
-                    // Red Bull F1 car (fighting for 1st)
-                    carProgress = (this.nurburgringF1Progress - 0.003 - Math.sin(this.nurburgringF1Progress * Math.PI * 6.0) * 0.005 + 1.0) % 1.0;
-                    lateralOffset = -Math.sin(this.nurburgringF1Progress * Math.PI * 6.0) * 0.0035;
+                    // Red Bull F1 car
+                    const progressDiff = -Math.cos(this.nurburgringOvertakePhase) * 0.007; // opposite sign
+                    carProgress = (this.nurburgringF1Progress + progressDiff + 1.0) % 1.0;
+                    lateralOffset = -Math.sin(this.nurburgringOvertakePhase) * 0.0035;
                 } else {
                     // Ferrari F1 car (trailing in 3rd)
                     carProgress = (this.nurburgringF1Progress - 0.038 + 1.0) % 1.0;
@@ -2153,18 +2175,36 @@ export class DomainExpansionSystem extends createSystem({
                     this.f1HudTexture.needsUpdate = true;
                     this.f1HudMesh.visible = true;
 
-                    // Face the player head (Zero-GC and using updated matrixWorld)
+                    // Face the player head (Zero-GC and using updated world-space matrices)
                     if (this.player && this.player.head) {
                         this.nurburgringF1Car.updateMatrixWorld(true);
                         const headPos = this.scratchVector3;
                         this.player.head.getWorldPosition(headPos);
-                        const localHeadPos = this.scratchVector1;
-                        localHeadPos.copy(headPos);
-                        this.scratchMatrix.copy(this.nurburgringF1Car.matrixWorld).invert();
-                        localHeadPos.applyMatrix4(this.scratchMatrix);
-                        this.f1HudMesh.lookAt(localHeadPos);
-                        // Flip 180° so the plane's front face (correct text side) faces the user
-                        this.f1HudMesh.rotateY(Math.PI);
+
+                        const hudWorldPos = this.scratchVector1;
+                        this.f1HudMesh.getWorldPosition(hudWorldPos);
+
+                        // Look at the player's head in world space with vertical lock (no roll/pitch)
+                        const m = this.scratchMatrix;
+                        const worldUp = this.scratchVector2;
+                        worldUp.set(0, 1, 0);
+                        m.lookAt(hudWorldPos, headPos, worldUp);
+
+                        const targetWorldQuat = this.scratchQuat1;
+                        targetWorldQuat.setFromRotationMatrix(m);
+                        
+                        // Flip 180° so the plane's front face faces the user
+                        const flipQuat = this.scratchQuat2;
+                        flipQuat.setFromAxisAngle(worldUp, Math.PI);
+                        targetWorldQuat.multiply(flipQuat);
+
+                        // Convert world quaternion to local quaternion of f1HudMesh
+                        const parentWorldQuat = this.scratchQuat2; // reuse scratchQuat2
+                        this.nurburgringF1Car.getWorldQuaternion(parentWorldQuat);
+
+                        const localQuat = this.scratchQuat1; // reuse scratchQuat1
+                        localQuat.copy(parentWorldQuat).invert().multiply(targetWorldQuat);
+                        this.f1HudMesh.quaternion.copy(localQuat);
                     }
                 }
 
@@ -8144,6 +8184,7 @@ export class DomainExpansionSystem extends createSystem({
 
     private createNurburgringGroup() {
         this.nurburgringGroup = new THREE.Group();
+        this.nurburgringGroup.position.y = 0.01; // Raise the road map on the ring up by 1 cm
 
         // 1. Create a flat ground base (Deep holographic cyan-blue)
         const groundGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.002, 64);
