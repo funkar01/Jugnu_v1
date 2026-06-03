@@ -288,7 +288,9 @@ export class DomainExpansionSystem extends createSystem({
     private nurburgringCars: {
         group: THREE.Group,
         progress: number,
-        speed: number
+        speed: number,
+        wheels: THREE.Mesh[],
+        colorType: 'merc' | 'redbull' | 'ferrari'
     }[] = [];
     private holoCylinder!: THREE.Mesh;
     private holoCylinderWire!: THREE.LineSegments;
@@ -1975,37 +1977,61 @@ export class DomainExpansionSystem extends createSystem({
         if (this.currentStadiumType === 'nurburgring' && this.nurburgringGroup && this.tableGroup.visible) {
             const isImmersive = this.currentTableScale >= 2.5;
 
-            // 1. Toggle visibility and update cars
-            if (isImmersive) {
-                // Hide tiny cars
-                this.nurburgringCars.forEach((car) => {
-                    car.group.visible = false;
-                });
+            // Update base race progress
+            this.nurburgringF1Progress += dt * this.nurburgringF1Speed;
+            if (this.nurburgringF1Progress > 1.0) this.nurburgringF1Progress -= 1.0;
 
-                // Show & update detailed F1 car
-                this.nurburgringF1Car.visible = true;
-                this.nurburgringF1Progress += dt * this.nurburgringF1Speed;
-                if (this.nurburgringF1Progress > 1.0) this.nurburgringF1Progress -= 1.0;
+            // Update all three detailed F1 cars
+            this.nurburgringCars.forEach((car) => {
+                car.group.visible = true;
 
-                this.nurburgringCurve.getPointAt(this.nurburgringF1Progress, this.f1Pos);
-                this.nurburgringF1Car.position.copy(this.f1Pos);
-                // Offset Y upward to prevent wheels clipping on the flat road surface
-                this.nurburgringF1Car.position.y += 0.0011;
+                // Calculate progress and lateral offset for the car to simulate a realistic battle
+                let carProgress = 0.0;
+                let lateralOffset = 0.0;
 
-                this.nurburgringCurve.getTangentAt(this.nurburgringF1Progress, this.f1zAxis);
+                if (car.colorType === 'merc') {
+                    // Mercedes F1 car (fighting for 1st)
+                    carProgress = (this.nurburgringF1Progress + 0.003 + Math.sin(this.nurburgringF1Progress * Math.PI * 6.0) * 0.005 + 1.0) % 1.0;
+                    lateralOffset = Math.sin(this.nurburgringF1Progress * Math.PI * 6.0) * 0.0035;
+                } else if (car.colorType === 'redbull') {
+                    // Red Bull F1 car (fighting for 1st)
+                    carProgress = (this.nurburgringF1Progress - 0.003 - Math.sin(this.nurburgringF1Progress * Math.PI * 6.0) * 0.005 + 1.0) % 1.0;
+                    lateralOffset = -Math.sin(this.nurburgringF1Progress * Math.PI * 6.0) * 0.0035;
+                } else {
+                    // Ferrari F1 car (trailing in 3rd)
+                    carProgress = (this.nurburgringF1Progress - 0.038 + 1.0) % 1.0;
+                    lateralOffset = 0.001; // slightly off-center
+                }
+
+                // Query positions and tangents from Nurburgring spline curve
+                this.nurburgringCurve.getPointAt(carProgress, this.f1Pos);
+                this.nurburgringCurve.getTangentAt(carProgress, this.f1zAxis);
                 this.f1zAxis.normalize();
 
                 const worldUp = this.scratchVector1.set(0, 1, 0);
                 this.f1xAxis.crossVectors(worldUp, this.f1zAxis).normalize();
                 this.f1yAxis.crossVectors(this.f1zAxis, this.f1xAxis).normalize();
 
-                this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
-                this.nurburgringF1Car.quaternion.setFromRotationMatrix(this.f1RotationMatrix);
+                // Apply lateral lane offsets to positions
+                this.f1Pos.addScaledVector(this.f1xAxis, lateralOffset);
 
-                // Spin wheels locally (roll forward)
-                this.nurburgringF1Wheels.forEach((wheel) => {
+                // Set car position and scale-adjusted height
+                car.group.position.copy(this.f1Pos);
+                car.group.position.y += 0.0011 * 0.8; // 20% smaller height offset
+
+                // Apply spatial rotation matrix to match curves and track elevations
+                this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
+                car.group.quaternion.setFromRotationMatrix(this.f1RotationMatrix);
+
+                // Spin wheels locally
+                car.wheels.forEach((wheel) => {
                     wheel.rotation.x -= dt * 35.0;
                 });
+            });
+
+            if (isImmersive) {
+                // Show HUD on Mercedes car
+                if (this.f1HudMesh) this.f1HudMesh.visible = true;
 
                 // ── 1. DYNAMIC WET TRACK REFLECTION ──
                 if (this.nurburgringTrackMat) {
@@ -2266,28 +2292,6 @@ export class DomainExpansionSystem extends createSystem({
                     this.f1VortexRightPoints.forEach(p => p.set(0, 0, 0));
                 }
                 if (this.f1SprayMesh) this.f1SprayMesh.visible = false;
-
-                // Show & update tiny cars
-                this.nurburgringCars.forEach((car) => {
-                    car.group.visible = true;
-                    car.progress += dt * car.speed;
-                    if (car.progress > 1.0) car.progress -= 1.0;
-
-                    this.nurburgringCurve.getPointAt(car.progress, this.tinyCarPos);
-                    car.group.position.copy(this.tinyCarPos);
-                    // Offset Y upward to prevent chassis clipping on the flat road surface
-                    car.group.position.y += 0.0006;
-
-                    this.nurburgringCurve.getTangentAt(car.progress, this.f1zAxis);
-                    this.f1zAxis.normalize();
-
-                    const worldUp = this.scratchVector1.set(0, 1, 0);
-                    this.f1xAxis.crossVectors(worldUp, this.f1zAxis).normalize();
-                    this.f1yAxis.crossVectors(this.f1zAxis, this.f1xAxis).normalize();
-
-                    this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
-                    car.group.quaternion.setFromRotationMatrix(this.f1RotationMatrix);
-                });
             }
 
             // Spectator particle effects removed — keep the map clean
@@ -2845,7 +2849,7 @@ export class DomainExpansionSystem extends createSystem({
                         const targetUserScale = this.initialUserScale * ratio;
                         
                         // strictly clamped from 1.0 (base 0.60m diameter) up to 3.5 (Player Immersive maximum)
-                        this.userTableScale = THREE.MathUtils.clamp(targetUserScale, 1.0, 3.5);
+                        this.userTableScale = THREE.MathUtils.clamp(targetUserScale, 1.0, 4.5);
                         
                         // Log only on significant scale changes to avoid spamming the debug board
                         if (Math.abs(this.userTableScale - this.lastLoggedScale) > 0.2) {
@@ -3375,12 +3379,12 @@ export class DomainExpansionSystem extends createSystem({
 
                 // - Small Version (Minimized): [1.0, 2.0) -> fully visible (stFadeFactor = 1.0)
                 // - Medium Version: [2.0, 2.5) -> if isNavLayerActive, fade to 0.70 (30% transparency), else 0.90 (90% solid)
-                // - Player Immersive View: [2.5, 3.5] -> structural meshes smoothly fade to 0.0 from their starting opacity
+                // - Player Immersive View: [2.5, 4.5] -> structural meshes smoothly fade to 0.0 from their starting opacity
                 let stFadeFactor = 1.0;
                 if (this.currentTableScale >= 2.5) {
                     const startVal = this.isNavLayerActive ? 0.70 : 0.90;
                     stFadeFactor = THREE.MathUtils.clamp(
-                        THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 3.5, startVal, 0.0),
+                        THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 4.5, startVal, 0.0),
                         0.0,
                         startVal
                     );
@@ -3459,12 +3463,12 @@ export class DomainExpansionSystem extends createSystem({
                 this.holoCylinderWire.visible = true;
                 
                 const cylinderAlpha = THREE.MathUtils.clamp(
-                    THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 3.5, 0.0, 0.15),
+                    THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 4.5, 0.0, 0.15),
                     0.0,
                     0.15
                 );
                 const wireframeAlpha = THREE.MathUtils.clamp(
-                    THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 3.5, 0.0, 0.5),
+                    THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 4.5, 0.0, 0.5),
                     0.0,
                     0.5
                 );
@@ -8177,7 +8181,7 @@ export class DomainExpansionSystem extends createSystem({
         this.nurburgringFrenetFrames = this.nurburgringCurve.computeFrenetFrames(1000, true);
 
         // 5. Extrude 3D flat road Geometry along spline
-        const roadWidth = 0.012;
+        const roadWidth = 0.018; // 50% wider road (previously 0.012)
         const roadThickness = 0.001;
         const roadShape = new THREE.Shape();
         roadShape.moveTo(-roadWidth / 2, -roadThickness / 2);
@@ -8214,84 +8218,46 @@ export class DomainExpansionSystem extends createSystem({
         const lineMesh = new THREE.Line(lineGeo, lineMat);
         this.nurburgringGroup.add(lineMesh);
 
-        // 7. Spawn 4 detailed low-poly sports cars
-        const carColors = [0xef4444, 0x3b82f6, 0x10b981, 0xf59e0b]; // Red, Blue, Green, Orange
+        // 7. Spawn the 3 detailed F1 cars (20% smaller)
         this.nurburgringCars = [];
-        
-        const chassisGeo = new THREE.BoxGeometry(0.0035, 0.0015, 0.006);
-        const cabinGeo = new THREE.BoxGeometry(0.0026, 0.001, 0.003);
-        const lightGeo = new THREE.BoxGeometry(0.0006, 0.0006, 0.0006);
-        const cabinMat = new THREE.MeshStandardMaterial({
-            color: 0x05050f,
-            roughness: 0.1,
-            metalness: 0.9,
-            transparent: true,
-            opacity: 0.8
-        });
-        const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const taillightMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        this.nurburgringF1WheelMats = [];
 
-        for (let i = 0; i < 4; i++) {
-            const carGroup = new THREE.Group();
-            
-            // Chassis
-            const chassisMat = new THREE.MeshStandardMaterial({
-                color: carColors[i],
-                roughness: 0.1,
-                metalness: 0.8,
-                emissive: new THREE.Color(carColors[i]).multiplyScalar(0.2)
-            });
-            const chassis = new THREE.Mesh(chassisGeo, chassisMat);
-            chassis.position.y = 0.00075;
-            carGroup.add(chassis);
-            
-            // Cabin
-            const cabin = new THREE.Mesh(cabinGeo, cabinMat);
-            cabin.position.set(0, 0.0015 + 0.0005, -0.0005);
-            carGroup.add(cabin);
-            
-            // Headlights at front corners (+Z represents front)
-            const hl1 = new THREE.Mesh(lightGeo, headlightMat);
-            hl1.position.set(-0.0012, 0.0008, 0.003);
-            carGroup.add(hl1);
-            
-            const hl2 = new THREE.Mesh(lightGeo, headlightMat);
-            hl2.position.set(0.0012, 0.0008, 0.003);
-            carGroup.add(hl2);
-            
-            // Taillights at rear corners (-Z represents rear)
-            const tl1 = new THREE.Mesh(lightGeo, taillightMat);
-            tl1.position.set(-0.0012, 0.0008, -0.003);
-            carGroup.add(tl1);
-            
-            // Add to group and list
-            const tl2 = new THREE.Mesh(lightGeo, taillightMat);
-            tl2.position.set(0.0012, 0.0008, -0.003);
-            carGroup.add(tl2);
-
-            this.nurburgringGroup.add(carGroup);
-            this.nurburgringCars.push({
-                group: carGroup,
-                progress: i * 0.25,
-                speed: 0.038 + Math.random() * 0.015
-            });
-        }
-
-        // 8. Create the high-fidelity immersive F1 Car
-        this.createNurburgringF1Car();
-        this.nurburgringGroup.add(this.nurburgringF1Car);
-
-        this.tableGroup.add(this.nurburgringGroup);
-        console.log("[NurburgringMap] High-fidelity racetrack, line guides, and 4 detailed sports cars initialized!");
-    }
-
-    private createNurburgringF1Car() {
+        // Mercedes: Silver body, white helmet, teal visor/axle accents (tracked car with HUD)
         this.nurburgringF1Car = new THREE.Group();
         this.nurburgringF1Wheels = [];
+        this.nurburgringF1WheelMats = [];
+        const merc = this.createDetailedF1Car(0xa1a1aa, 0xffffff, 0x00d2be, 'merc');
+        this.nurburgringF1Car.add(merc.car);
+        this.nurburgringF1Wheels = merc.wheels;
+        this.createNurburgringF1HUD();
+        this.nurburgringGroup.add(this.nurburgringF1Car);
+
+        // Red Bull: Dark Blue body, yellow helmet, red visor/axle accents
+        const rb = this.createDetailedF1Car(0x0c1630, 0xeab308, 0xef4444, 'redbull');
+        this.nurburgringGroup.add(rb.car);
+
+        // Ferrari: Rosso Corsa body, black helmet, white visor/axle accents
+        const ferrari = this.createDetailedF1Car(0xd10000, 0x18181b, 0xffffff, 'ferrari');
+        this.nurburgringGroup.add(ferrari.car);
+
+        this.nurburgringCars.push(
+            { group: this.nurburgringF1Car, progress: 0.0, speed: 0.052, wheels: this.nurburgringF1Wheels, colorType: 'merc' },
+            { group: rb.car, progress: 0.0, speed: 0.052, wheels: rb.wheels, colorType: 'redbull' },
+            { group: ferrari.car, progress: 0.0, speed: 0.052, wheels: ferrari.wheels, colorType: 'ferrari' }
+        );
+
+        this.tableGroup.add(this.nurburgringGroup);
+        this.initNurburgringVortexAndSpray();
+        console.log("[NurburgringMap] High-fidelity wider racetrack, line guides, and 3 detailed F1 racing cars initialized!");
+    }
+
+    private createDetailedF1Car(bodyColor: number, helmetColor: number, visorColor: number, colorType: 'merc' | 'redbull' | 'ferrari') {
+        const car = new THREE.Group();
+        const wheels: THREE.Mesh[] = [];
 
         // Materials
         const bodyMat = new THREE.MeshStandardMaterial({
-            color: 0xef4444, // Glossy Red chassis body
+            color: bodyColor,
             roughness: 0.1,
             metalness: 0.8
         });
@@ -8301,15 +8267,11 @@ export class DomainExpansionSystem extends createSystem({
             metalness: 0.9
         });
         const helmetMat = new THREE.MeshStandardMaterial({
-            color: 0xffffff, // White helmet
+            color: helmetColor,
             roughness: 0.2
         });
         const visorMat = new THREE.MeshBasicMaterial({
-            color: 0xeab308 // Gold visor
-        });
-        const wheelMat = new THREE.MeshStandardMaterial({
-            color: 0x09090b, // Matte Black tire rubber
-            roughness: 0.9
+            color: visorColor
         });
         const axleMat = new THREE.MeshStandardMaterial({
             color: 0xd1d5db, // Silver metal axles
@@ -8321,70 +8283,67 @@ export class DomainExpansionSystem extends createSystem({
         const baseGeo = new THREE.BoxGeometry(0.004, 0.0008, 0.014);
         const baseMesh = new THREE.Mesh(baseGeo, carbonMat);
         baseMesh.position.y = 0.0006;
-        this.nurburgringF1Car.add(baseMesh);
+        car.add(baseMesh);
 
-        // 2. Tapered glossy red chassis nosecone (+Z is front)
+        // 2. Tapered body nosecone (+Z is front)
         const noseGeo = new THREE.BoxGeometry(0.002, 0.001, 0.007);
         const noseMesh = new THREE.Mesh(noseGeo, bodyMat);
         noseMesh.position.set(0, 0.0012, 0.0035);
-        noseMesh.rotation.x = -0.1; // Slightly angled down to front nose
-        this.nurburgringF1Car.add(noseMesh);
+        noseMesh.rotation.x = -0.1;
+        car.add(noseMesh);
 
         // 3. Side pods (left and right)
         const podGeo = new THREE.BoxGeometry(0.0018, 0.0015, 0.006);
-        
         const leftPod = new THREE.Mesh(podGeo, bodyMat);
         leftPod.position.set(-0.0024, 0.0012, -0.001);
-        
         const rightPod = new THREE.Mesh(podGeo, bodyMat);
         rightPod.position.set(0.0024, 0.0012, -0.001);
-        
-        this.nurburgringF1Car.add(leftPod, rightPod);
+        car.add(leftPod, rightPod);
 
         // 4. Driver Cockpit & Helmet
         const cockpitGeo = new THREE.BoxGeometry(0.0018, 0.0008, 0.003);
         const cockpitMesh = new THREE.Mesh(cockpitGeo, carbonMat);
         cockpitMesh.position.set(0, 0.0018, -0.0015);
-        this.nurburgringF1Car.add(cockpitMesh);
+        car.add(cockpitMesh);
 
         // Helmet
         const helmetGeo = new THREE.SphereGeometry(0.0009, 16, 16);
         const helmetMesh = new THREE.Mesh(helmetGeo, helmetMat);
         helmetMesh.position.set(0, 0.0026, -0.0015);
-        this.nurburgringF1Car.add(helmetMesh);
+        car.add(helmetMesh);
 
         // Visor
         const visorGeo = new THREE.BoxGeometry(0.0012, 0.0004, 0.0006);
         const visorMesh = new THREE.Mesh(visorGeo, visorMat);
         visorMesh.position.set(0, 0.0028, -0.001);
-        this.nurburgringF1Car.add(visorMesh);
+        car.add(visorMesh);
 
-        // 5. Front Wing with Endplates (at z = 0.007)
+        // 5. Front Wing with Endplates
         const frontWingGeo = new THREE.BoxGeometry(0.0075, 0.0003, 0.0015);
         const frontWing = new THREE.Mesh(frontWingGeo, carbonMat);
         frontWing.position.set(0, 0.0008, 0.007);
-        this.nurburgringF1Car.add(frontWing);
+        car.add(frontWing);
 
         const endplateGeo = new THREE.BoxGeometry(0.0002, 0.0015, 0.0018);
         const leftFrontEndplate = new THREE.Mesh(endplateGeo, bodyMat);
         leftFrontEndplate.position.set(-0.00375, 0.0014, 0.007);
         const rightFrontEndplate = new THREE.Mesh(endplateGeo, bodyMat);
         rightFrontEndplate.position.set(0.00375, 0.0014, 0.007);
-        this.nurburgringF1Car.add(leftFrontEndplate, rightFrontEndplate);
+        car.add(leftFrontEndplate, rightFrontEndplate);
 
-        // 6. Rear Wing with Endplates (at z = -0.007, raised)
+        // 6. Rear Wing with Endplates
         const rearWingGeo = new THREE.BoxGeometry(0.007, 0.0004, 0.002);
         const rearWing = new THREE.Mesh(rearWingGeo, bodyMat);
         rearWing.position.set(0, 0.0035, -0.007);
-        this.nurburgringF1Car.add(rearWing);
+        car.add(rearWing);
 
-        // Struts to hold rear wing
+        // Struts
         const strutGeo = new THREE.BoxGeometry(0.0004, 0.0025, 0.0004);
         const leftStrut = new THREE.Mesh(strutGeo, carbonMat);
         leftStrut.position.set(-0.001, 0.00225, -0.007);
         const rightStrut = new THREE.Mesh(strutGeo, carbonMat);
         rightStrut.position.set(0.001, 0.00225, -0.007);
-        this.nurburgringF1Car.add(leftStrut, rightStrut);
+        car.add(leftStrut, rightStrut);
 
         // Rear endplates
         const rearEndplateGeo = new THREE.BoxGeometry(0.0002, 0.0032, 0.0024);
@@ -8392,11 +8351,10 @@ export class DomainExpansionSystem extends createSystem({
         leftRearEndplate.position.set(-0.0035, 0.0031, -0.007);
         const rightRearEndplate = new THREE.Mesh(rearEndplateGeo, carbonMat);
         rightRearEndplate.position.set(0.0035, 0.0031, -0.007);
-        this.nurburgringF1Car.add(leftRearEndplate, rightRearEndplate);
+        car.add(leftRearEndplate, rightRearEndplate);
 
-        // 7. Axles and Spinning Wheels (4 wheels)
         const wheelGeo = new THREE.CylinderGeometry(0.0016, 0.0016, 0.0012, 16);
-        wheelGeo.rotateZ(Math.PI / 2); // align axle rotation
+        wheelGeo.rotateZ(Math.PI / 2);
 
         const axleGeo = new THREE.CylinderGeometry(0.0003, 0.0003, 0.0068, 8);
         axleGeo.rotateZ(Math.PI / 2);
@@ -8404,38 +8362,45 @@ export class DomainExpansionSystem extends createSystem({
         // Front Axle
         const frontAxle = new THREE.Mesh(axleGeo, axleMat);
         frontAxle.position.set(0, 0.0009, 0.0048);
-        this.nurburgringF1Car.add(frontAxle);
+        car.add(frontAxle);
 
         // Rear Axle
         const rearAxle = new THREE.Mesh(axleGeo, axleMat);
         rearAxle.position.set(0, 0.0009, -0.0048);
-        this.nurburgringF1Car.add(rearAxle);
+        car.add(rearAxle);
 
         // 4 Wheels
         const wheelOffsets = [
-            { x: -0.0037, z: 0.0048 }, // FL
-            { x: 0.0037, z: 0.0048 },  // FR
-            { x: -0.0037, z: -0.0048 }, // RL
-            { x: 0.0037, z: -0.0048 }   // RR
+            { x: -0.0037, z: 0.0048 },
+            { x: 0.0037, z: 0.0048 },
+            { x: -0.0037, z: -0.0048 },
+            { x: 0.0037, z: -0.0048 }
         ];
 
-        this.nurburgringF1WheelMats = [];
         wheelOffsets.forEach((offset) => {
             const wMat = new THREE.MeshStandardMaterial({
-                color: 0x09090b, // Matte Black tire rubber
+                color: 0x09090b,
                 roughness: 0.9,
                 metalness: 0.1,
                 emissive: new THREE.Color(0x000000)
             });
-            this.nurburgringF1WheelMats.push(wMat);
-
+            if (colorType === 'merc') {
+                this.nurburgringF1WheelMats.push(wMat);
+            }
             const wheel = new THREE.Mesh(wheelGeo, wMat);
             wheel.position.set(offset.x, 0.001, offset.z);
             wheel.castShadow = true;
-            this.nurburgringF1Car.add(wheel);
-            this.nurburgringF1Wheels.push(wheel);
+            car.add(wheel);
+            wheels.push(wheel);
         });
 
+        // 20% smaller F1 car size scale applied to the entire group
+        car.scale.setScalar(0.8);
+
+        return { car, wheels };
+    }
+
+    private createNurburgringF1HUD() {
         // --- 8. F1 TELEMETRY HUD INITIALIZATION ---
         this.f1HudCanvas = document.createElement('canvas');
         this.f1HudCanvas.width = 256;
@@ -8453,12 +8418,15 @@ export class DomainExpansionSystem extends createSystem({
             depthWrite: false
         });
 
-        const hudGeom = new THREE.PlaneGeometry(0.030, 0.015); // 50% larger than original 0.020 x 0.010
+        // Scaled to compensate for the F1 car group 0.8 scale so HUD is 50% larger (0.030x0.015) in world space
+        const hudGeom = new THREE.PlaneGeometry(0.0375, 0.01875);
         this.f1HudMesh = new THREE.Mesh(hudGeom, this.f1HudMat);
-        // Position it floating directly above the driver helmet — raised to y=0.012 for larger panel
-        this.f1HudMesh.position.set(0, 0.012, -0.0015);
+        // Position it floating directly above the driver helmet inside F1 car local space
+        this.f1HudMesh.position.set(0, 0.01875, -0.001875);
         this.nurburgringF1Car.add(this.f1HudMesh);
+    }
 
+    private initNurburgringVortexAndSpray() {
         // --- 9. F1 VORTEX VAPOR TRAILS INITIALIZATION ---
         const vortexLeftGeo = new THREE.BufferGeometry();
         const vortexRightGeo = new THREE.BufferGeometry();
@@ -8502,7 +8470,7 @@ export class DomainExpansionSystem extends createSystem({
         this.f1SprayData = new Float32Array(60 * 8);
 
         // Hide initially
-        this.nurburgringF1Car.visible = false;
+        if (this.nurburgringF1Car) this.nurburgringF1Car.visible = false;
     }
 
     private createNavLabel(text: string, colorString: string): THREE.Mesh {

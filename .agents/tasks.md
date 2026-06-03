@@ -635,4 +635,12 @@
   - `[x]` Solved player mesh rendering corruption during zoom-in states by dynamically setting `child.visible = false` on invisible stadium meshes when their material opacity falls below `0.005`.
   - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
 
+- `[x]` Nurburgring Wider Track, F1 Racing Simulation & Scale Range Expansion (Current Run)
+  - `[x]` Expanded maximum userTableScale clamp limit from 3.5 to 4.5.
+  - `[x]` Updated mapLinear range boundaries to [2.5, 4.5] for smooth stFadeFactor, cylinderAlpha, and wireframeAlpha transitions.
+  - `[x]` Widened Nürburgring extruded road geometry by 50% (roadWidth = 0.018m).
+  - `[x]` Redesigned vehicle simulation to instantiate three distinct detailed F1 cars scaled down by 20% (0.8 scale): Mercedes (silver), Red Bull (dark blue/yellow), and Ferrari (red).
+  - `[x]` Programmed parallel F1 racing simulation in update loop: Mercedes and Red Bull weave and swap leads via harmonic sine progress offsets and lateral lane offsets, while Ferrari chases in 3rd.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
 
