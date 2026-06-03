@@ -248,18 +248,7 @@ export class DomainExpansionSystem extends createSystem({
     private players: PlayerMarker[] = [];
     private playerSimTime = 0.0;
 
-    // Ball Tracking & Interactive Sixes Visualization System
-    private activeBall!: THREE.Mesh;
-    private ballTrail!: THREE.Line;
-    private trailPoints: THREE.Vector3[] = [];
-    private maxTrailPoints = 120;
-    private isBallAnimating = false;
-    private ballAnimT = 0.0;
-    private currentSixIndex = -1;
-    private trackingButtons: THREE.Mesh[] = [];
-    private buttonMats: THREE.MeshBasicMaterial[] = [];
-    private buttonLabels: THREE.Mesh[] = [];
-    private buttonPinchProgress: number[] = [0.0, 0.0, 0.0, 0.0, 0.0];
+
     private scoreDisplayMeshes: THREE.Mesh[] = [];
     // Roof arc parameters (in table-local space)
     private readonly ROOF_Y = 0.095;      // Height of stadium roof rim
@@ -392,14 +381,7 @@ export class DomainExpansionSystem extends createSystem({
     private standsOriginalColors: { mat: THREE.MeshStandardMaterial, wireframe: boolean, emissiveHex: number, emissiveIntensity: number }[] = [];
     private floodlightOriginalColors: { mat: THREE.MeshStandardMaterial, emissiveHex: number, emissiveIntensity: number }[] = [];
 
-    // Flick-to-Bounce Sandbox Ball System
-    private sandboxBall!: THREE.Mesh;
-    private isSandboxBallActive = false;
-    private isSandboxBallGrabbed = false;
-    private sandboxBallVel = new THREE.Vector3();
-    private lastGrabPos = new THREE.Vector3();
-    private isLeftPinchActive = false;
-    private isRightPinchActive = false;
+
 
     // Choreographed Sport Sequences & AR Props
     private isSportSequenceActive = false;
@@ -1024,10 +1006,9 @@ export class DomainExpansionSystem extends createSystem({
         this.xButton.add(beam2);
         this.tableGroup.add(this.xButton);
         
-        // Initialize Ball Tracking & Interactive Sixes Buttons on the tactical deck
-        this.initBallTracking();
+        // Initialize Fireworks, Weather, Controls, and Sport Sequence Systems
+        this.initFireworks();
         this.initWeatherSystem();
-        this.initSandboxBall();
         this.initTrackingButtons();
         this.initSportSequenceSystem();
 
@@ -1691,29 +1672,10 @@ export class DomainExpansionSystem extends createSystem({
             this.tableGroup.add(this.inuitMesh!);
         }
 
-        // 3. Reset Physics Bouncing ball & clear trail to avoid visual artifacts
-        this.isBallAnimating = true;
-        this.ballAnimT = 0.0;
-        this.trailPoints = [];
-        this.ballTrail.geometry.setFromPoints([]);
-        
-        // Reset to a safe starting location inside the new geometry
-        this.activeBall.position.set(0, 0.025, 0.0);
-        this.ballVelocity.set(0.045, 0.035, 0.055);
-        (this.activeBall.material as THREE.MeshBasicMaterial).opacity = 1.0;
-        (this.ballTrail.material as THREE.LineBasicMaterial).opacity = 0.95;
-        
         // Make ball size in cricket stadium 50% smaller (relative to enhanced baseline)
         const ballScale = (stadiumType === 'default') ? 0.85 : 1.65;
-        if (this.activeBall) this.activeBall.scale.setScalar(ballScale);
         if (this.hawkeyeBall) this.hawkeyeBall.scale.setScalar(ballScale);
         if (this.sequenceBall) this.sequenceBall.scale.setScalar(ballScale);
-        if (this.sandboxBall) this.sandboxBall.scale.setScalar(ballScale);
-        
-        // Assign color based on stadium
-        const colors = { default: 0xff6600, berlin: 0x22d3ee, inuit: 0xf97316, butterflies: 0x10b981, nurburgring: 0x22d3ee };
-        (this.activeBall.material as THREE.MeshBasicMaterial).color.setHex(colors[stadiumType]);
-        (this.ballTrail.material as THREE.LineBasicMaterial).color.setHex(colors[stadiumType]);
 
         // 4. Update the player markers for the active sport/stadium
         this.players.forEach(p => {
@@ -1792,6 +1754,7 @@ export class DomainExpansionSystem extends createSystem({
         }
 
         // Dynamic Coloring of the Holographic Cylinder and Wireframe
+        const colors: Record<string, number> = { default: 0xff6600, berlin: 0x22d3ee, inuit: 0xf97316, butterflies: 0x10b981, nurburgring: 0x22d3ee };
         const activeColor = colors[stadiumType] || 0x00ffff;
         if (this.holoCylinder && this.holoCylinder.material) {
             (this.holoCylinder.material as THREE.MeshPhongMaterial).color.setHex(activeColor);
@@ -3434,8 +3397,7 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
 
-            // 8. Update Ball Tracking and Interactive Buttons
-            this.updateBallTracking(dt);
+
 
             // Update Manual Fireworks Sequence (Staged Pyrotechnic Show)
             if (this.fireworkSeqTimer >= 0.0) {
@@ -3561,9 +3523,6 @@ export class DomainExpansionSystem extends createSystem({
 
             if (this.currentStadiumType === 'butterflies' || this.currentStadiumType === 'nurburgring') {
                 if (this.weatherMesh) this.weatherMesh.visible = false;
-                if (this.sandboxBall) this.sandboxBall.visible = false;
-                if (this.activeBall) this.activeBall.visible = false;
-                if (this.ballTrail) this.ballTrail.visible = false;
                 if (this.sequenceBall) this.sequenceBall.visible = false;
                 if (this.sequenceBallTrail) this.sequenceBallTrail.visible = false;
                 if (this.tcdLauncherButton && this.tcdLauncherButton.parent) {
@@ -3571,8 +3530,6 @@ export class DomainExpansionSystem extends createSystem({
                 }
                 if (this.tcdPanelGroup) this.tcdPanelGroup.visible = false;
                 this.tcdVisible = false;
-                this.trackingButtons.forEach(b => b.visible = false);
-                this.buttonLabels.forEach(l => l.visible = false);
                 this.scoreDisplayMeshes.forEach(s => s.visible = false);
                 this.fireworkSeqTimer = -1.0;
                 this.fireworkSeqIndex = 0;
@@ -3580,7 +3537,6 @@ export class DomainExpansionSystem extends createSystem({
             } else {
                 this.updateFireworks(dt);
                 this.updateWeather(dt);
-                this.updateSandboxBall(dt);
                 this.updateSportSequence(dt);
                 this.updateNetsWiggling(dt);
                 this.updateBallProjectorDisk();
@@ -3723,8 +3679,6 @@ export class DomainExpansionSystem extends createSystem({
             }
             this.weatherMode = 'off';
             if (this.weatherMesh) this.weatherMesh.visible = false;
-            this.isSandboxBallActive = false;
-            if (this.sandboxBall) this.sandboxBall.visible = false;
             this.tcdVisible = false;
             if (this.tcdPanelGroup) this.tcdPanelGroup.visible = false;
             
@@ -5613,27 +5567,7 @@ export class DomainExpansionSystem extends createSystem({
         return cardGroup;
     }
 
-    private initBallTracking() {
-        // 1. Glowing Ball Mesh (small glowing sphere)
-        const ballGeom = new THREE.SphereGeometry(0.003, 16, 16);
-        const ballMat = new THREE.MeshBasicMaterial({ color: 0xff3300, transparent: true, opacity: 0.0 }); // Start hidden
-        this.activeBall = new THREE.Mesh(ballGeom, ballMat);
-        this.tableGroup.add(this.activeBall);
 
-        // 2. Trajectory Line (glowing neon trail)
-        const trailGeom = new THREE.BufferGeometry();
-        const trailMat = new THREE.LineBasicMaterial({
-            color: 0xff6600,
-            transparent: true,
-            opacity: 0.0,
-            linewidth: 3
-        });
-        this.ballTrail = new THREE.Line(trailGeom, trailMat);
-        this.tableGroup.add(this.ballTrail);
-
-        // 3. Holographic Fireworks Particle System
-        this.initFireworks();
-    }
 
     private initFireworks() {
         const totalParticles = this.MAX_FIREWORKS * this.PARTICLES_PER_FIREWORK;
@@ -5802,31 +5736,7 @@ export class DomainExpansionSystem extends createSystem({
         }
     }
 
-    private initSandboxBall() {
-        const ballGeom = new THREE.SphereGeometry(0.005, 16, 16);
-        const ballMat = new THREE.MeshBasicMaterial({
-            color: 0xff5500,
-            transparent: true,
-            opacity: 0.95
-        });
-        this.sandboxBall = new THREE.Mesh(ballGeom, ballMat);
-        this.sandboxBall.position.set(0.0, 0.009, 0.0);
-        this.sandboxBall.visible = false;
-        this.tableGroup.add(this.sandboxBall);
 
-        // Add a glowing halo ring to the sandbox ball
-        const haloGeom = new THREE.RingGeometry(0.006, 0.008, 16);
-        const haloMat = new THREE.MeshBasicMaterial({
-            color: 0xffaa00,
-            transparent: true,
-            opacity: 0.5,
-            side: THREE.DoubleSide,
-            depthWrite: false
-        });
-        const halo = new THREE.Mesh(haloGeom, haloMat);
-        halo.rotation.x = -Math.PI / 2;
-        this.sandboxBall.add(halo);
-    }
 
     private createGoalPost(): THREE.Group {
         const group = new THREE.Group();
@@ -6420,150 +6330,7 @@ export class DomainExpansionSystem extends createSystem({
         }
     }
 
-    private updateSandboxBall(dt: number) {
-        if (!this.isSandboxBallActive) {
-            this.sandboxBall.visible = false;
-            return;
-        }
 
-        this.sandboxBall.visible = true;
-
-        const leftTip = this.scratchVector4;
-        const rightTip = this.scratchVector5;
-        const leftPinch = this.getIndexPinchData('left', leftTip);
-        const rightPinch = this.getIndexPinchData('right', rightTip);
-
-        const ballWorldPos = this.scratchVector6;
-        this.sandboxBall.getWorldPosition(ballWorldPos);
-
-        // --- Grabbing state check ---
-        if (!this.isSandboxBallGrabbed) {
-            let grabHand: 'left' | 'right' | null = null;
-            if (leftPinch && leftTip.distanceTo(ballWorldPos) < 0.04) {
-                grabHand = 'left';
-            } else if (rightPinch && rightTip.distanceTo(ballWorldPos) < 0.04) {
-                grabHand = 'right';
-            }
-
-            if (grabHand) {
-                this.isSandboxBallGrabbed = true;
-                this.lastGrabPos.copy(grabHand === 'left' ? leftTip : rightTip);
-                this.sandboxBallVel.set(0, 0, 0);
-            }
-        }
-
-        if (this.isSandboxBallGrabbed) {
-            const isLeftGrab = leftPinch && leftTip.distanceTo(ballWorldPos) < 0.08;
-            const isRightGrab = rightPinch && rightTip.distanceTo(ballWorldPos) < 0.08;
-            
-            if (!isLeftGrab && !isRightGrab) {
-                this.isSandboxBallGrabbed = false;
-                this.sandboxBallVel.multiplyScalar(1.4);
-            } else {
-                const targetHandPos = isLeftGrab ? leftTip : rightTip;
-                const localHandPos = this.scratchVector1.copy(targetHandPos);
-                const invMat = this.scratchMatrix.copy(this.tableGroup.matrixWorld).invert();
-                localHandPos.applyMatrix4(invMat);
-                
-                const instVel = this.scratchVector2.subVectors(localHandPos, this.sandboxBall.position).multiplyScalar(1.0 / Math.max(dt, 0.001));
-                this.sandboxBallVel.lerp(instVel, 0.35);
-
-                this.sandboxBall.position.copy(localHandPos);
-                
-                const halo = this.sandboxBall.children[0];
-                if (halo) halo.rotation.z += dt * 5.0;
-            }
-        } else {
-            // --- Euler physics simulation ---
-            const GRAVITY = 0.45;
-            const floorY = this.getFloorY();
-            const ballRadius = 0.0022 * this.sandboxBall.scale.x;
-            const limitY = floorY + ballRadius;
-            const RESTITUTION = 0.65;
-            const DAMPING = Math.pow(0.992, dt * 90);
-
-            this.sandboxBallVel.y -= GRAVITY * dt;
-            this.sandboxBallVel.multiplyScalar(DAMPING);
-
-            this.sandboxBall.position.addScaledVector(this.sandboxBallVel, dt);
-
-            // --- Bound Bouncing solver ---
-            if (this.sandboxBall.position.y <= limitY) {
-                this.sandboxBall.position.y = limitY;
-                this.sandboxBallVel.y = Math.abs(this.sandboxBallVel.y) * RESTITUTION;
-                this.sandboxBallVel.x *= RESTITUTION;
-                this.sandboxBallVel.z *= RESTITUTION;
-
-                if (Math.abs(this.sandboxBallVel.y) > 0.02) {
-                    this.triggerFirework(
-                        this.sandboxBall.position.x, limitY, this.sandboxBall.position.z, 
-                        0xffaa00, 0.012, 0.0, 0.04, 0.0, 0.6
-                    );
-                }
-            }
-
-            const bx = this.sandboxBall.position.x;
-            const bz = this.sandboxBall.position.z;
-            const stType = this.currentStadiumType;
-
-            if (stType === 'berlin') {
-                const R = 0.13;
-                const dist = Math.sqrt(bx * bx + bz * bz);
-                if (dist >= R) {
-                    const nx = bx / dist;
-                    const nz = bz / dist;
-                    const dot = this.sandboxBallVel.x * nx + this.sandboxBallVel.z * nz;
-                    this.sandboxBallVel.x -= 2 * dot * nx * RESTITUTION;
-                    this.sandboxBallVel.z -= 2 * dot * nz * RESTITUTION;
-
-                    this.sandboxBall.position.x = nx * (R - 0.001);
-                    this.sandboxBall.position.z = nz * (R - 0.001);
-
-                    if (this.sandboxBallVel.lengthSq() > 0.0005) {
-                        this.triggerFirework(bx, this.sandboxBall.position.y, bz, 0x22d3ee, 0.012, 0.0, 0.03, 0.0, 0.6);
-                    }
-                }
-            } else if (stType === 'inuit') {
-                const RX = 0.14, RZ = 0.11;
-                const ellipse = (bx * bx) / (RX * RX) + (bz * bz) / (RZ * RZ);
-                if (ellipse >= 1.0) {
-                    const nx = (2 * bx) / (RX * RX);
-                    const nz = (2 * bz) / (RZ * RZ);
-                    const len = Math.sqrt(nx * nx + nz * nz) || 1.0;
-                    const nnx = nx / len;
-                    const nnz = nz / len;
-                    const dot = this.sandboxBallVel.x * nnx + this.sandboxBallVel.z * nnz;
-                    this.sandboxBallVel.x -= 2 * dot * nnx * RESTITUTION;
-                    this.sandboxBallVel.z -= 2 * dot * nnz * RESTITUTION;
-
-                    const s = 0.999 / Math.sqrt(ellipse);
-                    this.sandboxBall.position.x = bx * s;
-                    this.sandboxBall.position.z = bz * s;
-
-                    if (this.sandboxBallVel.lengthSq() > 0.0005) {
-                        this.triggerFirework(bx, this.sandboxBall.position.y, bz, 0xf97316, 0.012, 0.0, 0.03, 0.0, 0.6);
-                    }
-                }
-            } else {
-                const R = 0.12;
-                const dist = Math.sqrt(bx * bx + bz * bz);
-                if (dist >= R) {
-                    const nx = bx / dist;
-                    const nz = bz / dist;
-                    const dot = this.sandboxBallVel.x * nx + this.sandboxBallVel.z * nz;
-                    this.sandboxBallVel.x -= 2 * dot * nx * RESTITUTION;
-                    this.sandboxBallVel.z -= 2 * dot * nz * RESTITUTION;
-
-                    this.sandboxBall.position.x = nx * (R - 0.001);
-                    this.sandboxBall.position.z = nz * (R - 0.001);
-
-                    if (this.sandboxBallVel.lengthSq() > 0.0005) {
-                        this.triggerFirework(bx, this.sandboxBall.position.y, bz, 0xff0055, 0.012, 0.0, 0.03, 0.0, 0.6);
-                    }
-                }
-            }
-        }
-    }
 
     private initTrackingButtons() {
         // --- 1. CORE DOCK Hexagonal/Cylinder Launcher Button on Stadium Rim ---
@@ -6640,15 +6407,12 @@ export class DomainExpansionSystem extends createSystem({
         const border = new THREE.LineSegments(borderGeom, borderMat);
         this.tcdPanelGroup.add(border);
 
-        // --- 3. Grid of 7 TCD Action Buttons ---
+        // --- 3. Grid of 4 TCD Action Buttons ---
         const tcdButtonConfigs = [
-            { label: "KOHLI",  color: 0x00ffff,  x: -0.026, y: 0.016 },
-            { label: "SHARMA", color: 0xffff00,  x: 0.0,    y: 0.016 },
-            { label: "SCOOP",  color: 0x00ff66,  x: 0.026,  y: 0.016 },
-            { label: "Play SEQ", color: 0xff00ff,  x: -0.026, y: 0.001 },
-            { label: "STORM",  color: 0x6366f1,  x: 0.0,    y: 0.001 },
-            { label: "NAVIG",  color: 0xff5500,  x: 0.026,  y: 0.001 },
-            { label: "CLEAR",  color: 0xff3333,  x: 0.0,    y: -0.014 }
+            { label: "Play SEQ", color: 0xff00ff,  x: -0.022, y: 0.012 },
+            { label: "STORM",  color: 0x6366f1,  x: 0.022,  y: 0.012 },
+            { label: "NAVIG",  color: 0xff5500,  x: -0.022,  y: -0.012 },
+            { label: "CLEAR",  color: 0xff3333,  x: 0.022,    y: -0.012 }
         ];
 
         const btnGeom = new THREE.BoxGeometry(0.022, 0.011, 0.003);
@@ -6769,280 +6533,7 @@ export class DomainExpansionSystem extends createSystem({
         this.fireworkSeqIndex = 0;   // Staged at index 0
     }
 
-    private triggerSixAnimation(index: number) {
-        if (index === 3) {
-            // Clear / Reset
-            this.isBallAnimating = false;
-            this.currentSixIndex = -1;
-            (this.activeBall.material as THREE.MeshBasicMaterial).opacity = 0.0;
-            (this.ballTrail.material as THREE.LineBasicMaterial).opacity = 0.0;
-            this.trailPoints = [];
-            this.ballTrail.geometry.setFromPoints([]);
-            console.log("[BallTracking] Active tracking animations cleared!");
-            return;
-        }
 
-        if (index === 4) {
-            // Trigger manual fireworks!
-            this.triggerManualFireworks();
-            return;
-        }
-
-        this.currentSixIndex = index;
-        this.isBallAnimating = true;
-        this.ballAnimT = 0.0;
-        this.trailPoints = [];
-        this.ballTrail.geometry.setFromPoints([]);
-        
-        // Make visible and set colors
-        (this.activeBall.material as THREE.MeshBasicMaterial).opacity = 1.0;
-        (this.ballTrail.material as THREE.LineBasicMaterial).opacity = 0.95;
-        
-        const colors = { default: [0xff6600, 0xffff00, 0x00ff66], berlin: 0x22d3ee, inuit: 0xf97316 };
-        const stType = this.currentStadiumType;
-        const colorHex = (stType === 'berlin' || stType === 'inuit') ? colors[stType] : colors.default[index];
-        (this.activeBall.material as THREE.MeshBasicMaterial).color.setHex(colorHex);
-        (this.ballTrail.material as THREE.LineBasicMaterial).color.setHex(colorHex);
-
-        if (stType === 'berlin' || stType === 'inuit') {
-            // Launch the ball dynamically from different strike positions with high-speed launch vectors!
-            if (index === 0) {
-                // Strike from Kohli's spot straight ahead
-                this.activeBall.position.set(0.012, 0.009, 0.0);
-                this.ballVelocity.set(-0.15, 0.16, 0.03); // Straight launch
-            } else if (index === 1) {
-                // Strike from Sharma's spot leg-side pull
-                this.activeBall.position.set(-0.012, 0.009, 0.0);
-                this.ballVelocity.set(-0.08, 0.18, 0.14); // Pull launch
-            } else if (index === 2) {
-                // Scoop shot behind wickets
-                this.activeBall.position.set(0.012, 0.009, 0.0);
-                this.ballVelocity.set(0.12, 0.16, -0.12); // Scoop launch
-            }
-        }
-
-        console.log(`[BallTracking] Six ${index + 1} animation triggered!`);
-    }
-
-    private updateBallTracking(dt: number) {
-        if (!this.isBallAnimating || this.currentSixIndex === -1) return;
-
-        const stType = this.currentStadiumType;
-
-        // ── Berlin / Inuit: Euler physics with wall bouncing ─────────────────
-        if (stType === 'berlin' || stType === 'inuit') {
-            const GRAVITY = 0.45; // m/s² at minimap scale
-            const floorY = this.getFloorY();
-            const ballRadius = 0.0022 * this.activeBall.scale.x;
-            const limitY = floorY + ballRadius;
-            const RESTITUTION = 0.58; // energy kept on bounce
-            const DAMPING = 0.994;    // air resistance per frame
-
-            // Clamp dt to prevent physics tunnelling at low frame-rates
-            const safeDt = Math.min(dt, 0.033);
-
-            // Apply gravity
-            this.ballVelocity.y -= GRAVITY * safeDt;
-
-            // Euler integration
-            this.activeBall.position.x += this.ballVelocity.x * safeDt;
-            this.activeBall.position.y += this.ballVelocity.y * safeDt;
-            this.activeBall.position.z += this.ballVelocity.z * safeDt;
-
-            // Floor bounce
-            if (this.activeBall.position.y <= limitY) {
-                this.activeBall.position.y = limitY;
-                
-                // Trigger localized mini sparkler burst on strong floor bounce
-                if (Math.abs(this.ballVelocity.y) > 0.04) {
-                    const colHex = stType === 'berlin' ? 0x22d3ee : 0xf97316;
-                    this.triggerFirework(this.activeBall.position.x, limitY, this.activeBall.position.z, colHex);
-                }
-
-                this.ballVelocity.y = Math.abs(this.ballVelocity.y) * RESTITUTION;
-                this.ballVelocity.x *= RESTITUTION;
-                this.ballVelocity.z *= RESTITUTION;
-            }
-
-            // Wall bounce — Berlin: hollow cylinder (radius 0.13), Inuit: oval (rx=0.14, rz=0.11)
-            const bx = this.activeBall.position.x;
-            const bz = this.activeBall.position.z;
-
-            if (stType === 'berlin') {
-                const R = 0.13;
-                const dist = Math.sqrt(bx * bx + bz * bz);
-                if (dist >= R) {
-                    // Trigger wall bounce sparkler
-                    if (this.ballVelocity.lengthSq() > 0.001) {
-                        this.triggerFirework(bx, this.activeBall.position.y, bz, 0x22d3ee);
-                    }
-                    
-                    // Reflect velocity off the cylindrical wall normal
-                    const nx = bx / dist;
-                    const nz = bz / dist;
-                    const dot = this.ballVelocity.x * nx + this.ballVelocity.z * nz;
-                    this.ballVelocity.x -= 2 * dot * nx * RESTITUTION;
-                    this.ballVelocity.z -= 2 * dot * nz * RESTITUTION;
-                    // Push ball back inside
-                    this.activeBall.position.x = nx * (R - 0.001);
-                    this.activeBall.position.z = nz * (R - 0.001);
-                }
-            } else {
-                // Inuit oval: elliptical boundary check
-                const RX = 0.14, RZ = 0.11;
-                const ellipseCheck = (bx * bx) / (RX * RX) + (bz * bz) / (RZ * RZ);
-                if (ellipseCheck >= 1.0) {
-                    // Trigger wall bounce sparkler
-                    if (this.ballVelocity.lengthSq() > 0.001) {
-                        this.triggerFirework(bx, this.activeBall.position.y, bz, 0xf97316);
-                    }
-                    
-                    // Approximate normal from gradient of ellipse equation
-                    const nx = (2 * bx) / (RX * RX);
-                    const nz = (2 * bz) / (RZ * RZ);
-                    const len = Math.sqrt(nx * nx + nz * nz) || 1.0;
-                    const nnx = nx / len; const nnz = nz / len;
-                    const dot = this.ballVelocity.x * nnx + this.ballVelocity.z * nnz;
-                    this.ballVelocity.x -= 2 * dot * nnx * RESTITUTION;
-                    this.ballVelocity.z -= 2 * dot * nnz * RESTITUTION;
-                    // Pull ball back inside
-                    const s = 0.999 / Math.sqrt(ellipseCheck);
-                    this.activeBall.position.x = bx * s;
-                    this.activeBall.position.z = bz * s;
-                }
-            }
-
-            // Global velocity damping
-            this.ballVelocity.multiplyScalar(DAMPING);
-
-            // Loop: when ball nearly stops, re-launch with the same index
-            const speed = this.ballVelocity.length();
-            if (speed < 0.01) {
-                this.triggerSixAnimation(this.currentSixIndex);
-            }
-
-            // Record trail
-            this.trailPoints.push(this.activeBall.position.clone());
-            if (this.trailPoints.length > this.maxTrailPoints) this.trailPoints.shift();
-            this.ballTrail.geometry.setFromPoints(this.trailPoints);
-            return;
-        }
-
-        // ── Default stadium: original Bezier spline path ─────────────────────
-        const prevT = this.ballAnimT;
-        const speed = 0.36; // 1.0 / 2.8s
-        this.ballAnimT += dt * speed;
-
-        let hasWrapped = false;
-        if (this.ballAnimT >= 1.0) {
-            this.ballAnimT = 0.0;
-            this.trailPoints = []; // Reset trail for next loop
-            hasWrapped = true;
-        }
-
-        const t = this.ballAnimT;
-
-        // Calculate positions
-        const start = new THREE.Vector3();
-        const hitPos = new THREE.Vector3();
-        const landing = new THREE.Vector3();
-        const ballPos = new THREE.Vector3();
-
-        if (this.currentSixIndex === 0) {
-            // Kohli Straight Six over Long-On (Forward-Left direction)
-            start.set(-0.024, 0.009, 0.0); // Bowler
-            hitPos.set(0.012, 0.009, 0.0); // Striker Kohli
-            landing.set(-0.13, 0.009, 0.00); // Straight out over long-on fence!
-            
-            // Phase 1: bowler delivery (t < 0.25)
-            if (t < 0.25) {
-                const subT = t / 0.25;
-                ballPos.lerpVectors(start, hitPos, subT);
-                ballPos.y += Math.sin(subT * Math.PI) * 0.008; // Small delivery bounce
-            } else {
-                const subT = (t - 0.25) / 0.75;
-                // High parabolic curve
-                const control = new THREE.Vector3((hitPos.x + landing.x)/2, 0.08, (hitPos.z + landing.z)/2);
-                
-                // Quadratic Bezier
-                const mt = 1.0 - subT;
-                ballPos.copy(hitPos).multiplyScalar(mt * mt)
-                    .addScaledVector(control, 2 * mt * subT)
-                    .addScaledVector(landing, subT * subT);
-            }
-        } else if (this.currentSixIndex === 1) {
-            // Sharma Pull Shot over Deep Mid-Wicket (Bottom-Left quadrant)
-            start.set(0.024, 0.009, 0.0); // Bowler from opposite stumps
-            hitPos.set(-0.012, 0.009, 0.0); // Striker Sharma
-            landing.set(-0.04, 0.009, 0.12); // Leg-side pull shot over boundary!
-            
-            if (t < 0.25) {
-                const subT = t / 0.25;
-                ballPos.lerpVectors(start, hitPos, subT);
-                ballPos.y += Math.sin(subT * Math.PI) * 0.008;
-            } else {
-                const subT = (t - 0.25) / 0.75;
-                const control = new THREE.Vector3((hitPos.x + landing.x)/2, 0.09, (hitPos.z + landing.z)/2);
-                
-                const mt = 1.0 - subT;
-                ballPos.copy(hitPos).multiplyScalar(mt * mt)
-                    .addScaledVector(control, 2 * mt * subT)
-                    .addScaledVector(landing, subT * subT);
-            }
-        } else if (this.currentSixIndex === 2) {
-            // Kohli Scoop Shot over Fine Leg (Top-Right quadrant, behind striker)
-            start.set(-0.024, 0.009, 0.0);
-            hitPos.set(0.012, 0.009, 0.0);
-            landing.set(0.09, 0.009, -0.09); // Behind the wickets over fine leg boundary!
-            
-            if (t < 0.25) {
-                const subT = t / 0.25;
-                ballPos.lerpVectors(start, hitPos, subT);
-                ballPos.y += Math.sin(subT * Math.PI) * 0.008;
-            } else {
-                const subT = (t - 0.25) / 0.75;
-                const control = new THREE.Vector3((hitPos.x + landing.x)/2, 0.07, (hitPos.z + landing.z)/2);
-                
-                const mt = 1.0 - subT;
-                ballPos.copy(hitPos).multiplyScalar(mt * mt)
-                    .addScaledVector(control, 2 * mt * subT)
-                    .addScaledVector(landing, subT * subT);
-            }
-        }
-
-        // Trigger celebratory fireworks on bat hit (t = 0.25) and boundary landing (t = 1.0)
-        const crossedHit = (prevT < 0.25 && (t >= 0.25 || hasWrapped));
-        const crossedLanding = hasWrapped;
-
-        const colors = { default: [0xff6600, 0xffff00, 0x00ff66], berlin: [0x22d3ee], inuit: [0xf97316] };
-        const col = colors.default[this.currentSixIndex] || 0xff6600;
-
-        if (crossedHit) {
-            this.triggerFirework(hitPos.x, hitPos.y, hitPos.z, col);
-        }
-        if (crossedLanding) {
-            this.triggerFirework(landing.x, landing.y, landing.z, col);
-        }
-
-        // Set active ball position
-        this.activeBall.position.copy(ballPos);
-
-        // Clamp height above floor
-        const floorY = this.getFloorY();
-        const ballRadius = 0.0022 * this.activeBall.scale.x;
-        if (this.activeBall.position.y < floorY + ballRadius) {
-            this.activeBall.position.y = floorY + ballRadius;
-        }
-
-        // Add to trail
-        this.trailPoints.push(ballPos.clone());
-        if (this.trailPoints.length > this.maxTrailPoints) {
-            this.trailPoints.shift();
-        }
-
-        // Update trail geometry
-        this.ballTrail.geometry.setFromPoints(this.trailPoints);
-    }
 
     /**
      * Updates SixHoloview roof buttons.
@@ -7155,24 +6646,19 @@ export class DomainExpansionSystem extends createSystem({
                         btn.scale.set(1.2, 0.4, 1.2);
 
                         // Trigger actions
-                        if (i === 0) this.triggerSixAnimation(0);      // KOHLI
-                        else if (i === 1) this.triggerSixAnimation(1); // SHARMA
-                        else if (i === 2) this.triggerSixAnimation(2); // SCOOP
-                        else if (i === 3) this.triggerSportSequence(); // Play SEQ
-                        else if (i === 4) {
+                        if (i === 0) this.triggerSportSequence(); // Play SEQ
+                        else if (i === 1) {
                             // Cycle weather Mode: off -> rain -> neon_dust -> off
                             if (this.weatherMode === 'off') this.setWeatherMode('rain');
                             else if (this.weatherMode === 'rain') this.setWeatherMode('neon_dust');
                             else this.setWeatherMode('off');
                             console.log(`[TCD] Weather cycled to: ${this.weatherMode}`);
-                        } else if (i === 5) {
+                        } else if (i === 2) {
                             // Toggle Navigation Layer
                             this.isNavLayerActive = !this.isNavLayerActive;
                             console.log(`[TCD] Stadium Navigation Layer active: ${this.isNavLayerActive}`);
-                        } else if (i === 6) {
+                        } else if (i === 3) {
                             // CLEAR/Reset all
-                            this.triggerSixAnimation(3);
-                            this.isSandboxBallActive = false;
                             this.setWeatherMode('off');
                             this.isSportSequenceActive = false;
                             if (this.sportCelebrationCard) this.sportCelebrationCard.visible = false;
@@ -8168,10 +7654,6 @@ export class DomainExpansionSystem extends createSystem({
 
         if (this.isSportSequenceActive && this.sequenceBall && this.sequenceBall.visible) {
             activeBall = this.sequenceBall;
-        } else if (this.isBallAnimating && this.activeBall && this.activeBall.visible) {
-            activeBall = this.activeBall;
-        } else if (this.isSandboxBallActive && this.sandboxBall && this.sandboxBall.visible) {
-            activeBall = this.sandboxBall;
         } else if (this.isHawkeyeRunning && this.hawkeyeBall && this.hawkeyeBall.visible) {
             activeBall = this.hawkeyeBall;
         }
