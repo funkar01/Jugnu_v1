@@ -2011,17 +2011,17 @@ export class DomainExpansionSystem extends createSystem({
 
                 if (car.colorType === 'merc') {
                     // Mercedes F1 car
-                    const progressDiff = Math.cos(this.nurburgringOvertakePhase) * 0.007; // split the total 0.014 difference
+                    const progressDiff = Math.cos(this.nurburgringOvertakePhase) * 0.014; // total 0.028 diff for safe nose-to-tail clearance
                     carProgress = (this.nurburgringF1Progress + progressDiff + 1.0) % 1.0;
-                    lateralOffset = Math.sin(this.nurburgringOvertakePhase) * 0.0035;
+                    lateralOffset = Math.sin(this.nurburgringOvertakePhase) * 0.005; // 5mm offset for wide side-by-side clearance in corners
                 } else if (car.colorType === 'redbull') {
                     // Red Bull F1 car
-                    const progressDiff = -Math.cos(this.nurburgringOvertakePhase) * 0.007; // opposite sign
+                    const progressDiff = -Math.cos(this.nurburgringOvertakePhase) * 0.014; // opposite sign
                     carProgress = (this.nurburgringF1Progress + progressDiff + 1.0) % 1.0;
-                    lateralOffset = -Math.sin(this.nurburgringOvertakePhase) * 0.0035;
+                    lateralOffset = -Math.sin(this.nurburgringOvertakePhase) * 0.005; // 5mm offset for wide side-by-side clearance in corners
                 } else {
                     // Ferrari F1 car (trailing in 3rd)
-                    carProgress = (this.nurburgringF1Progress - 0.038 + 1.0) % 1.0;
+                    carProgress = (this.nurburgringF1Progress - 0.052 + 1.0) % 1.0; // 0.052 lag for 7.9mm clearance behind battle
                     lateralOffset = 0.001; // slightly off-center
                 }
 

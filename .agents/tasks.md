@@ -650,6 +650,6 @@
 - `[x]` Nurburgring Elevation, Overtaking Physics & HUD Orientation Fix (Current Run)
   - `[x]` Raised the entire Nürburgring racetrack group (`nurburgringGroup`) UP by 1cm (`position.y = 0.01`).
   - `[x]` Implemented corner-aware F1 racing and overtaking logic using curvature tangent dot product checking (only advancing overtake phase when in corners).
-  - `[x]` Prevented F1 car clipping by separating vehicles laterally by 7mm (`+-0.0035m` offsets) during overtake transitions, and snapping to single-file center drafting on straightaways.
+  - `[x]` Prevented F1 car clipping by separating vehicles laterally by 10mm (`+-0.005m` offsets) during overtake transitions, separating progresses by 0.028 (leaving a safe 2.5mm nose-to-tail gap), and increasing Ferrari lag to 0.052 (leaving 7.9mm clearance behind battle).
   - `[x]` Fixed F1 telemetry HUD world-space lookAt orientation to adaptively face the user's headset without carrying driver helmet pitch or roll tilts.
   - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
