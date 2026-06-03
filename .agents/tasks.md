@@ -653,3 +653,16 @@
   - `[x]` Prevented F1 car clipping by separating vehicles laterally by 10mm (`+-0.005m` offsets) during overtake transitions, separating progresses by 0.028 (leaving a safe 2.5mm nose-to-tail gap), and increasing Ferrari lag to 0.052 (leaving 7.9mm clearance behind battle).
   - `[x]` Fixed F1 telemetry HUD world-space lookAt orientation to adaptively face the user's headset without carrying driver helmet pitch or roll tilts.
   - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Zero-GC Trajectories, F1 Steering Yaw & Multi-Car Spray (Current Run)
+  - `[x]` Eliminated dynamic THREE.Vector3 allocations in sport sequence paths and sandbox physics loop.
+  - `[x]` Refactored sequenceBallTrail to write coordinate indices in-place, eliminating dynamic Float32BufferAttribute updates.
+  - `[x]` Implemented dynamic steering slip yaw angle based on lateral overtaking velocity.
+  - `[x]` Expanded instanced rain tyre spray capacity to 180 and added independent vortex line tracking for Mercedes, Red Bull, and Ferrari cars.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Removal of Flick/Throw Ball Features & TCD Panel Cleanup (Current Run)
+  - `[x]` Completely deleted activeBall and sandboxBall meshes, physics parameters, and updating loops.
+  - `[x]` Removed KOHLI, SHARMA, and SCOOP buttons from the TCD Command backplane.
+  - `[x]` Redesigned the TCD panel with a clean 2x2 grid containing the 4 remaining options (Play SEQ, STORM, NAVIG, CLEAR) and mapped click triggers to new indices.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
