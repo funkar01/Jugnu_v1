@@ -89,6 +89,13 @@ export class JugnuSystem extends createSystem({
   // Compass UI State
   private isCompassOpen = false;
   private isGridLocked = false;
+  private lockIconGroup!: THREE.Group;
+  private lockLeftMesh!: THREE.Mesh;
+  private lockRightMesh!: THREE.Mesh;
+  private lockLeftMat!: THREE.MeshBasicMaterial;
+  private lockRightMat!: THREE.MeshBasicMaterial;
+  private isLockBreaking = false;
+  private lockBreakAnimationTime = 0.0;
   private compassGroup!: THREE.Group;
   private compassNeedle!: THREE.Mesh;
   private compassRing!: THREE.Mesh;
@@ -122,6 +129,12 @@ export class JugnuSystem extends createSystem({
   private originalError = console.error;
   private lockedCompassPos: THREE.Vector3 | null = null;
   private lockedCompassQuat: THREE.Quaternion | null = null;
+  private wasCompassOpen = false;
+  private wasStadiumMenuOpen = false;
+  private wasChatOpen = false;
+  private wasTutorialOpen = false;
+  private wasDebugOpen = false;
+  private wasScaledMax = false;
   private isTutorialOpen = false;
   private compassTutorialCard!: THREE.Mesh;
   private compassTutorialMat!: THREE.MeshBasicMaterial;
@@ -215,6 +228,7 @@ export class JugnuSystem extends createSystem({
     // Initialize UI and Keys
     this.createExpressionUI();
     this.initCompassUI();
+    this.initLockIcon();
     this.initTutorialThread();
     this.initFireflies();
     window.addEventListener('keydown', (e) => this.handleKeyDown(e));
@@ -607,18 +621,23 @@ export class JugnuSystem extends createSystem({
 
     // ── LOCK ESCAPE: hold pinch for 1.5 seconds while locked → unlock + come to fingertips ──
     if (this.isGridLocked) {
-        if (isPinchingLeft) {
+        const pinchActive = isPinchingLeft || isPinchingRight;
+        if (pinchActive) {
             this.lockEscapeTimer += safeDt;
             if (this.lockEscapeTimer >= 1.5) {
                 this.lockEscapeTimer = 0.0;
                 console.log('[Jugnu] Held lock escape pinch for 1.5s — unlocking and lerping to hand.');
 
-                // 1. Unlock
+                // 1. Trigger Lock Breaking animation
+                this.isLockBreaking = true;
+                this.lockBreakAnimationTime = 0.0;
+
+                // 2. Unlock
                 this.isGridLocked = false;
                 this.lockedCompassPos = null;
                 this.lockedCompassQuat = null;
 
-                // 2. Close compass UI so it respawns cleanly on next open
+                // 3. Close compass UI so it respawns cleanly on next open
                 this.isCompassOpen = false;
                 this.isStadiumMenuOpen = false;
                 this.isChatOpen = false;
@@ -627,7 +646,11 @@ export class JugnuSystem extends createSystem({
                 this.indexPinchTimer = 0.0;
                 this.pinchReleasedTimer = 0.0;
 
-                // 3. Pull Jugnu to fingertip
+                // Determine which hand was pinching
+                const targetHand = isPinchingLeft ? 'left' : 'right';
+                const targetTip = isPinchingLeft ? this.leftPinchTip : this.rightPinchTip;
+
+                // 4. Pull Jugnu to fingertip
                 let lockedJugnuPos = this.scratchV3_1;
                 lockedJugnuPos.set(0, 0, 0);
                 for (const entity of this.queries.jugnu.entities) {
@@ -637,10 +660,10 @@ export class JugnuSystem extends createSystem({
                 }
 
                 this.interactionState = 'LerpingToHand';
-                this.attachedHand = 'left';
+                this.attachedHand = targetHand;
                 this.startPos.copy(lockedJugnuPos);
-                this.targetPos.copy(this.leftPinchTip);
-                this.previousHandPos.copy(this.leftPinchTip);
+                this.targetPos.copy(targetTip);
+                this.previousHandPos.copy(targetTip);
                 this.handVelocity.set(0, 0, 0);
                 this.lerpTime = 0;
                 this.velocity.set(0, 0, 0);
@@ -824,7 +847,7 @@ export class JugnuSystem extends createSystem({
 
     const isMapScaledMax = !!((window as any).minimapTableVisible && (window as any).minimapTableScale >= 2.0);
 
-    let activeJugnuModel: JugnuV3Model | null = null;
+    let activeJugnuModel: any = null;
     let activeJugnuPos = new THREE.Vector3();
     let instructionStep = 0;
 
@@ -922,6 +945,13 @@ export class JugnuSystem extends createSystem({
           if (this.isGridLocked) {
               // Rigid Lock: perfectly frozen with zero floating/noise/drift
               obj.position.copy(this.centerPos);
+              if (this.lockEscapeTimer > 0.0) {
+                  // High-frequency vibration breakout effect
+                  const vibrationIntensity = 0.015 * (this.lockEscapeTimer / 1.5);
+                  obj.position.x += (Math.random() - 0.5) * vibrationIntensity;
+                  obj.position.y += (Math.random() - 0.5) * vibrationIntensity;
+                  obj.position.z += (Math.random() - 0.5) * vibrationIntensity;
+              }
               this.velocity.set(0, 0, 0);
           } else {
               if (this.interactionState === 'Following') {
@@ -1008,7 +1038,55 @@ export class JugnuSystem extends createSystem({
         obj.scale.lerp(baseScale, 10.0 * safeDt);
         jugModel.pulseIntensity = 0;
       }
+      activeJugnuPos.copy(obj.position);
     });
+
+    // Lock Icon Floating UI Update & Breakout Animation
+    if (this.lockIconGroup && activeJugnuModel) {
+        if (this.isGridLocked || this.isLockBreaking) {
+            // Anchor to the active Jugnu model's local Y axis to ensure it sits directly on top of Jugnu's head even when tilted
+            const localY = this.scratchV3_2.set(0, 1, 0).applyQuaternion(activeJugnuModel.quaternion);
+            const lockYOffset = 1.15 * activeJugnuModel.scale.y + 0.02;
+            this.lockIconGroup.position.copy(activeJugnuPos).addScaledVector(localY, lockYOffset);
+            
+            // Face the player/camera (billboard)
+            this.player.head.getWorldPosition(this.scratchV3_1);
+            this.lockIconGroup.lookAt(this.scratchV3_1);
+
+            if (this.isLockBreaking) {
+                this.lockBreakAnimationTime += safeDt;
+                const t = this.lockBreakAnimationTime / 0.8;
+                if (t >= 1.0) {
+                    this.isLockBreaking = false;
+                    this.lockIconGroup.visible = false;
+                } else {
+                    // Left half flies left, falls slightly, and rotates counter-clockwise
+                    this.lockLeftMesh.position.x = -0.009 - t * 0.06;
+                    this.lockLeftMesh.position.y = -t * 0.03;
+                    this.lockLeftMesh.rotation.z = -t * Math.PI / 2.5;
+                    this.lockLeftMat.opacity = 1.0 - t;
+
+                    // Right half flies right, falls slightly, and rotates clockwise
+                    this.lockRightMesh.position.x = 0.009 + t * 0.06;
+                    this.lockRightMesh.position.y = -t * 0.03;
+                    this.lockRightMesh.rotation.z = t * Math.PI / 2.5;
+                    this.lockRightMat.opacity = 1.0 - t;
+                }
+            } else {
+                // Locked but not breaking: reset to default
+                this.lockIconGroup.visible = true;
+                this.lockLeftMesh.position.set(-0.009, 0, 0);
+                this.lockLeftMesh.rotation.set(0, 0, 0);
+                this.lockLeftMat.opacity = 1.0;
+
+                this.lockRightMesh.position.set(0.009, 0, 0);
+                this.lockRightMesh.rotation.set(0, 0, 0);
+                this.lockRightMat.opacity = 1.0;
+            }
+        } else {
+            this.lockIconGroup.visible = false;
+        }
+    }
 
     // Particle Trail Update
     if (activeJugnuModel && this.interactionState === 'Idle' && this.throwTimer > 0) {
@@ -1089,7 +1167,20 @@ export class JugnuSystem extends createSystem({
 
     if (activeJugnuModel) {
         const isSportSeqActive = !!(window as any).isSportSequenceActive;
-        if (isMapScaledMax || isSportSeqActive) {
+        const shouldHideUI = isMapScaledMax || isSportSeqActive;
+
+        if (shouldHideUI) {
+            if (!this.wasScaledMax) {
+                // Just transitioned into scaled max or sport sequence active: save states
+                this.wasCompassOpen = this.isCompassOpen;
+                this.wasStadiumMenuOpen = this.isStadiumMenuOpen;
+                this.wasChatOpen = this.isChatOpen;
+                this.wasTutorialOpen = this.isTutorialOpen;
+                this.wasDebugOpen = this.isDebugOpen;
+                this.wasScaledMax = true;
+            }
+            
+            // Force close them visually
             this.isCompassOpen = false;
             this.indexPinchTimer = 0.0;
             this.pinchReleasedTimer = 0.0;
@@ -1098,6 +1189,29 @@ export class JugnuSystem extends createSystem({
             this.isTutorialOpen = false;
             this.isDebugOpen = false;
         } else {
+            if (this.wasScaledMax) {
+                // Just transitioned back: restore states
+                this.isCompassOpen = this.wasCompassOpen;
+                this.isStadiumMenuOpen = this.wasStadiumMenuOpen;
+                this.isChatOpen = this.wasChatOpen;
+                this.isTutorialOpen = this.wasTutorialOpen;
+                this.isDebugOpen = this.wasDebugOpen;
+                this.wasScaledMax = false;
+                
+                // Trigger redraw of the compass grid and active panels to ensure they render properly
+                this.redrawCompassGrid(this.hoveredCellIndex);
+                if (this.isChatOpen) this.redrawCompassChat();
+                if (this.isDebugOpen) this.redrawCompassDebug();
+                if (this.isStadiumMenuOpen) this.redrawCompassStadiumMenu();
+                if (this.isTutorialOpen) {
+                    let currentStep = 0;
+                    for (const entity of this.queries.jugnu.entities) {
+                        currentStep = entity.getValue(Jugnu, "instructionStep") as number;
+                        break;
+                    }
+                    this.redrawCompassTutorial(currentStep);
+                }
+            }
             const leftTip = new THREE.Vector3();
             const rightTip = new THREE.Vector3();
             const isLeftPinching = this.getPinchData('left', leftTip);
@@ -1836,7 +1950,7 @@ export class JugnuSystem extends createSystem({
           { label: "COMPASS",  type: "COMPASS" },
           { label: this.isDebugOpen ? "CLOSE DEBUG" : "DEBUG", type: "DEBUG" },
           { label: this.isStadiumMenuOpen ? "CLOSE MAPS" : "MAPS", type: "STADIUM_SEL" },
-          { label: (window as any).showRoomWalls ? "WALLS ON" : "WALLS OFF", type: "RESET" },
+          { label: (window as any).showRoomWalls ? "WALLS ON" : "WALLS OFF", type: "WALLS" },
           { label: this.isGridLocked ? "UNLOCK" : "LOCK GRID", type: "LOCK" }
       ];
 
@@ -1972,7 +2086,7 @@ export class JugnuSystem extends createSystem({
                   ctx.beginPath();
                   ctx.arc(cx, iconY + 1, 3, 0, 2 * Math.PI);
                   ctx.fill();
-              } else if (icon.type === 'RESET') {
+              } else if (icon.type === 'WALLS') {
                   ctx.beginPath();
                   ctx.arc(cx, iconY, 10, 0.15 * Math.PI, 1.85 * Math.PI);
                   ctx.stroke();
@@ -2172,6 +2286,80 @@ export class JugnuSystem extends createSystem({
       this.redrawCompassGrid(-1);
 
       this.world.createTransformEntity(this.compassGroup);
+      this.initLockIcon();
+  }
+
+  private initLockIcon() {
+      const mainCanvas = document.createElement('canvas');
+      mainCanvas.width = 128;
+      mainCanvas.height = 128;
+      const ctx = mainCanvas.getContext('2d')!;
+      ctx.clearRect(0, 0, 128, 128);
+      
+      ctx.strokeStyle = '#22c55e'; // Green lock
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(64, 48, 20, Math.PI, 0);
+      ctx.lineTo(84, 68);
+      ctx.moveTo(44, 48);
+      ctx.lineTo(44, 68);
+      ctx.stroke();
+      
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.roundRect(34, 68, 60, 40, 8);
+      ctx.fill();
+      
+      ctx.fillStyle = '#05050f';
+      ctx.beginPath();
+      ctx.arc(64, 84, 6, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.fillRect(61, 84, 6, 14);
+
+      const leftCanvas = document.createElement('canvas');
+      leftCanvas.width = 64;
+      leftCanvas.height = 128;
+      const ctxLeft = leftCanvas.getContext('2d')!;
+      ctxLeft.drawImage(mainCanvas, 0, 0, 64, 128, 0, 0, 64, 128);
+
+      const rightCanvas = document.createElement('canvas');
+      rightCanvas.width = 64;
+      rightCanvas.height = 128;
+      const ctxRight = rightCanvas.getContext('2d')!;
+      ctxRight.drawImage(mainCanvas, 64, 0, 64, 128, 0, 0, 64, 128);
+
+      const leftTex = new THREE.CanvasTexture(leftCanvas);
+      leftTex.colorSpace = THREE.SRGBColorSpace;
+      const rightTex = new THREE.CanvasTexture(rightCanvas);
+      rightTex.colorSpace = THREE.SRGBColorSpace;
+
+      this.lockLeftMat = new THREE.MeshBasicMaterial({
+          map: leftTex,
+          transparent: true,
+          opacity: 1.0,
+          side: THREE.DoubleSide,
+          depthWrite: false
+      });
+      this.lockRightMat = new THREE.MeshBasicMaterial({
+          map: rightTex,
+          transparent: true,
+          opacity: 1.0,
+          side: THREE.DoubleSide,
+          depthWrite: false
+      });
+
+      this.lockLeftMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.018, 0.036), this.lockLeftMat);
+      this.lockLeftMesh.position.set(-0.009, 0, 0);
+
+      this.lockRightMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.018, 0.036), this.lockRightMat);
+      this.lockRightMesh.position.set(0.009, 0, 0);
+
+      this.lockIconGroup = new THREE.Group();
+      this.lockIconGroup.add(this.lockLeftMesh);
+      this.lockIconGroup.add(this.lockRightMesh);
+      this.lockIconGroup.visible = false;
+
+      this.world.createTransformEntity(this.lockIconGroup);
   }
 
 
@@ -2186,7 +2374,7 @@ export class JugnuSystem extends createSystem({
           { label: "COMPASS",  type: "COMPASS" },
           { label: "DEBUG",    type: "DEBUG" },
           { label: "MAPS",     type: "STADIUM_SEL" },
-          { label: (window as any).showRoomWalls ? "WALLS ON" : "WALLS OFF", type: "RESET" },
+          { label: (window as any).showRoomWalls ? "WALLS ON" : "WALLS OFF", type: "WALLS" },
           { label: "LOCK",     type: "LOCK" }
       ];
 
@@ -2250,12 +2438,11 @@ export class JugnuSystem extends createSystem({
               detail = "Stadium Selector retracted.\n\nStatus: STANDBY.\nGrid view updated.";
           }
           this.redrawCompassGrid(this.hoveredCellIndex);
-      } else if (tileType === 'RESET') {
+      } else if (tileType === 'WALLS') {
           // Toggle room wall visualizer
           (window as any).showRoomWalls = !((window as any).showRoomWalls ?? false);
           const wallsVisible = (window as any).showRoomWalls as boolean;
           title = wallsVisible ? "Room Walls ON" : "Room Walls OFF";
-          this.activateJugnu();
           detail = wallsVisible
               ? "Room Wall Visualization: ENABLED.\n\nWhite edge lines are now visible on all detected surfaces and planes."
               : "Room Wall Visualization: DISABLED.\n\nSurface edge lines hidden. Clean AR mode active.";

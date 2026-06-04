@@ -666,3 +666,25 @@
   - `[x]` Removed KOHLI, SHARMA, and SCOOP buttons from the TCD Command backplane.
   - `[x]` Redesigned the TCD panel with a clean 2x2 grid containing the 4 remaining options (Play SEQ, STORM, NAVIG, CLEAR) and mapped click triggers to new indices.
   - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Stadium GLB Upgrade, Amenities Pulsing & ACTION TAB Renaming (Current Run)
+  - `[x]` Incorporated the updated Crypto.com Stadium (`Crypto.comStadium.glb`) and Olympiastadion (`Olympiastadion.glb`) meshes, removing previous meshes totally.
+  - `[x]` Removed procedural goal, net, post, and hoop creation code, and mapped them to the GLTF model's built-in nodes (`OlympiaGoalPost`, `Inuit Basket`, `InuitNet`) during lazy loader mesh traversal.
+  - `[x]` Programmed custom `applyStadiumMaterial` mappings for `goal`, `net`, `post`, `basket`, and `ameneties` meshes.
+  - `[x]` Integrated dynamic pulsing highlight for the amenities mesh. When the navigation layer is active (NAVIG button), the amenities mesh stays fully opaque and pulsates with a high-fidelity amber-gold emissive glow, while other structural meshes fade to 0.7 opacity.
+  - `[x]` Renamed "CORE DOCK" (TCD) to "ACTION TAB" on the hexagonal launcher button canvas and cleaned up associated logs/comments.
+  - `[x]` Expanded maximum userTableScale clamp limit from 4.5 to 6.0 and mapped linear interpolation ranges to 6.0.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Lock Breakout UI, Walls Reset Fix, and Basketball Replay Opposite Hoop Scale Lock Break (Current Run)
+  - `[x]` Replaced walls button type from `"RESET"` to `"WALLS"` and removed `this.activateJugnu()` from its click handler, fixing Jugnu's position reset behavior.
+  - `[x]` Created a floating green lock icon group (`lockIconGroup`) above Jugnu when locked, billboarded to always face the player.
+  - `[x]` Constructed the lock icon using a 128x128 green lock canvas split down the center into separate left/right canvas textures mapped to dual-sided plane meshes.
+  - `[x]` Made the lock icon 55% smaller total (`0.018m` x `0.036m` planes) and anchored it exactly along Jugnu's local Y axis vector (`obj.quaternion` * unit Y) at `1.15 * scale.y + 0.01` distance to sit neatly 1cm above Jugnu's head without overlaying or clipping the mesh.
+  - `[x]` Implemented breakout vibration on Jugnu. When summoning Jugnu while locked, applied a high-frequency position shudder that builds up with pinch time.
+  - `[x]` Programmed splitting breakout animation: once the 1.5s pinch timer completes, the lock is broken, the left/right halves rotate outward, translate away, and fade out, and Jugnu lerps to the hand.
+  - `[x]` Implemented full Compass UI state save/restore caching, automatically reloading open panels (Chat, Maps, Debug, Tutorial) when transitioning back from a scaled-up minimap.
+  - `[x]` Updated basketball sequence to scale up the opposite hoop (`basketballHoop1`) by 50 times its original scale when scoring completes at `time >= 15.8`.
+  - `[x]` Saved/restored hoop scales using `restoreHoopScales()` helper on resets, and corrected the wiggling net mesh and flashed rim references to `hoop2NetMesh` / `basketballHoop2` to match the ball trajectory.
+  - `[x]` Moved the lock icon higher on Jugnu's local Y axis by an additional 1cm (changing local Y-axis offset constant to +0.02) to prevent clipping with Jugnu's 3D mesh.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
