@@ -724,3 +724,8 @@
   - `[x]` Enforce pinch release checking to prevent immediate breakout upon locking
   - `[x]` Ignore right hand pinches for lock escape breakouts
   - `[x]` Verify clean static compilation and bundle Vite builds
+- `[x]` Compass UI Dual Color & Locked Zoom Visibility (Current Run)
+  - `[x]` Draw complementary color circles below bold white icons matching Jugnu's colors
+  - `[x]` Animate entire color transitions (background, borders, text) smoothly using `animatedMoodColor` and `animatedCompColor`
+  - `[x]` Fix locked compass UI visibility loss when zooming out of the minimap
+  - `[x]` Verify clean static compilation and client build

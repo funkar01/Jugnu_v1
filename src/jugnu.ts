@@ -1,5 +1,5 @@
 import { createComponent, createSystem, Pressed, Vector3, PhysicsBody, PhysicsState, PhysicsManipulation, PhysicsShape, PhysicsShapeType } from "@iwsdk/core";
-import { MoodColors } from "./JugnuV3Model.js";
+import { MoodColors, MoodCompColors } from "./JugnuV3Model.js";
 import type { JugnuV3Model, Mood } from "./JugnuV3Model.js";
 import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
 import * as THREE from "three";
@@ -112,6 +112,8 @@ export class JugnuSystem extends createSystem({
   private centerTitle = "JUGNU CORE";
   private centerDetail = "Hover or tap an icon to interact.";
   private lastMoodColorHex = "";
+  private animatedMoodColor = new THREE.Color(0xffb347);
+  private animatedCompColor = new THREE.Color(0x4793ff);
   private lockPinchAllowed = false;
   private indexPinchTimer = 0.0;
   private pinchReleasedTimer = 0.0;
@@ -1255,6 +1257,12 @@ export class JugnuSystem extends createSystem({
             if (this.wasScaledMax) {
                 // Just transitioned back: restore states
                 this.isCompassOpen = this.wasCompassOpen;
+                if (this.isGridLocked) {
+                    this.isCompassOpen = true;
+                }
+                if (this.isCompassOpen) {
+                    this.compassGroup.visible = true;
+                }
                 this.isStadiumMenuOpen = this.wasStadiumMenuOpen;
                 this.isChatOpen = this.wasChatOpen;
                 this.isTutorialOpen = this.wasTutorialOpen;
@@ -1352,12 +1360,21 @@ export class JugnuSystem extends createSystem({
         }
 
         if (this.compassGroup.visible && activeJugnuPos.lengthSq() > 0) {
-            // Check if active expression / mood color shifted
+            // Check if active expression / mood color shifted, and animate transition
             const currentMood = this.expressionList[this.currentExpressionIndex];
-            const moodColor = MoodColors[currentMood] || new THREE.Color(0xffffff);
-            const moodColorHex = '#' + moodColor.getHexString();
-            if (moodColorHex !== this.lastMoodColorHex) {
-                this.lastMoodColorHex = moodColorHex;
+            const targetColor = MoodColors[currentMood] || new THREE.Color(0xffffff);
+            const targetCompColor = MoodCompColors[currentMood] || new THREE.Color(0xffffff);
+
+            const dist1 = Math.pow(this.animatedMoodColor.r - targetColor.r, 2) +
+                          Math.pow(this.animatedMoodColor.g - targetColor.g, 2) +
+                          Math.pow(this.animatedMoodColor.b - targetColor.b, 2);
+            const dist2 = Math.pow(this.animatedCompColor.r - targetCompColor.r, 2) +
+                          Math.pow(this.animatedCompColor.g - targetCompColor.g, 2) +
+                          Math.pow(this.animatedCompColor.b - targetCompColor.b, 2);
+
+            if (dist1 > 0.00001 || dist2 > 0.00001) {
+                this.animatedMoodColor.lerp(targetColor, safeDt * 5.0);
+                this.animatedCompColor.lerp(targetCompColor, safeDt * 5.0);
                 this.redrawCompassGrid(this.hoveredCellIndex);
             }
 
@@ -2112,9 +2129,7 @@ export class JugnuSystem extends createSystem({
       const w = 512;
       const h = 512;
 
-      const currentMood = this.expressionList[this.currentExpressionIndex];
-      const moodColor = MoodColors[currentMood] || new THREE.Color(0xffffff);
-      const moodColorHex = '#' + moodColor.getHexString();
+      const moodColorHex = '#' + this.animatedMoodColor.getHexString();
 
       // 1. Clear offscreen canvases and tint backgrounds
       if (this.outerBgCanvas) {
@@ -2178,43 +2193,62 @@ export class JugnuSystem extends createSystem({
           ctx.stroke();
       }
 
-      // 3. Draw radial spokes (glowing highlights, icons, labels)
+      // 3. Draw radial spokes (complementary circles, bold white vector icons, labels)
       const R = 180;
+      const compColorHex = '#' + this.animatedCompColor.getHexString();
+      
       JugnuSystem.SPOKES.forEach((spoke, idx) => {
           const cx = 256 + R * Math.cos(spoke.angle);
           const cy = 256 + R * Math.sin(spoke.angle);
           const iconY = cy - 8;
 
-          // Draw hover highlight glow circle behind spoke
-          if (hoveredIdx === idx) {
-              ctx.fillStyle = moodColorHex + '33'; // ~20% opacity
-              ctx.strokeStyle = moodColorHex + '88';
-              ctx.lineWidth = 2;
+          // 3a. Draw complementary color background circle
+          ctx.fillStyle = compColorHex;
+          ctx.beginPath();
+          ctx.arc(cx, iconY, 20, 0, 2 * Math.PI);
+          ctx.fill();
+
+          // 3b. Determine active and border states
+          let activeBorder = false;
+          let borderColor = moodColorHex;
+          
+          if (spoke.type === 'CHAT' && this.isChatOpen) activeBorder = true;
+          else if (spoke.type === 'TUTORIAL' && this.isTutorialOpen) activeBorder = true;
+          else if (spoke.type === 'STADIUM_SEL' && this.isStadiumMenuOpen) activeBorder = true;
+          else if (spoke.type === 'DEBUG' && this.isDebugOpen) activeBorder = true;
+          else if (spoke.type === 'WALLS' && (window as any).showRoomWalls) activeBorder = true;
+          else if (spoke.type === 'LOCK' && this.isGridLocked) {
+              activeBorder = true;
+              borderColor = '#22c55e'; // Green for locked
+          }
+
+          // 3c. Draw outer primary mood color border (ring) if active or hovered
+          if (activeBorder || hoveredIdx === idx) {
+              ctx.strokeStyle = borderColor;
+              ctx.lineWidth = hoveredIdx === idx ? 4 : 2;
               ctx.beginPath();
-              ctx.arc(cx, cy, 32, 0, 2 * Math.PI);
-              ctx.fill();
+              ctx.arc(cx, iconY, hoveredIdx === idx ? 23 : 22, 0, 2 * Math.PI);
               ctx.stroke();
           }
 
-          // Render vector icons
+          // 3d. Render vector icons in bold white
           ctx.lineWidth = 3;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
 
           if (spoke.type === 'LOCK') {
-              const isLocked = this.isGridLocked;
-              ctx.strokeStyle = isLocked ? '#22c55e' : moodColorHex;
+              ctx.strokeStyle = '#ffffff';
               ctx.beginPath();
               ctx.arc(cx, iconY - 4, 6, Math.PI, 0);
               ctx.lineTo(cx + 6, iconY + 2);
               ctx.moveTo(cx - 6, iconY - 4);
               ctx.lineTo(cx - 6, iconY + 2);
               ctx.stroke();
-              ctx.fillStyle = ctx.strokeStyle;
+              ctx.fillStyle = '#ffffff';
               ctx.beginPath();
               ctx.roundRect(cx - 9, iconY, 18, 12, 3);
               ctx.fill();
-              ctx.fillStyle = '#05050f';
+              ctx.fillStyle = compColorHex;
               ctx.beginPath();
               ctx.arc(cx, iconY + 5, 2, 0, 2 * Math.PI);
               ctx.fill();
@@ -2223,8 +2257,6 @@ export class JugnuSystem extends createSystem({
               ctx.strokeStyle = '#ffffff';
 
               if (spoke.type === 'CHAT') {
-                  ctx.fillStyle = this.isChatOpen ? moodColorHex : '#ffffff';
-                  ctx.strokeStyle = ctx.fillStyle;
                   ctx.beginPath();
                   ctx.roundRect(cx - 12, iconY - 8, 24, 16, 4);
                   ctx.stroke();
@@ -2236,14 +2268,13 @@ export class JugnuSystem extends createSystem({
                   ctx.fill();
                   ctx.stroke();
                   
-                  ctx.fillStyle = this.isChatOpen ? '#05050f' : '#ffffff';
+                  ctx.fillStyle = compColorHex;
                   ctx.beginPath();
                   ctx.arc(cx - 5, iconY, 1.5, 0, 2 * Math.PI);
                   ctx.arc(cx, iconY, 1.5, 0, 2 * Math.PI);
                   ctx.arc(cx + 5, iconY, 1.5, 0, 2 * Math.PI);
                   ctx.fill();
               } else if (spoke.type === 'STADIUM') {
-                  ctx.strokeStyle = '#ffffff';
                   ctx.beginPath();
                   ctx.ellipse(cx, iconY, 14, 7, 0, 0, 2 * Math.PI);
                   ctx.stroke();
@@ -2252,8 +2283,6 @@ export class JugnuSystem extends createSystem({
                   ctx.moveTo(cx + 14, iconY); ctx.lineTo(cx + 14, iconY + 8);
                   ctx.stroke();
               } else if (spoke.type === 'TUTORIAL') {
-                  ctx.fillStyle = this.isTutorialOpen ? moodColorHex : '#ffffff';
-                  ctx.strokeStyle = ctx.fillStyle;
                   ctx.beginPath();
                   ctx.roundRect(cx - 12, iconY - 8, 24, 16, 2);
                   ctx.stroke();
@@ -2262,7 +2291,6 @@ export class JugnuSystem extends createSystem({
                   ctx.lineTo(cx, iconY + 8);
                   ctx.stroke();
               } else if (spoke.type === 'VOICE') {
-                  ctx.strokeStyle = '#ffffff';
                   ctx.beginPath();
                   ctx.roundRect(cx - 4, iconY - 10, 8, 16, 4);
                   ctx.stroke();
@@ -2271,8 +2299,6 @@ export class JugnuSystem extends createSystem({
                   ctx.moveTo(cx, iconY + 6); ctx.lineTo(cx, iconY + 10);
                   ctx.stroke();
               } else if (spoke.type === 'DEBUG') {
-                  ctx.fillStyle = this.isDebugOpen ? moodColorHex : '#ffffff';
-                  ctx.strokeStyle = ctx.fillStyle;
                   ctx.beginPath();
                   ctx.roundRect(cx - 13, iconY - 9, 26, 18, 4);
                   ctx.stroke();
@@ -2281,11 +2307,9 @@ export class JugnuSystem extends createSystem({
                   ctx.lineTo(cx - 4, iconY);
                   ctx.lineTo(cx - 8, iconY + 4);
                   ctx.stroke();
-                  ctx.fillStyle = ctx.strokeStyle;
+                  ctx.fillStyle = '#ffffff';
                   ctx.fillRect(cx - 1, iconY + 2, 6, 3);
               } else if (spoke.type === 'STADIUM_SEL') {
-                  ctx.fillStyle = this.isStadiumMenuOpen ? moodColorHex : '#ffffff';
-                  ctx.strokeStyle = ctx.fillStyle;
                   ctx.beginPath();
                   ctx.arc(cx, iconY + 4, 12, Math.PI, 0);
                   ctx.stroke();
@@ -2297,9 +2321,6 @@ export class JugnuSystem extends createSystem({
                   ctx.arc(cx, iconY + 1, 3, 0, 2 * Math.PI);
                   ctx.fill();
               } else if (spoke.type === 'WALLS') {
-                  const wallsVisible = (window as any).showRoomWalls as boolean;
-                  ctx.fillStyle = wallsVisible ? moodColorHex : '#ffffff';
-                  ctx.strokeStyle = ctx.fillStyle;
                   ctx.beginPath();
                   ctx.arc(cx, iconY, 10, 0.15 * Math.PI, 1.85 * Math.PI);
                   ctx.stroke();
@@ -2313,7 +2334,8 @@ export class JugnuSystem extends createSystem({
               }
           }
 
-          ctx.fillStyle = spoke.type === 'LOCK' ? (this.isGridLocked ? '#22c55e' : moodColorHex) : '#ffffff';
+          // 3e. Draw spoke label text in primary mood color if active/hovered, else white
+          ctx.fillStyle = activeBorder || hoveredIdx === idx ? (spoke.type === 'LOCK' && this.isGridLocked ? '#22c55e' : moodColorHex) : '#ffffff';
           ctx.font = 'bold 10px monospace';
           ctx.fillText(spoke.label, cx, cy + 20);
       });
