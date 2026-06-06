@@ -97,12 +97,22 @@ export class JugnuSystem extends createSystem({
   private isLockBreaking = false;
   private lockBreakAnimationTime = 0.0;
   private compassGroup!: THREE.Group;
-  private compassNeedle!: THREE.Mesh;
-  private compassRing!: THREE.Mesh;
+  private compassNeedle?: THREE.Mesh;
+  private compassRing?: THREE.Mesh;
   private compassBackingBoard!: THREE.Mesh;
   private compassBackingCanvas!: HTMLCanvasElement;
   private compassBackingCtx!: CanvasRenderingContext2D;
   private compassBackingTexture!: THREE.CanvasTexture;
+  private outerBgCanvas?: HTMLCanvasElement;
+  private innerBgCanvas?: HTMLCanvasElement;
+  private outerTintCanvas!: HTMLCanvasElement;
+  private outerTintCtx!: CanvasRenderingContext2D;
+  private innerTintCanvas!: HTMLCanvasElement;
+  private innerTintCtx!: CanvasRenderingContext2D;
+  private centerTitle = "JUGNU CORE";
+  private centerDetail = "Hover or tap an icon to interact.";
+  private lastMoodColorHex = "";
+  private lockPinchAllowed = false;
   private indexPinchTimer = 0.0;
   private pinchReleasedTimer = 0.0;
   private hoveredCellIndex = -1;
@@ -624,8 +634,13 @@ export class JugnuSystem extends createSystem({
 
     // ── LOCK ESCAPE: hold pinch for 1.5 seconds while locked → unlock + come to fingertips ──
     if (this.isGridLocked) {
-        const pinchActive = isPinchingLeft || isPinchingRight;
-        if (pinchActive) {
+        const pinchActive = isPinchingLeft; // Right pinch is completely ignored
+        
+        if (!pinchActive) {
+            this.lockPinchAllowed = true; // Once they release the pinch, they are allowed to breakout on next pinch
+        }
+
+        if (pinchActive && this.lockPinchAllowed) {
             this.lockEscapeTimer += safeDt;
 
             // Start/Update lock breakout grinding hum
@@ -660,10 +675,11 @@ export class JugnuSystem extends createSystem({
                 // Trigger 3-frame chromatic aberration glitch
                 this.glitchFrameCount = 3;
 
-                // 2. Unlock
+                // 2. Unlock & reset mood to happy orange
                 this.isGridLocked = false;
                 this.lockedCompassPos = null;
                 this.lockedCompassQuat = null;
+                this.setExpression(2); // Happy orange expression!
 
                 // 3. Close compass UI so it respawns cleanly on next open
                 this.isCompassOpen = false;
@@ -674,9 +690,9 @@ export class JugnuSystem extends createSystem({
                 this.indexPinchTimer = 0.0;
                 this.pinchReleasedTimer = 0.0;
 
-                // Determine which hand was pinching
-                const targetHand = isPinchingLeft ? 'left' : 'right';
-                const targetTip = isPinchingLeft ? this.leftPinchTip : this.rightPinchTip;
+                // Determine which hand was pinching (always left here)
+                const targetHand = 'left';
+                const targetTip = this.leftPinchTip;
 
                 // 4. Pull Jugnu to fingertip
                 let lockedJugnuPos = this.scratchV3_1;
@@ -1322,7 +1338,7 @@ export class JugnuSystem extends createSystem({
 
     if (this.compassGroup) {
         if (this.isCompassOpen) {
-            this.compassGroup.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
+            this.compassGroup.scale.lerp(new THREE.Vector3(1.3, 1.3, 1.3), safeDt * 30.0);
         } else {
             this.compassGroup.scale.lerp(new THREE.Vector3(0, 0, 0), safeDt * 30.0);
             if (this.compassGroup.scale.x < 0.01 && this.compassGroup.visible) {
@@ -1336,6 +1352,15 @@ export class JugnuSystem extends createSystem({
         }
 
         if (this.compassGroup.visible && activeJugnuPos.lengthSq() > 0) {
+            // Check if active expression / mood color shifted
+            const currentMood = this.expressionList[this.currentExpressionIndex];
+            const moodColor = MoodColors[currentMood] || new THREE.Color(0xffffff);
+            const moodColorHex = '#' + moodColor.getHexString();
+            if (moodColorHex !== this.lastMoodColorHex) {
+                this.lastMoodColorHex = moodColorHex;
+                this.redrawCompassGrid(this.hoveredCellIndex);
+            }
+
             // Calculate dynamic 'userRight' vector based on player head perspective
             this.player.head.getWorldPosition(this.headPos);
             const forward = this.scratchV3_1.subVectors(activeJugnuPos, this.headPos);
@@ -1582,21 +1607,35 @@ export class JugnuSystem extends createSystem({
                 const localTip = this.scratchV3_1.copy(activeTip).applyMatrix4(this.scratchMatrix.copy(this.compassGroup.matrixWorld).invert());
                 const isWithinHoverZ = Math.abs(localTip.z) < 0.025;
                 const isWithinBoundsX = localTip.x > -0.075 && localTip.x < 0.075;
-                const isWithinBoundsY = localTip.y > -0.0564 && localTip.y < 0.0564;
+                const isWithinBoundsY = localTip.y > -0.075 && localTip.y < 0.075;
 
                 if (isWithinHoverZ && isWithinBoundsX && isWithinBoundsY) {
-                    let col = 1;
-                    if (localTip.x < -0.025) col = 0;
-                    else if (localTip.x > 0.025) col = 2;
-
-                    let row = 1;
-                    if (localTip.y > 0.0188) row = 0;
-                    else if (localTip.y < -0.0188) row = 2;
-
-                    currentHoverIdx = row * 3 + col;
+                    const d = Math.sqrt(localTip.x * localTip.x + localTip.y * localTip.y);
+                    if (d >= 0.032 && d <= 0.078) {
+                        // We are in the active spoke ring range
+                        // Align local coordinate system angle: local Y is UP, local X is RIGHT.
+                        // Canvas coordinates Y goes DOWN, so reflect Y: -localTip.y
+                        const angle = Math.atan2(-localTip.y, localTip.x);
+                        
+                        let bestIdx = -1;
+                        let minDiff = Infinity;
+                        for (let i = 0; i < JugnuSystem.SPOKES.length; i++) {
+                            let diff = Math.abs(angle - JugnuSystem.SPOKES[i].angle);
+                            if (diff > Math.PI) {
+                                diff = 2 * Math.PI - diff;
+                            }
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                bestIdx = i;
+                            }
+                        }
+                        
+                        currentHoverIdx = bestIdx;
+                    }
+                    
                     const isPressed = Math.abs(localTip.z) < 0.014;
 
-                    if (isPressed && currentHoverIdx !== 4 && this.buttonCooldown <= 0.0 && !this.swipeLocked) {
+                    if (isPressed && currentHoverIdx !== -1 && this.buttonCooldown <= 0.0 && !this.swipeLocked) {
                         this.buttonCooldown = 0.8;
                         const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
                         const source = this.input.getPrimaryInputSource(activeHand);
@@ -2003,80 +2042,168 @@ export class JugnuSystem extends createSystem({
       }
   }
 
+  private static readonly SPOKES = [
+      { label: "CHAT",       type: "CHAT",        angle: -Math.PI / 2 },     // 12:00
+      { label: "TUTORIAL",   type: "TUTORIAL",    angle: -Math.PI / 4 },     // 1:30
+      { label: "MINIMAP",    type: "STADIUM",     angle: 0 },                // 3:00
+      { label: "VENUE",      type: "STADIUM_SEL", angle: Math.PI / 4 },      // 4:30
+      { label: "LOCK",       type: "LOCK",        angle: Math.PI / 2 },      // 6:00
+      { label: "VOICE",      type: "VOICE",       angle: 3 * Math.PI / 4 },  // 7:30
+      { label: "DONT TOUCH", type: "DEBUG",       angle: Math.PI },          // 9:00
+      { label: "WALLS",      type: "WALLS",       angle: -3 * Math.PI / 4 }  // 10:30
+  ];
+
+  private static readonly SPOKE_DETAILS: Record<string, { title: string, detail: string }> = {
+      "CHAT": {
+          title: "CHAT LOGS",
+          detail: "Conversational transcript & debug diagnostics pipeline."
+      },
+      "TUTORIAL": {
+          title: "TUTORIAL",
+          detail: "Holographic manual showing gesture control steps."
+      },
+      "STADIUM": {
+          title: "MINIMAP",
+          detail: "Toggles the 3D tactical minimap table in front of you."
+      },
+      "STADIUM_SEL": {
+          title: "VENUE",
+          detail: "Select from Wankhede, Nürburgring, or other stadiums."
+      },
+      "LOCK": {
+          title: "GRID LOCK",
+          detail: "Locks/unlocks companion's rigid spatial anchor point."
+      },
+      "VOICE": {
+          title: "VOICE INPUT",
+          detail: "Speech synthesis and AI query voice detection pipeline."
+      },
+      "DEBUG": {
+          title: "DONT TOUCH",
+          detail: "Cyberpunk system developer log console."
+      },
+      "WALLS": {
+          title: "ROOM WALLS",
+          detail: "Visualizes detected physical room planes and meshes."
+      }
+  };
+
+  private wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
+      const words = text.split(' ');
+      let line = '';
+      let currentY = y;
+      for (let n = 0; n < words.length; n++) {
+          const testLine = line + words[n] + ' ';
+          const metrics = ctx.measureText(testLine);
+          const testWidth = metrics.width;
+          if (testWidth > maxWidth && n > 0) {
+              ctx.fillText(line, x, currentY);
+              line = words[n] + ' ';
+              currentY += lineHeight;
+          } else {
+              line = testLine;
+          }
+      }
+      ctx.fillText(line, x, currentY);
+  }
+
   private redrawCompassGrid(hoveredIdx: number) {
       const ctx = this.compassBackingCtx;
-      const w = 256;
-      const h = 192;
-      ctx.clearRect(0, 0, w, h);
+      const w = 512;
+      const h = 512;
 
-      ctx.fillStyle = 'rgba(5, 5, 20, 0.82)';
-      ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 12);
-      ctx.fill();
+      const currentMood = this.expressionList[this.currentExpressionIndex];
+      const moodColor = MoodColors[currentMood] || new THREE.Color(0xffffff);
+      const moodColorHex = '#' + moodColor.getHexString();
 
-      const cellW = w / 3;
-      const cellH = h / 3;
-
-      if (hoveredIdx >= 0 && hoveredIdx <= 8 && hoveredIdx !== 4) {
-          const col = hoveredIdx % 3;
-          const row = Math.floor(hoveredIdx / 3);
-          ctx.fillStyle = 'rgba(249, 115, 22, 0.2)';
-          ctx.beginPath();
-          ctx.roundRect(col * cellW + 4, row * cellH + 4, cellW - 8, cellH - 8, 8);
-          ctx.fill();
+      // 1. Clear offscreen canvases and tint backgrounds
+      if (this.outerBgCanvas) {
+          const oCtx = this.outerTintCtx;
+          oCtx.clearRect(0, 0, 512, 512);
+          oCtx.drawImage(this.outerBgCanvas, 0, 0, 512, 512);
+          
+          oCtx.globalCompositeOperation = 'source-in';
+          oCtx.fillStyle = moodColorHex;
+          oCtx.fillRect(0, 0, 512, 512);
+          
+          oCtx.globalCompositeOperation = 'multiply';
+          oCtx.drawImage(this.outerBgCanvas, 0, 0, 512, 512);
+          
+          oCtx.globalCompositeOperation = 'source-over';
       }
 
-      ctx.strokeStyle = '#f97316';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(cellW, 6); ctx.lineTo(cellW, h - 6);
-      ctx.moveTo(cellW * 2, 6); ctx.lineTo(cellW * 2, h - 6);
-      ctx.moveTo(6, cellH); ctx.lineTo(w - 6, cellH);
-      ctx.moveTo(6, cellH * 2); ctx.lineTo(w - 6, cellH * 2);
-      ctx.stroke();
+      if (this.innerBgCanvas) {
+          const iCtx = this.innerTintCtx;
+          const size = 240;
+          const x = 256 - size / 2;
+          const y = 256 - size / 2;
+          iCtx.clearRect(0, 0, 512, 512);
+          iCtx.drawImage(this.innerBgCanvas, x, y, size, size);
+          
+          iCtx.globalCompositeOperation = 'source-in';
+          iCtx.fillStyle = moodColorHex;
+          iCtx.fillRect(x, y, size, size);
+          
+          iCtx.globalCompositeOperation = 'multiply';
+          iCtx.drawImage(this.innerBgCanvas, x, y, size, size);
+          
+          iCtx.globalCompositeOperation = 'source-over';
+      }
 
-      const icons = [
-          { label: this.isChatOpen ? "CLOSE CHAT" : "CHAT", type: "CHAT" },
-          { label: "STADIUM",  type: "STADIUM" },
-          { label: this.isTutorialOpen ? "CLOSE TUTORIAL" : "TUTORIAL", type: "TUTORIAL" },
-          { label: "VOICE",    type: "VOICE" },
-          { label: "COMPASS",  type: "COMPASS" },
-          { label: this.isDebugOpen ? "CLOSE DEBUG" : "DEBUG", type: "DEBUG" },
-          { label: this.isStadiumMenuOpen ? "CLOSE MAPS" : "MAPS", type: "STADIUM_SEL" },
-          { label: (window as any).showRoomWalls ? "WALLS ON" : "WALLS OFF", type: "WALLS" },
-          { label: this.isGridLocked ? "UNLOCK" : "LOCK GRID", type: "LOCK" }
-      ];
+      // 2. Clear main canvas and render backgrounds
+      ctx.clearRect(0, 0, w, h);
+      if (this.outerBgCanvas) {
+          ctx.drawImage(this.outerTintCanvas, 0, 0);
+      } else {
+          // Fallback dark circular shape
+          ctx.fillStyle = 'rgba(5, 5, 20, 0.85)';
+          ctx.beginPath();
+          ctx.arc(256, 256, 240, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.strokeStyle = moodColorHex;
+          ctx.lineWidth = 4;
+          ctx.stroke();
+      }
 
-      icons.forEach((icon, idx) => {
-          if (idx === 4) {
-              const cx = cellW * 1.5;
-              const cy = cellH * 1.5;
-              ctx.strokeStyle = 'rgba(249, 115, 22, 0.4)';
+      if (this.innerBgCanvas) {
+          ctx.drawImage(this.innerTintCanvas, 0, 0);
+      } else {
+          // Fallback inner dark circular screen
+          ctx.fillStyle = 'rgba(10, 10, 30, 0.9)';
+          ctx.beginPath();
+          ctx.arc(256, 256, 110, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.strokeStyle = moodColorHex;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+      }
+
+      // 3. Draw radial spokes (glowing highlights, icons, labels)
+      const R = 180;
+      JugnuSystem.SPOKES.forEach((spoke, idx) => {
+          const cx = 256 + R * Math.cos(spoke.angle);
+          const cy = 256 + R * Math.sin(spoke.angle);
+          const iconY = cy - 8;
+
+          // Draw hover highlight glow circle behind spoke
+          if (hoveredIdx === idx) {
+              ctx.fillStyle = moodColorHex + '33'; // ~20% opacity
+              ctx.strokeStyle = moodColorHex + '88';
               ctx.lineWidth = 2;
               ctx.beginPath();
-              ctx.arc(cx, cy, 20, 0, 2 * Math.PI);
+              ctx.arc(cx, cy, 32, 0, 2 * Math.PI);
+              ctx.fill();
               ctx.stroke();
-              ctx.fillStyle = '#f97316';
-              ctx.font = 'bold 11px monospace';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillText('N', cx, cy - 12);
-              ctx.fillText('S', cx, cy + 12);
-              ctx.fillText('E', cx + 12, cy);
-              ctx.fillText('W', cx - 12, cy);
-              return;
           }
 
-          const col = idx % 3;
-          const row = Math.floor(idx / 3);
-          const cx = col * cellW + cellW / 2;
-          const cy = row * cellH + cellH / 2;
-          const iconY = cy - 8;
-          
-          if (icon.type === 'LOCK') {
+          // Render vector icons
+          ctx.lineWidth = 3;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          if (spoke.type === 'LOCK') {
               const isLocked = this.isGridLocked;
-              ctx.strokeStyle = isLocked ? '#22c55e' : '#f97316';
-              ctx.lineWidth = 3;
+              ctx.strokeStyle = isLocked ? '#22c55e' : moodColorHex;
               ctx.beginPath();
               ctx.arc(cx, iconY - 4, 6, Math.PI, 0);
               ctx.lineTo(cx + 6, iconY + 2);
@@ -2094,14 +2221,10 @@ export class JugnuSystem extends createSystem({
           } else {
               ctx.fillStyle = '#ffffff';
               ctx.strokeStyle = '#ffffff';
-              ctx.lineWidth = 3;
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
 
-              if (icon.type === 'CHAT') {
-                  ctx.fillStyle = this.isChatOpen ? '#22d3ee' : '#ffffff';
+              if (spoke.type === 'CHAT') {
+                  ctx.fillStyle = this.isChatOpen ? moodColorHex : '#ffffff';
                   ctx.strokeStyle = ctx.fillStyle;
-                  ctx.lineWidth = 3;
                   ctx.beginPath();
                   ctx.roundRect(cx - 12, iconY - 8, 24, 16, 4);
                   ctx.stroke();
@@ -2119,7 +2242,8 @@ export class JugnuSystem extends createSystem({
                   ctx.arc(cx, iconY, 1.5, 0, 2 * Math.PI);
                   ctx.arc(cx + 5, iconY, 1.5, 0, 2 * Math.PI);
                   ctx.fill();
-              } else if (icon.type === 'STADIUM') {
+              } else if (spoke.type === 'STADIUM') {
+                  ctx.strokeStyle = '#ffffff';
                   ctx.beginPath();
                   ctx.ellipse(cx, iconY, 14, 7, 0, 0, 2 * Math.PI);
                   ctx.stroke();
@@ -2127,20 +2251,18 @@ export class JugnuSystem extends createSystem({
                   ctx.moveTo(cx - 14, iconY); ctx.lineTo(cx - 14, iconY + 8);
                   ctx.moveTo(cx + 14, iconY); ctx.lineTo(cx + 14, iconY + 8);
                   ctx.stroke();
-              } else if (icon.type === 'TUTORIAL') {
-                  ctx.fillStyle = this.isTutorialOpen ? '#22d3ee' : '#ffffff';
+              } else if (spoke.type === 'TUTORIAL') {
+                  ctx.fillStyle = this.isTutorialOpen ? moodColorHex : '#ffffff';
                   ctx.strokeStyle = ctx.fillStyle;
-                  ctx.lineWidth = 3;
-                  // Draw book pages / outline
                   ctx.beginPath();
                   ctx.roundRect(cx - 12, iconY - 8, 24, 16, 2);
                   ctx.stroke();
-                  // Center book binding line
                   ctx.beginPath();
                   ctx.moveTo(cx, iconY - 8);
                   ctx.lineTo(cx, iconY + 8);
                   ctx.stroke();
-              } else if (icon.type === 'VOICE') {
+              } else if (spoke.type === 'VOICE') {
+                  ctx.strokeStyle = '#ffffff';
                   ctx.beginPath();
                   ctx.roundRect(cx - 4, iconY - 10, 8, 16, 4);
                   ctx.stroke();
@@ -2148,29 +2270,24 @@ export class JugnuSystem extends createSystem({
                   ctx.arc(cx, iconY - 2, 8, 0, Math.PI);
                   ctx.moveTo(cx, iconY + 6); ctx.lineTo(cx, iconY + 10);
                   ctx.stroke();
-              } else if (icon.type === 'DEBUG') {
-                  ctx.fillStyle = this.isDebugOpen ? '#22d3ee' : '#ffffff';
+              } else if (spoke.type === 'DEBUG') {
+                  ctx.fillStyle = this.isDebugOpen ? moodColorHex : '#ffffff';
                   ctx.strokeStyle = ctx.fillStyle;
-                  ctx.lineWidth = 3;
-                  // Screen outline
                   ctx.beginPath();
                   ctx.roundRect(cx - 13, iconY - 9, 26, 18, 4);
                   ctx.stroke();
-                  // Draw ">" prompt
                   ctx.beginPath();
                   ctx.moveTo(cx - 8, iconY - 4);
                   ctx.lineTo(cx - 4, iconY);
                   ctx.lineTo(cx - 8, iconY + 4);
                   ctx.stroke();
-                  // Draw "_" cursor
                   ctx.fillStyle = ctx.strokeStyle;
                   ctx.fillRect(cx - 1, iconY + 2, 6, 3);
-              } else if (icon.type === 'STADIUM_SEL') {
-                  ctx.fillStyle = this.isStadiumMenuOpen ? '#22d3ee' : '#ffffff';
+              } else if (spoke.type === 'STADIUM_SEL') {
+                  ctx.fillStyle = this.isStadiumMenuOpen ? moodColorHex : '#ffffff';
                   ctx.strokeStyle = ctx.fillStyle;
-                  ctx.lineWidth = 3;
                   ctx.beginPath();
-                  ctx.arc(cx, iconY + 4, 12, Math.PI, 0); // Top dome arch
+                  ctx.arc(cx, iconY + 4, 12, Math.PI, 0);
                   ctx.stroke();
                   ctx.beginPath();
                   ctx.moveTo(cx - 12, iconY + 4); ctx.lineTo(cx - 12, iconY + 10);
@@ -2179,7 +2296,10 @@ export class JugnuSystem extends createSystem({
                   ctx.beginPath();
                   ctx.arc(cx, iconY + 1, 3, 0, 2 * Math.PI);
                   ctx.fill();
-              } else if (icon.type === 'WALLS') {
+              } else if (spoke.type === 'WALLS') {
+                  const wallsVisible = (window as any).showRoomWalls as boolean;
+                  ctx.fillStyle = wallsVisible ? moodColorHex : '#ffffff';
+                  ctx.strokeStyle = ctx.fillStyle;
                   ctx.beginPath();
                   ctx.arc(cx, iconY, 10, 0.15 * Math.PI, 1.85 * Math.PI);
                   ctx.stroke();
@@ -2193,12 +2313,57 @@ export class JugnuSystem extends createSystem({
               }
           }
 
-          ctx.fillStyle = icon.type === 'LOCK' ? (this.isGridLocked ? '#22c55e' : '#f97316') : '#ffffff';
-          ctx.font = 'bold 8px monospace';
-          ctx.fillText(icon.label, cx, cy + 18);
+          ctx.fillStyle = spoke.type === 'LOCK' ? (this.isGridLocked ? '#22c55e' : moodColorHex) : '#ffffff';
+          ctx.font = 'bold 10px monospace';
+          ctx.fillText(spoke.label, cx, cy + 20);
       });
 
+      // 4. Draw Center Display screen details
+      let activeSpokeType = "";
+      if (hoveredIdx >= 0 && hoveredIdx < JugnuSystem.SPOKES.length) {
+          activeSpokeType = JugnuSystem.SPOKES[hoveredIdx].type;
+      } else if (this.activeCompassTileIndex >= 0 && this.activeCompassTileIndex < JugnuSystem.SPOKES.length) {
+          activeSpokeType = JugnuSystem.SPOKES[this.activeCompassTileIndex].type;
+      }
+
+      const activeDetails = activeSpokeType ? JugnuSystem.SPOKE_DETAILS[activeSpokeType] : null;
+      const displayTitle = activeDetails ? activeDetails.title : this.centerTitle;
+      const displayDetail = activeDetails ? activeDetails.detail : this.centerDetail;
+
+      ctx.fillStyle = moodColorHex;
+      ctx.font = 'bold 16px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(displayTitle, 256, 215);
+
+      ctx.fillStyle = '#d1d5db'; // light grey text for detail
+      ctx.font = '11px monospace';
+      this.wrapCanvasText(ctx, displayDetail, 256, 245, 180, 14);
+
       this.compassBackingTexture.needsUpdate = true;
+  }
+
+  private makeBlackTransparentCanvas(image: HTMLImageElement): HTMLCanvasElement {
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(image, 0, 0);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i+1];
+          const b = data[i+2];
+          const luma = Math.max(r, g, b);
+          if (luma < 15) {
+              data[i+3] = 0;
+          } else if (luma < 40) {
+              data[i+3] = (luma - 15) * 10;
+          }
+      }
+      ctx.putImageData(imgData, 0, 0);
+      return canvas;
   }
 
   private initCompassUI() {
@@ -2207,11 +2372,11 @@ export class JugnuSystem extends createSystem({
       this.compassGroup.scale.setScalar(0.001);
       this.compassGroup.visible = false;
 
-      const backingGeom = new THREE.PlaneGeometry(0.15, 0.1128); 
+      const backingGeom = new THREE.PlaneGeometry(0.15, 0.15); 
 
       this.compassBackingCanvas = document.createElement('canvas');
-      this.compassBackingCanvas.width = 256;
-      this.compassBackingCanvas.height = 192;
+      this.compassBackingCanvas.width = 512;
+      this.compassBackingCanvas.height = 512;
       this.compassBackingCtx = this.compassBackingCanvas.getContext('2d')!;
       
       this.compassBackingTexture = new THREE.CanvasTexture(this.compassBackingCanvas);
@@ -2221,47 +2386,31 @@ export class JugnuSystem extends createSystem({
       this.compassBackingBoard = new THREE.Mesh(backingGeom, backingMat);
       this.compassGroup.add(this.compassBackingBoard);
 
-      this.compassNeedle = new THREE.Mesh();
-      this.compassNeedle.position.set(0, 0, 0.002);
-      this.compassGroup.add(this.compassNeedle);
+      // Initialize Tint Offscreen Canvases for zero-allocation composite tinting
+      this.outerTintCanvas = document.createElement('canvas');
+      this.outerTintCanvas.width = 512;
+      this.outerTintCanvas.height = 512;
+      this.outerTintCtx = this.outerTintCanvas.getContext('2d')!;
 
-      // Create a 3D ring at an angle that clips through the UI to look 3D
-      const ringGeom = new THREE.TorusGeometry(0.024, 0.002, 16, 100);
-      const ringMat = new THREE.MeshBasicMaterial({
-          color: 0xf97316,
-          transparent: true,
-          opacity: 0.85,
-          side: THREE.DoubleSide
-      });
-      this.compassRing = new THREE.Mesh(ringGeom, ringMat);
-      // Tilt it so it clips beautifully through the UI plane (45° X-tilt, 15° Y-tilt)
-      this.compassRing.rotation.set(Math.PI / 4, Math.PI / 12, 0);
-      this.compassRing.position.set(0, 0, 0.0);
-      this.compassGroup.add(this.compassRing);
+      this.innerTintCanvas = document.createElement('canvas');
+      this.innerTintCanvas.width = 512;
+      this.innerTintCanvas.height = 512;
+      this.innerTintCtx = this.innerTintCanvas.getContext('2d')!;
 
-      const northCone = new THREE.Mesh(
-          new THREE.ConeGeometry(0.003, 0.012, 4),
-          new THREE.MeshBasicMaterial({ color: 0xff1e1e })
-      );
-      northCone.rotation.x = Math.PI / 2;
-      northCone.rotation.z = Math.PI;
-      northCone.position.y = 0.006;
-      this.compassNeedle.add(northCone);
+      // Load Background Images
+      const outerImg = new Image();
+      outerImg.src = './textures/CompassUiOuter.png';
+      outerImg.onload = () => {
+          this.outerBgCanvas = this.makeBlackTransparentCanvas(outerImg);
+          this.redrawCompassGrid(this.hoveredCellIndex);
+      };
 
-      const southCone = new THREE.Mesh(
-          new THREE.ConeGeometry(0.003, 0.012, 4),
-          new THREE.MeshBasicMaterial({ color: 0xcccccc })
-      );
-      southCone.rotation.x = Math.PI / 2;
-      southCone.position.y = -0.006;
-      this.compassNeedle.add(southCone);
-
-      const pivot = new THREE.Mesh(
-          new THREE.SphereGeometry(0.0016, 16, 16),
-          new THREE.MeshBasicMaterial({ color: 0xf97316 })
-      );
-      pivot.position.z = 0.0015;
-      this.compassNeedle.add(pivot);
+      const innerImg = new Image();
+      innerImg.src = './textures/CompassUiInner.png';
+      innerImg.onload = () => {
+          this.innerBgCanvas = this.makeBlackTransparentCanvas(innerImg);
+          this.redrawCompassGrid(this.hoveredCellIndex);
+      };
 
 
 
@@ -2420,21 +2569,9 @@ export class JugnuSystem extends createSystem({
 
 
   private handleCompassTileClick(tileIndex: number) {
-      console.log(`[Compass] Clicked cell index: ${tileIndex}`);
+      console.log(`[Compass] Clicked spoke index: ${tileIndex}`);
 
-      const icons = [
-          { label: "CHAT",     type: "CHAT" },
-          { label: "MAPS",     type: "STADIUM" },
-          { label: "TUTORIAL", type: "TUTORIAL" },
-          { label: "VOICE",    type: "VOICE" },
-          { label: "COMPASS",  type: "COMPASS" },
-          { label: "DEBUG",    type: "DEBUG" },
-          { label: "MAPS",     type: "STADIUM_SEL" },
-          { label: (window as any).showRoomWalls ? "WALLS ON" : "WALLS OFF", type: "WALLS" },
-          { label: "LOCK",     type: "LOCK" }
-      ];
-
-      const tileType = icons[tileIndex]?.type || "";
+      const tileType = JugnuSystem.SPOKES[tileIndex]?.type || "";
       let title = "";
       let detail = "";
 
@@ -2448,11 +2585,16 @@ export class JugnuSystem extends createSystem({
           } else {
               detail = "Dynamic Chat Panel retracted.\n\nStatus: STANDBY.\nRedraw compass board grid.";
           }
+          this.centerTitle = title;
+          this.centerDetail = detail;
           this.redrawCompassGrid(this.hoveredCellIndex);
       } else if (tileType === 'STADIUM') {
           title = "Tactical Minimap";
           (window as any).triggerMinimapToggle = true;
           detail = "Minimap Stadium Table toggled.\n\nStatus: Toggled successfully!\nCheck for the 3D desk in front of you.";
+          this.centerTitle = title;
+          this.centerDetail = detail;
+          this.redrawCompassGrid(this.hoveredCellIndex);
       } else if (tileType === 'TUTORIAL') {
           this.isTutorialOpen = !this.isTutorialOpen;
           title = this.isTutorialOpen ? "Holographic Tutorial" : "Holographic Tutorial";
@@ -2468,10 +2610,15 @@ export class JugnuSystem extends createSystem({
           } else {
               detail = "Tutorial Screen retracted.\n\nStatus: STANDBY.\nGrid view updated.";
           }
+          this.centerTitle = title;
+          this.centerDetail = detail;
           this.redrawCompassGrid(this.hoveredCellIndex);
       } else if (tileType === 'VOICE') {
           title = "Gemini AI Voice";
           detail = "Voice pipeline: ACTIVE.\n\nMicrophone bounds: Calibrating...\nSay any prompt after poking Jugnu's head.";
+          this.centerTitle = title;
+          this.centerDetail = detail;
+          this.redrawCompassGrid(this.hoveredCellIndex);
       } else if (tileType === 'DEBUG') {
           this.isDebugOpen = !this.isDebugOpen;
           title = this.isDebugOpen ? "Debug Console" : "Debug Console";
@@ -2482,6 +2629,8 @@ export class JugnuSystem extends createSystem({
           } else {
               detail = "Debug Console retracted.\n\nStatus: STANDBY.\nGrid view updated.";
           }
+          this.centerTitle = title;
+          this.centerDetail = detail;
           this.redrawCompassGrid(this.hoveredCellIndex);
       } else if (tileType === 'STADIUM_SEL') {
           this.isStadiumMenuOpen = !this.isStadiumMenuOpen;
@@ -2493,6 +2642,8 @@ export class JugnuSystem extends createSystem({
           } else {
               detail = "Stadium Selector retracted.\n\nStatus: STANDBY.\nGrid view updated.";
           }
+          this.centerTitle = title;
+          this.centerDetail = detail;
           this.redrawCompassGrid(this.hoveredCellIndex);
       } else if (tileType === 'WALLS') {
           // Toggle room wall visualizer
@@ -2502,12 +2653,17 @@ export class JugnuSystem extends createSystem({
           detail = wallsVisible
               ? "Room Wall Visualization: ENABLED.\n\nWhite edge lines are now visible on all detected surfaces and planes."
               : "Room Wall Visualization: DISABLED.\n\nSurface edge lines hidden. Clean AR mode active.";
+          this.centerTitle = title;
+          this.centerDetail = detail;
+          this.redrawCompassGrid(this.hoveredCellIndex);
       } else if (tileType === 'LOCK') {
           this.isGridLocked = !this.isGridLocked;
           title = this.isGridLocked ? "Grid Locked" : "Grid Unlocked";
           
           if (this.isGridLocked) {
               this.interactionState = 'Anchored';
+              const isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
+              this.lockPinchAllowed = !isPinchingLeft; // lock permission check
               this.queries.jugnu.entities.forEach(entity => {
                   if (entity.object3D) {
                       this.centerPos.copy(entity.object3D.position);
@@ -2525,6 +2681,7 @@ export class JugnuSystem extends createSystem({
               this.lockedCompassQuat = null;
               this.chatHistory.push({ sender: 'System', text: 'Rigid Spatial Anchor: RELEASED.' });
               this.redrawCompassChat();
+              this.setExpression(2); // Happy orange expression!
               detail = "Compass Grid Unlocked.\n\nStatus: FREE FLOATING.\nClosing delay of 2.0s restored upon pinch release.";
           }
 
@@ -2535,10 +2692,10 @@ export class JugnuSystem extends createSystem({
               spatialFX.triggerSpark(this.centerPos, this.isGridLocked ? new THREE.Color(0x22c55e) : new THREE.Color(0x00ffcc), 15);
           }
           
+          this.centerTitle = title;
+          this.centerDetail = detail;
           this.redrawCompassGrid(this.hoveredCellIndex);
       }
-
-
   }
 
   private redrawCompassStadiumMenu(hoveredIdx: number = -1) {

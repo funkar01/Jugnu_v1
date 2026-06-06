@@ -702,6 +702,25 @@
   - `[x]` Hook lock breakout trigger to activate 3-frame chromatic aberration (RGB offset) glitch uniform updates
   - `[x]` Run static typecheck verification (`npx tsc --noEmit`)
   - `[x]` Compile production bundle (`npm run build`)
-
-
-
+- `[x]` Radial Compass UI Rehaul (Current Run)
+  - `[x]` Remove current 3D needle and ring meshes from `src/jugnu.ts`
+  - `[x]` Initialize image assets and offscreen canvases in `initCompassUI()`
+  - `[x]` Resize backing board geometry to `0.15`x`0.15` and canvas size to `512`x`512`
+  - `[x]` Define the `SPOKES` static metadata array with reflected clock coordinates
+  - `[x]` Implement `redrawCompassGrid` with offscreen tinting blend modes
+  - `[x]` Write canvas text wrapping helper and draw centered title/status details
+  - `[x]` Update collision intersection logic in `update()` to calculate radial distance and angle sectors
+  - `[x]` Monitor expression changes to dynamically update canvas colors
+  - `[x]` Update `handleCompassTileClick` to resolve spoke actions and update status text
+  - `[x]` Run typechecks and verify client builds
+- `[x]` Transparent Background Images Implementation (Current Run)
+  - `[x]` Copy `CompassUiOuter.png` and `CompassUiInner.png` to `public/textures/`
+  - `[x]` Implement `makeBlackTransparentCanvas` pixel processing helper in `src/jugnu.ts`
+  - `[x]` Load assets and run them through transparent pixel pipeline in `src/jugnu.ts`
+  - `[x]` Verify clean static compilation and bundle Vite builds
+- `[x]` Compass UI Scaling & Lock breakout Refinements (Current Run)
+  - `[x]` Scale `compassGroup` by 1.3 in the update loop
+  - `[x]` Restore happy orange expression when lock is released (both click and breakout)
+  - `[x]` Enforce pinch release checking to prevent immediate breakout upon locking
+  - `[x]` Ignore right hand pinches for lock escape breakouts
+  - `[x]` Verify clean static compilation and bundle Vite builds
