@@ -729,3 +729,11 @@
   - `[x]` Animate entire color transitions (background, borders, text) smoothly using `animatedMoodColor` and `animatedCompColor`
   - `[x]` Fix locked compass UI visibility loss when zooming out of the minimap
   - `[x]` Verify clean static compilation and client build
+- `[x]` Compass UI Visual Scale & Readability Polish (Current Run)
+  - `[x]` Double complementary background circle size to 40px radius (100% upscale)
+  - `[x]` Scale vector icons 1.5x (50% upscale) and thicken outlines to 4px
+  - `[x]` Reposition spoke labels to 52px offset to prevent clipping large circles
+  - `[x]` Reduce outer background template opacity to 40%
+  - `[x]` Create solid dark backing (`rgba(5, 5, 12, 1.0)`) for center panel with subtle 35% overlay texture
+  - `[x]` Increase center text size and use bold system-ui sans-serif fonts for perfect legibility
+  - `[x]` Verify clean static compilation and client build

@@ -2168,10 +2168,12 @@ export class JugnuSystem extends createSystem({
       // 2. Clear main canvas and render backgrounds
       ctx.clearRect(0, 0, w, h);
       if (this.outerBgCanvas) {
+          ctx.globalAlpha = 0.40; // 40% opacity for outer template
           ctx.drawImage(this.outerTintCanvas, 0, 0);
+          ctx.globalAlpha = 1.0;
       } else {
           // Fallback dark circular shape
-          ctx.fillStyle = 'rgba(5, 5, 20, 0.85)';
+          ctx.fillStyle = 'rgba(5, 5, 20, 0.40)';
           ctx.beginPath();
           ctx.arc(256, 256, 240, 0, 2 * Math.PI);
           ctx.fill();
@@ -2180,17 +2182,19 @@ export class JugnuSystem extends createSystem({
           ctx.stroke();
       }
 
+      // Draw solid dark obsidian background for the center display area first
+      ctx.fillStyle = 'rgba(5, 5, 12, 1.0)';
+      ctx.beginPath();
+      ctx.arc(256, 256, 110, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.strokeStyle = moodColorHex;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
       if (this.innerBgCanvas) {
+          ctx.globalAlpha = 0.35; // Subtle holographic overlay lines from the template
           ctx.drawImage(this.innerTintCanvas, 0, 0);
-      } else {
-          // Fallback inner dark circular screen
-          ctx.fillStyle = 'rgba(10, 10, 30, 0.9)';
-          ctx.beginPath();
-          ctx.arc(256, 256, 110, 0, 2 * Math.PI);
-          ctx.fill();
-          ctx.strokeStyle = moodColorHex;
-          ctx.lineWidth = 2;
-          ctx.stroke();
+          ctx.globalAlpha = 1.0;
       }
 
       // 3. Draw radial spokes (complementary circles, bold white vector icons, labels)
@@ -2205,7 +2209,7 @@ export class JugnuSystem extends createSystem({
           // 3a. Draw complementary color background circle
           ctx.fillStyle = compColorHex;
           ctx.beginPath();
-          ctx.arc(cx, iconY, 20, 0, 2 * Math.PI);
+          ctx.arc(cx, iconY, 40, 0, 2 * Math.PI);
           ctx.fill();
 
           // 3b. Determine active and border states
@@ -2225,32 +2229,32 @@ export class JugnuSystem extends createSystem({
           // 3c. Draw outer primary mood color border (ring) if active or hovered
           if (activeBorder || hoveredIdx === idx) {
               ctx.strokeStyle = borderColor;
-              ctx.lineWidth = hoveredIdx === idx ? 4 : 2;
+              ctx.lineWidth = hoveredIdx === idx ? 5 : 3;
               ctx.beginPath();
-              ctx.arc(cx, iconY, hoveredIdx === idx ? 23 : 22, 0, 2 * Math.PI);
+              ctx.arc(cx, iconY, hoveredIdx === idx ? 45 : 43, 0, 2 * Math.PI);
               ctx.stroke();
           }
 
           // 3d. Render vector icons in bold white
-          ctx.lineWidth = 3;
+          ctx.lineWidth = 4;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
 
           if (spoke.type === 'LOCK') {
               ctx.strokeStyle = '#ffffff';
               ctx.beginPath();
-              ctx.arc(cx, iconY - 4, 6, Math.PI, 0);
-              ctx.lineTo(cx + 6, iconY + 2);
-              ctx.moveTo(cx - 6, iconY - 4);
-              ctx.lineTo(cx - 6, iconY + 2);
+              ctx.arc(cx, iconY - 6, 9, Math.PI, 0);
+              ctx.lineTo(cx + 9, iconY + 3);
+              ctx.moveTo(cx - 9, iconY - 6);
+              ctx.lineTo(cx - 9, iconY + 3);
               ctx.stroke();
               ctx.fillStyle = '#ffffff';
               ctx.beginPath();
-              ctx.roundRect(cx - 9, iconY, 18, 12, 3);
+              ctx.roundRect(cx - 13.5, iconY, 27, 18, 4.5);
               ctx.fill();
               ctx.fillStyle = compColorHex;
               ctx.beginPath();
-              ctx.arc(cx, iconY + 5, 2, 0, 2 * Math.PI);
+              ctx.arc(cx, iconY + 7.5, 3, 0, 2 * Math.PI);
               ctx.fill();
           } else {
               ctx.fillStyle = '#ffffff';
@@ -2258,86 +2262,88 @@ export class JugnuSystem extends createSystem({
 
               if (spoke.type === 'CHAT') {
                   ctx.beginPath();
-                  ctx.roundRect(cx - 12, iconY - 8, 24, 16, 4);
+                  ctx.roundRect(cx - 18, iconY - 12, 36, 24, 6);
                   ctx.stroke();
                   ctx.beginPath();
-                  ctx.moveTo(cx - 4, iconY + 8);
-                  ctx.lineTo(cx - 8, iconY + 13);
-                  ctx.lineTo(cx - 8, iconY + 8);
+                  ctx.moveTo(cx - 6, iconY + 12);
+                  ctx.lineTo(cx - 12, iconY + 20);
+                  ctx.lineTo(cx - 12, iconY + 12);
                   ctx.closePath();
                   ctx.fill();
                   ctx.stroke();
                   
                   ctx.fillStyle = compColorHex;
                   ctx.beginPath();
-                  ctx.arc(cx - 5, iconY, 1.5, 0, 2 * Math.PI);
-                  ctx.arc(cx, iconY, 1.5, 0, 2 * Math.PI);
-                  ctx.arc(cx + 5, iconY, 1.5, 0, 2 * Math.PI);
+                  ctx.arc(cx - 7.5, iconY, 2.25, 0, 2 * Math.PI);
+                  ctx.arc(cx, iconY, 2.25, 0, 2 * Math.PI);
+                  ctx.arc(cx + 7.5, iconY, 2.25, 0, 2 * Math.PI);
                   ctx.fill();
               } else if (spoke.type === 'STADIUM') {
                   ctx.beginPath();
-                  ctx.ellipse(cx, iconY, 14, 7, 0, 0, 2 * Math.PI);
+                  ctx.ellipse(cx, iconY, 21, 10.5, 0, 0, 2 * Math.PI);
                   ctx.stroke();
                   ctx.beginPath();
-                  ctx.moveTo(cx - 14, iconY); ctx.lineTo(cx - 14, iconY + 8);
-                  ctx.moveTo(cx + 14, iconY); ctx.lineTo(cx + 14, iconY + 8);
+                  ctx.moveTo(cx - 21, iconY); ctx.lineTo(cx - 21, iconY + 12);
+                  ctx.moveTo(cx + 21, iconY); ctx.lineTo(cx + 21, iconY + 12);
                   ctx.stroke();
               } else if (spoke.type === 'TUTORIAL') {
                   ctx.beginPath();
-                  ctx.roundRect(cx - 12, iconY - 8, 24, 16, 2);
+                  ctx.roundRect(cx - 18, iconY - 12, 36, 24, 3);
                   ctx.stroke();
                   ctx.beginPath();
-                  ctx.moveTo(cx, iconY - 8);
-                  ctx.lineTo(cx, iconY + 8);
+                  ctx.moveTo(cx, iconY - 12);
+                  ctx.lineTo(cx, iconY + 12);
                   ctx.stroke();
               } else if (spoke.type === 'VOICE') {
                   ctx.beginPath();
-                  ctx.roundRect(cx - 4, iconY - 10, 8, 16, 4);
+                  ctx.roundRect(cx - 6, iconY - 15, 12, 24, 6);
                   ctx.stroke();
                   ctx.beginPath();
-                  ctx.arc(cx, iconY - 2, 8, 0, Math.PI);
-                  ctx.moveTo(cx, iconY + 6); ctx.lineTo(cx, iconY + 10);
+                  ctx.arc(cx, iconY - 3, 12, 0, Math.PI);
+                  ctx.moveTo(cx, iconY + 9); ctx.lineTo(cx, iconY + 15);
                   ctx.stroke();
               } else if (spoke.type === 'DEBUG') {
                   ctx.beginPath();
-                  ctx.roundRect(cx - 13, iconY - 9, 26, 18, 4);
+                  ctx.roundRect(cx - 19.5, iconY - 13.5, 39, 27, 6);
                   ctx.stroke();
                   ctx.beginPath();
-                  ctx.moveTo(cx - 8, iconY - 4);
-                  ctx.lineTo(cx - 4, iconY);
-                  ctx.lineTo(cx - 8, iconY + 4);
+                  ctx.moveTo(cx - 12, iconY - 6);
+                  ctx.lineTo(cx - 6, iconY);
+                  ctx.lineTo(cx - 12, iconY + 6);
                   ctx.stroke();
                   ctx.fillStyle = '#ffffff';
-                  ctx.fillRect(cx - 1, iconY + 2, 6, 3);
+                  ctx.fillRect(cx - 1.5, iconY + 3, 9, 4.5);
               } else if (spoke.type === 'STADIUM_SEL') {
                   ctx.beginPath();
-                  ctx.arc(cx, iconY + 4, 12, Math.PI, 0);
+                  ctx.arc(cx, iconY + 6, 18, Math.PI, 0);
                   ctx.stroke();
                   ctx.beginPath();
-                  ctx.moveTo(cx - 12, iconY + 4); ctx.lineTo(cx - 12, iconY + 10);
-                  ctx.moveTo(cx + 12, iconY + 4); ctx.lineTo(cx + 12, iconY + 10);
+                  ctx.moveTo(cx - 18, iconY + 6); ctx.lineTo(cx - 18, iconY + 15);
+                  ctx.moveTo(cx + 18, iconY + 6); ctx.lineTo(cx + 18, iconY + 15);
                   ctx.stroke();
                   ctx.beginPath();
-                  ctx.arc(cx, iconY + 1, 3, 0, 2 * Math.PI);
+                  ctx.arc(cx, iconY + 1.5, 4.5, 0, 2 * Math.PI);
                   ctx.fill();
               } else if (spoke.type === 'WALLS') {
                   ctx.beginPath();
-                  ctx.arc(cx, iconY, 10, 0.15 * Math.PI, 1.85 * Math.PI);
+                  ctx.arc(cx, iconY, 15, 0.15 * Math.PI, 1.85 * Math.PI);
                   ctx.stroke();
                   ctx.fillStyle = ctx.strokeStyle;
                   ctx.beginPath();
-                  ctx.moveTo(cx + 14, iconY + 3);
-                  ctx.lineTo(cx + 8, iconY - 3);
-                  ctx.lineTo(cx + 20, iconY - 3);
+                  ctx.moveTo(cx + 21, iconY + 4.5);
+                  ctx.lineTo(cx + 12, iconY - 4.5);
+                  ctx.lineTo(cx + 30, iconY - 4.5);
                   ctx.closePath();
                   ctx.fill();
+                  ctx.stroke();
+                  ctx.fillStyle = '#ffffff';
               }
           }
 
           // 3e. Draw spoke label text in primary mood color if active/hovered, else white
           ctx.fillStyle = activeBorder || hoveredIdx === idx ? (spoke.type === 'LOCK' && this.isGridLocked ? '#22c55e' : moodColorHex) : '#ffffff';
-          ctx.font = 'bold 10px monospace';
-          ctx.fillText(spoke.label, cx, cy + 20);
+          ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+          ctx.fillText(spoke.label, cx, cy + 52);
       });
 
       // 4. Draw Center Display screen details
@@ -2353,14 +2359,14 @@ export class JugnuSystem extends createSystem({
       const displayDetail = activeDetails ? activeDetails.detail : this.centerDetail;
 
       ctx.fillStyle = moodColorHex;
-      ctx.font = 'bold 16px monospace';
+      ctx.font = 'bold 20px "Segoe UI", system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(displayTitle, 256, 215);
 
-      ctx.fillStyle = '#d1d5db'; // light grey text for detail
-      ctx.font = '11px monospace';
-      this.wrapCanvasText(ctx, displayDetail, 256, 245, 180, 14);
+      ctx.fillStyle = '#ffffff'; // Change to pure white for ultra-readability
+      ctx.font = 'bold 12px "Segoe UI", system-ui, -apple-system, sans-serif';
+      this.wrapCanvasText(ctx, displayDetail, 256, 242, 180, 16);
 
       this.compassBackingTexture.needsUpdate = true;
   }
