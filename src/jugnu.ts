@@ -2190,19 +2190,19 @@ export class JugnuSystem extends createSystem({
           ctx.stroke();
       }
 
-      // Draw solid dark obsidian background for the center display area first
-      ctx.fillStyle = 'rgba(5, 5, 12, 0.80)';
-      ctx.beginPath();
-      ctx.arc(256, 256, 110, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.strokeStyle = moodColorHex;
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
       if (this.innerBgCanvas) {
-          ctx.globalAlpha = 0.35; // Subtle holographic overlay lines from the template
+          ctx.globalAlpha = 0.80; // Inner template at 80% opacity
           ctx.drawImage(this.innerTintCanvas, 0, 0);
           ctx.globalAlpha = 1.0;
+      } else {
+          // Fallback inner dark circular screen
+          ctx.fillStyle = 'rgba(10, 10, 30, 0.80)';
+          ctx.beginPath();
+          ctx.arc(256, 256, 110, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.strokeStyle = moodColorHex;
+          ctx.lineWidth = 2;
+          ctx.stroke();
       }
 
       // 3. Draw radial spokes (complementary circles, bold white vector icons, labels)

@@ -743,3 +743,7 @@
   - `[x]` Implement dynamic sine wave Y-axis hover float animation for spoke icons (`Math.sin(floatTime * 6.0) * 4.0`)
   - `[x]` Keep complementary background circles and active border rings static while icons float above them
   - `[x]` Verify clean static compilation and client build
+- `[x]` Center Panel Transparency Refinements (Current Run)
+  - `[x]` Remove custom solid center circular overlay backing from main canvas
+  - `[x]` Draw the provided center template image (`innerTintCanvas`) at 80% opacity with colors linked to Jugnu
+  - `[x]` Verify clean static compilation and client build
