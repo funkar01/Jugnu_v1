@@ -92,8 +92,8 @@ export class JugnuSystem extends createSystem({
   private lockIconGroup!: THREE.Group;
   private lockLeftMesh!: THREE.Mesh;
   private lockRightMesh!: THREE.Mesh;
-  private lockLeftMat!: THREE.MeshBasicMaterial;
-  private lockRightMat!: THREE.MeshBasicMaterial;
+  private lockLeftMat!: THREE.ShaderMaterial;
+  private lockRightMat!: THREE.ShaderMaterial;
   private isLockBreaking = false;
   private lockBreakAnimationTime = 0.0;
   private compassGroup!: THREE.Group;
@@ -108,18 +108,20 @@ export class JugnuSystem extends createSystem({
   private hoveredCellIndex = -1;
   private lastHoveredStadiumOption = -1;
   private activeCompassTileIndex = -1; // -1 for none
+  private holographicMaterials: THREE.ShaderMaterial[] = [];
+  private glitchFrameCount = 0;
 
   private buttonCooldown = 0.0;
   private isChatOpen = false;
   private compassChatCard!: THREE.Mesh;
-  private compassChatMat!: THREE.MeshBasicMaterial;
+  private compassChatMat!: THREE.ShaderMaterial;
   private compassChatCanvas!: HTMLCanvasElement;
   private compassChatCtx!: CanvasRenderingContext2D;
   private compassChatTexture!: THREE.CanvasTexture;
   private chatHistory: { sender: string, text: string }[] = [];
   private isDebugOpen = false;
   private compassDebugCard!: THREE.Mesh;
-  private compassDebugMat!: THREE.MeshBasicMaterial;
+  private compassDebugMat!: THREE.ShaderMaterial;
   private compassDebugCanvas!: HTMLCanvasElement;
   private compassDebugCtx!: CanvasRenderingContext2D;
   private compassDebugTexture!: THREE.CanvasTexture;
@@ -138,7 +140,7 @@ export class JugnuSystem extends createSystem({
   private wasScaledMax = false;
   private isTutorialOpen = false;
   private compassTutorialCard!: THREE.Mesh;
-  private compassTutorialMat!: THREE.MeshBasicMaterial;
+  private compassTutorialMat!: THREE.ShaderMaterial;
   private compassTutorialCanvas!: HTMLCanvasElement;
   private compassTutorialCtx!: CanvasRenderingContext2D;
   private compassTutorialTexture!: THREE.CanvasTexture;
@@ -147,7 +149,7 @@ export class JugnuSystem extends createSystem({
   private compassStadiumCanvas!: HTMLCanvasElement;
   private compassStadiumCtx!: CanvasRenderingContext2D;
   private compassStadiumTexture!: THREE.CanvasTexture;
-  private compassStadiumMat!: THREE.MeshBasicMaterial;
+  private compassStadiumMat!: THREE.ShaderMaterial;
   private compassStadiumCard!: THREE.Mesh;
   private selectedStadium: 'default' | 'berlin' | 'inuit' | 'butterflies' | 'nurburgring' = 'default';
 
@@ -654,6 +656,9 @@ export class JugnuSystem extends createSystem({
                     spatialFX.playPositionalSound('lockBreak', jugnuPos);
                     spatialFX.triggerSpark(jugnuPos, new THREE.Color(0x00ffcc), 30);
                 }
+
+                // Trigger 3-frame chromatic aberration glitch
+                this.glitchFrameCount = 3;
 
                 // 2. Unlock
                 this.isGridLocked = false;
@@ -1686,6 +1691,19 @@ export class JugnuSystem extends createSystem({
     
     this.updateLeftHandTutorialThread(safeDt);
     this.updateFireflies(safeDt);
+
+    // Update holographic shader uniforms (time, opacity, and glitch frame tracking)
+    const timeVal = Date.now() * 0.001;
+    let activeGlitch = 0.0;
+    if (this.glitchFrameCount > 0) {
+        this.glitchFrameCount--;
+        activeGlitch = 1.0;
+    }
+    this.holographicMaterials.forEach(mat => {
+        mat.uniforms.time.value = timeVal;
+        mat.uniforms.opacity.value = mat.opacity; // Sync native material opacity
+        mat.uniforms.glitchIntensity.value = activeGlitch;
+    });
   }
 
   private getIndexData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
@@ -2199,12 +2217,7 @@ export class JugnuSystem extends createSystem({
       this.compassBackingTexture = new THREE.CanvasTexture(this.compassBackingCanvas);
       this.compassBackingTexture.colorSpace = THREE.SRGBColorSpace;
 
-      const backingMat = new THREE.MeshBasicMaterial({
-          map: this.compassBackingTexture,
-          transparent: true,
-          opacity: 1.0,
-          depthWrite: false
-      });
+      const backingMat = this.createHolographicMaterial(this.compassBackingTexture, 1.0);
       this.compassBackingBoard = new THREE.Mesh(backingGeom, backingMat);
       this.compassGroup.add(this.compassBackingBoard);
 
@@ -2261,12 +2274,7 @@ export class JugnuSystem extends createSystem({
       this.compassChatTexture = new THREE.CanvasTexture(this.compassChatCanvas);
       this.compassChatTexture.colorSpace = THREE.SRGBColorSpace;
 
-      this.compassChatMat = new THREE.MeshBasicMaterial({
-          map: this.compassChatTexture,
-          transparent: true,
-          opacity: 0.0,
-          depthWrite: false
-      });
+      this.compassChatMat = this.createHolographicMaterial(this.compassChatTexture, 0.0);
 
       this.compassChatCard = new THREE.Mesh(
           new THREE.PlaneGeometry(0.24, 0.18),
@@ -2289,12 +2297,7 @@ export class JugnuSystem extends createSystem({
       this.compassDebugTexture = new THREE.CanvasTexture(this.compassDebugCanvas);
       this.compassDebugTexture.colorSpace = THREE.SRGBColorSpace;
 
-      this.compassDebugMat = new THREE.MeshBasicMaterial({
-          map: this.compassDebugTexture,
-          transparent: true,
-          opacity: 0.0,
-          depthWrite: false
-      });
+      this.compassDebugMat = this.createHolographicMaterial(this.compassDebugTexture, 0.0);
 
       this.compassDebugCard = new THREE.Mesh(
           new THREE.PlaneGeometry(0.24, 0.18),
@@ -2316,12 +2319,7 @@ export class JugnuSystem extends createSystem({
       this.compassTutorialTexture = new THREE.CanvasTexture(this.compassTutorialCanvas);
       this.compassTutorialTexture.colorSpace = THREE.SRGBColorSpace;
 
-      this.compassTutorialMat = new THREE.MeshBasicMaterial({
-          map: this.compassTutorialTexture,
-          transparent: true,
-          opacity: 0.0,
-          depthWrite: false
-      });
+      this.compassTutorialMat = this.createHolographicMaterial(this.compassTutorialTexture, 0.0);
 
       this.compassTutorialCard = new THREE.Mesh(
           new THREE.PlaneGeometry(0.24, 0.18),
@@ -2340,12 +2338,7 @@ export class JugnuSystem extends createSystem({
       this.compassStadiumTexture = new THREE.CanvasTexture(this.compassStadiumCanvas);
       this.compassStadiumTexture.colorSpace = THREE.SRGBColorSpace;
 
-      this.compassStadiumMat = new THREE.MeshBasicMaterial({
-          map: this.compassStadiumTexture,
-          transparent: true,
-          opacity: 0.0,
-          depthWrite: false
-      });
+      this.compassStadiumMat = this.createHolographicMaterial(this.compassStadiumTexture, 0.0);
 
       this.compassStadiumCard = new THREE.Mesh(
           new THREE.PlaneGeometry(0.24, 0.18),
@@ -2408,20 +2401,8 @@ export class JugnuSystem extends createSystem({
       const rightTex = new THREE.CanvasTexture(rightCanvas);
       rightTex.colorSpace = THREE.SRGBColorSpace;
 
-      this.lockLeftMat = new THREE.MeshBasicMaterial({
-          map: leftTex,
-          transparent: true,
-          opacity: 1.0,
-          side: THREE.DoubleSide,
-          depthWrite: false
-      });
-      this.lockRightMat = new THREE.MeshBasicMaterial({
-          map: rightTex,
-          transparent: true,
-          opacity: 1.0,
-          side: THREE.DoubleSide,
-          depthWrite: false
-      });
+      this.lockLeftMat = this.createHolographicMaterial(leftTex, 1.0);
+      this.lockRightMat = this.createHolographicMaterial(rightTex, 1.0);
 
       this.lockLeftMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.018, 0.036), this.lockLeftMat);
       this.lockLeftMesh.position.set(-0.009, 0, 0);
@@ -3030,6 +3011,62 @@ export class JugnuSystem extends createSystem({
       }
 
       this.compassDebugTexture.needsUpdate = true;
+  }
+
+  private createHolographicMaterial(texture: THREE.CanvasTexture, initialOpacity: number): THREE.ShaderMaterial {
+      const mat = new THREE.ShaderMaterial({
+          uniforms: {
+              map: { value: texture },
+              time: { value: 0.0 },
+              opacity: { value: initialOpacity },
+              glitchIntensity: { value: 0.0 }
+          },
+          vertexShader: `
+              varying vec2 vUv;
+              void main() {
+                  vUv = uv;
+                  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+              }
+          `,
+          fragmentShader: `
+              uniform sampler2D map;
+              uniform float time;
+              uniform float opacity;
+              uniform float glitchIntensity;
+              varying vec2 vUv;
+
+              void main() {
+                  vec2 uv = vUv;
+                  vec4 color;
+                  if (glitchIntensity > 0.0) {
+                      float shift = glitchIntensity * 0.025 * sin(time * 80.0);
+                      float r = texture2D(map, uv + vec2(shift, 0.0)).r;
+                      float g = texture2D(map, uv).g;
+                      float b = texture2D(map, uv - vec2(shift, 0.0)).b;
+                      float a = texture2D(map, uv).a;
+                      color = vec4(r, g, b, a);
+                  } else {
+                      color = texture2D(map, uv);
+                  }
+
+                  // Moving horizontal scanlines
+                  float scanline = sin(uv.y * 320.0 - time * 12.0) * 0.06;
+                  color.rgb *= (1.0 - abs(scanline));
+
+                  // Faint vignette edge
+                  float vignette = uv.x * (1.0 - uv.x) * uv.y * (1.0 - uv.y) * 16.0;
+                  vignette = pow(vignette, 0.25);
+                  color.rgb *= mix(0.78, 1.0, vignette);
+
+                  gl_FragColor = vec4(color.rgb, color.a * opacity);
+              }
+          `,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide
+      });
+      this.holographicMaterials.push(mat);
+      return mat;
   }
 }
 

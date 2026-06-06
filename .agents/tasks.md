@@ -696,7 +696,12 @@
   - `[x]` Trigger tactile clicks and sparks on Compass UI tile hovers/clicks in `src/jugnu.ts`
   - `[x]` Trigger sparks and clicks on Action Tab (TCD) hovers/clicks in `src/domainExpansion.ts`
   - `[x]` Wire fireworks launch/explosion sounds to pyrotechnics show in `src/domainExpansion.ts`
+  - `[x]` Implement custom holographic `ShaderMaterial` with vertex/fragment shader properties in `src/jugnu.ts`
+  - `[x]` Map Compass backing board, chat, debug, tutorial, stadium cards, and lock panels to custom ShaderMaterial
+  - `[x]` Program moving horizontal scanline filters and soft vignette borders running on GPU
+  - `[x]` Hook lock breakout trigger to activate 3-frame chromatic aberration (RGB offset) glitch uniform updates
   - `[x]` Run static typecheck verification (`npx tsc --noEmit`)
   - `[x]` Compile production bundle (`npm run build`)
+
 
 
