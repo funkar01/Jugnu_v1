@@ -688,3 +688,15 @@
   - `[x]` Saved/restored hoop scales using `restoreHoopScales()` helper on resets, and corrected the wiggling net mesh and flashed rim references to `hoop2NetMesh` / `basketballHoop2` to match the ball trajectory.
   - `[x]` Moved the lock icon higher on Jugnu's local Y axis by an additional 1cm (changing local Y-axis offset constant to +0.02) to prevent clipping with Jugnu's 3D mesh.
   - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Spatial audio & interactive Sparks (Current Run)
+  - `[x]` Create `src/spatialFX.ts` with spatial audio synthesis and particle instancing
+  - `[x]` Register `SpatialFXSystem` in `src/index.ts`
+  - `[x]` Integrate hover hums, breakout hums, and lock break sounds in `src/jugnu.ts`
+  - `[x]` Trigger tactile clicks and sparks on Compass UI tile hovers/clicks in `src/jugnu.ts`
+  - `[x]` Trigger sparks and clicks on Action Tab (TCD) hovers/clicks in `src/domainExpansion.ts`
+  - `[x]` Wire fireworks launch/explosion sounds to pyrotechnics show in `src/domainExpansion.ts`
+  - `[x]` Run static typecheck verification (`npx tsc --noEmit`)
+  - `[x]` Compile production bundle (`npm run build`)
+
+

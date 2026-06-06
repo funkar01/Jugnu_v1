@@ -454,6 +454,8 @@ export class DomainExpansionSystem extends createSystem({
     private tcdButtonMats: THREE.MeshBasicMaterial[] = [];
     private tcdButtonLabels: THREE.Mesh[] = [];
     private tcdButtonHoverTimes = new Float32Array(7); // 7 buttons
+    private tcdLauncherHoveredLast = false;
+    private tcdButtonHoveredLast = new Uint8Array(7);
 
     // Per-stadium domain key/name tables
     private readonly DOMAIN_KEYS_DEFAULT  = ["mivVideo","iplCam2","iplCam3","iplCam4","iplCam5","iplCam6"];
@@ -5920,6 +5922,14 @@ export class DomainExpansionSystem extends createSystem({
         vz: number = 0.0,
         scale: number = 1.0
     ) {
+        // Play spatialized launch sound
+        const localPos = this.scratchVector6.set(x, y, z);
+        const worldPos = localPos.applyMatrix4(this.tableGroup.matrixWorld);
+        const spatialFX = (window as any).spatialFX;
+        if (spatialFX) {
+            spatialFX.playPositionalSound('fireworkLaunch', worldPos, scale);
+        }
+
         let slot = -1;
         for (let i = 0; i < this.MAX_FIREWORKS; i++) {
             if (this.fireworkActive[i] === 0) {
@@ -6000,6 +6010,14 @@ export class DomainExpansionSystem extends createSystem({
                         this.fireworkPositions[i * 3 + 1] = py_curr;
                         this.fireworkPositions[i * 3 + 2] = pz_curr;
                         const colorHex = this.fireworkColors[i];
+
+                        // Play spatialized explosion sound
+                        const localPos = this.scratchVector6.set(px_curr, py_curr, pz_curr);
+                        const worldPos = localPos.applyMatrix4(this.tableGroup.matrixWorld);
+                        const spatialFX = (window as any).spatialFX;
+                        if (spatialFX) {
+                            spatialFX.playPositionalSound('fireworkExplode', worldPos, this.fireworkScale[i]);
+                        }
 
                         // Define beautiful secondary/accent particle colors for maximum realism
                         const colors = [0xff0055, 0x00ffff, 0xffff00, 0xff3300, 0x00ff66, 0xff00ff, 0xffaa00, 0x00aaff];
@@ -6490,6 +6508,15 @@ export class DomainExpansionSystem extends createSystem({
         this.tcdLauncherMat.opacity += (targetLauncherOpacity - this.tcdLauncherMat.opacity) * 10.0 * dt;
 
         if (isLauncherHovered) {
+            if (!this.tcdLauncherHoveredLast) {
+                this.tcdLauncherHoveredLast = true;
+                const spatialFX = (window as any).spatialFX;
+                if (spatialFX) {
+                    spatialFX.playPositionalSound('sparkle', btnWorldPos);
+                    spatialFX.triggerSpark(btnWorldPos, new THREE.Color(0xff00ff), 3); // 3 magenta sparks
+                }
+            }
+
             this.tcdLauncherPinchProgress += dt;
             if (this.tcdLauncherPinchProgress > 0.5) this.tcdLauncherPinchProgress = 0.5;
 
@@ -6508,8 +6535,16 @@ export class DomainExpansionSystem extends createSystem({
 
                 // Click shockwave visual scale burst
                 this.tcdLauncherButton.scale.set(1.4, 0.4, 1.4);
+
+                // Play click audio & sparks
+                const spatialFX = (window as any).spatialFX;
+                if (spatialFX) {
+                    spatialFX.playPositionalSound('click', btnWorldPos);
+                    spatialFX.triggerSpark(btnWorldPos, new THREE.Color(0xff00ff), 15);
+                }
             }
         } else {
+            this.tcdLauncherHoveredLast = false;
             this.tcdLauncherPinchProgress -= dt * 2.0;
             if (this.tcdLauncherPinchProgress < 0.0) this.tcdLauncherPinchProgress = 0.0;
 
@@ -6558,6 +6593,15 @@ export class DomainExpansionSystem extends createSystem({
                 this.tcdButtonMats[i].opacity += (targetOpacity - this.tcdButtonMats[i].opacity) * 10.0 * dt;
 
                 if (isHovered) {
+                    if (this.tcdButtonHoveredLast[i] === 0) {
+                        this.tcdButtonHoveredLast[i] = 1;
+                        const spatialFX = (window as any).spatialFX;
+                        if (spatialFX) {
+                            spatialFX.playPositionalSound('sparkle', btnWorldPos);
+                            spatialFX.triggerSpark(btnWorldPos, new THREE.Color(0xff00ff), 3); // 3 sparks
+                        }
+                    }
+
                     this.tcdButtonHoverTimes[i] += dt;
                     if (this.tcdButtonHoverTimes[i] > 0.5) this.tcdButtonHoverTimes[i] = 0.5; // 0.5s dwell hold
 
@@ -6571,6 +6615,13 @@ export class DomainExpansionSystem extends createSystem({
 
                         // Visual squeeze click feedback
                         btn.scale.set(1.2, 0.4, 1.2);
+
+                        // Trigger click audio & sparks
+                        const spatialFX = (window as any).spatialFX;
+                        if (spatialFX) {
+                            spatialFX.playPositionalSound('click', btnWorldPos);
+                            spatialFX.triggerSpark(btnWorldPos, new THREE.Color(0xff00ff), 15);
+                        }
 
                         // Trigger actions
                         if (i === 0) this.triggerSportSequence(); // Play SEQ
@@ -6597,6 +6648,7 @@ export class DomainExpansionSystem extends createSystem({
                         }
                     }
                 } else {
+                    this.tcdButtonHoveredLast[i] = 0;
                     this.tcdButtonHoverTimes[i] -= dt * 2.0;
                     if (this.tcdButtonHoverTimes[i] < 0.0) this.tcdButtonHoverTimes[i] = 0.0;
 

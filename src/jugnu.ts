@@ -106,6 +106,7 @@ export class JugnuSystem extends createSystem({
   private indexPinchTimer = 0.0;
   private pinchReleasedTimer = 0.0;
   private hoveredCellIndex = -1;
+  private lastHoveredStadiumOption = -1;
   private activeCompassTileIndex = -1; // -1 for none
 
   private buttonCooldown = 0.0;
@@ -624,6 +625,21 @@ export class JugnuSystem extends createSystem({
         const pinchActive = isPinchingLeft || isPinchingRight;
         if (pinchActive) {
             this.lockEscapeTimer += safeDt;
+
+            // Start/Update lock breakout grinding hum
+            let jugnuPos = new THREE.Vector3();
+            for (const entity of this.queries.jugnu.entities) {
+                if (entity.object3D) {
+                    jugnuPos.copy(entity.object3D.position);
+                    break;
+                }
+            }
+            const spatialFX = (window as any).spatialFX;
+            if (spatialFX) {
+                spatialFX.startLockVibrationSound(jugnuPos);
+                spatialFX.updateLockVibrationSound(jugnuPos, this.lockEscapeTimer / 1.5);
+            }
+
             if (this.lockEscapeTimer >= 1.5) {
                 this.lockEscapeTimer = 0.0;
                 console.log('[Jugnu] Held lock escape pinch for 1.5s — unlocking and lerping to hand.');
@@ -631,6 +647,13 @@ export class JugnuSystem extends createSystem({
                 // 1. Trigger Lock Breaking animation
                 this.isLockBreaking = true;
                 this.lockBreakAnimationTime = 0.0;
+
+                // Play lock break sound & sparks
+                if (spatialFX) {
+                    spatialFX.stopLockVibrationSound();
+                    spatialFX.playPositionalSound('lockBreak', jugnuPos);
+                    spatialFX.triggerSpark(jugnuPos, new THREE.Color(0x00ffcc), 30);
+                }
 
                 // 2. Unlock
                 this.isGridLocked = false;
@@ -680,9 +703,17 @@ export class JugnuSystem extends createSystem({
             }
         } else {
             this.lockEscapeTimer = 0.0;
+            const spatialFX = (window as any).spatialFX;
+            if (spatialFX) {
+                spatialFX.stopLockVibrationSound();
+            }
         }
     } else {
         this.lockEscapeTimer = 0.0;
+        const spatialFX = (window as any).spatialFX;
+        if (spatialFX) {
+            spatialFX.stopLockVibrationSound();
+        }
     }
 
     if ((this.interactionState === 'Idle' || this.interactionState === 'Following' || this.interactionState === 'Anchored') && !this.isGridLocked) {
@@ -1039,6 +1070,17 @@ export class JugnuSystem extends createSystem({
         jugModel.pulseIntensity = 0;
       }
       activeJugnuPos.copy(obj.position);
+
+      // Start/Update continuous hover hum when visible
+      const spatialFX = (window as any).spatialFX;
+      if (spatialFX) {
+          if (obj.visible) {
+              spatialFX.startJugnuHoverSound(obj.position);
+              spatialFX.updateJugnuHoverSound(obj.position, this.velocity);
+          } else {
+              spatialFX.stopJugnuHoverSound();
+          }
+      }
     });
 
     // Lock Icon Floating UI Update & Breakout Animation
@@ -1558,6 +1600,13 @@ export class JugnuSystem extends createSystem({
                         }
                         this.activeCompassTileIndex = currentHoverIdx;
                         this.handleCompassTileClick(currentHoverIdx);
+
+                        // Trigger click audio & sparks
+                        const spatialFX = (window as any).spatialFX;
+                        if (spatialFX) {
+                            spatialFX.playPositionalSound('click', activeTip);
+                            spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 10);
+                        }
                     }
                 }
             }
@@ -1594,6 +1643,13 @@ export class JugnuSystem extends createSystem({
                         this.selectedStadium = choices[hoveredStadiumOption];
                         (window as any).selectedStadiumType = this.selectedStadium;
                         console.log(`[StadiumSelector] Selected: ${this.selectedStadium}`);
+
+                        // Trigger click audio & sparks
+                        const spatialFX = (window as any).spatialFX;
+                        if (spatialFX) {
+                            spatialFX.playPositionalSound('click', activeTip);
+                            spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 10);
+                        }
                     }
                 }
             }
@@ -1602,9 +1658,28 @@ export class JugnuSystem extends createSystem({
                 this.redrawCompassStadiumMenu(hoveredStadiumOption);
             }
 
+            // Play sparkle sound & micro sparks on hover change
             if (currentHoverIdx !== this.hoveredCellIndex) {
                 this.hoveredCellIndex = currentHoverIdx;
                 this.redrawCompassGrid(currentHoverIdx);
+                if (currentHoverIdx !== -1) {
+                    const spatialFX = (window as any).spatialFX;
+                    if (spatialFX && activeTip) {
+                        spatialFX.playPositionalSound('sparkle', activeTip);
+                        spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 2);
+                    }
+                }
+            }
+
+            if (hoveredStadiumOption !== this.lastHoveredStadiumOption) {
+                this.lastHoveredStadiumOption = hoveredStadiumOption;
+                if (hoveredStadiumOption !== -1) {
+                    const spatialFX = (window as any).spatialFX;
+                    if (spatialFX && activeTip) {
+                        spatialFX.playPositionalSound('sparkle', activeTip);
+                        spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 2);
+                    }
+                }
             }
         }
     }
@@ -2470,6 +2545,13 @@ export class JugnuSystem extends createSystem({
               this.chatHistory.push({ sender: 'System', text: 'Rigid Spatial Anchor: RELEASED.' });
               this.redrawCompassChat();
               detail = "Compass Grid Unlocked.\n\nStatus: FREE FLOATING.\nClosing delay of 2.0s restored upon pinch release.";
+          }
+
+          // Trigger spatial audio and sparks for lock toggles
+          const spatialFX = (window as any).spatialFX;
+          if (spatialFX) {
+              spatialFX.playPositionalSound(this.isGridLocked ? 'lockBreak' : 'click', this.centerPos);
+              spatialFX.triggerSpark(this.centerPos, this.isGridLocked ? new THREE.Color(0x22c55e) : new THREE.Color(0x00ffcc), 15);
           }
           
           this.redrawCompassGrid(this.hoveredCellIndex);
