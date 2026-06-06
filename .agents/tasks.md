@@ -737,3 +737,9 @@
   - `[x]` Create solid dark backing (`rgba(5, 5, 12, 1.0)`) for center panel with subtle 35% overlay texture
   - `[x]` Increase center text size and use bold system-ui sans-serif fonts for perfect legibility
   - `[x]` Verify clean static compilation and client build
+- `[x]` Compass UI Icon Hover Animations & Transparency Tuning (Current Run)
+  - `[x]` Make the center panel 80% opacity (20% more transparent: `rgba(5, 5, 12, 0.80)`)
+  - `[x]` Increase center title text size to bold 24px and details to bold 15px with balanced line wrapping
+  - `[x]` Implement dynamic sine wave Y-axis hover float animation for spoke icons (`Math.sin(floatTime * 6.0) * 4.0`)
+  - `[x]` Keep complementary background circles and active border rings static while icons float above them
+  - `[x]` Verify clean static compilation and client build

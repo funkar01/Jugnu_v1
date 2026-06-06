@@ -1372,9 +1372,17 @@ export class JugnuSystem extends createSystem({
                           Math.pow(this.animatedCompColor.g - targetCompColor.g, 2) +
                           Math.pow(this.animatedCompColor.b - targetCompColor.b, 2);
 
-            if (dist1 > 0.00001 || dist2 > 0.00001) {
+            let needsRedraw = (dist1 > 0.00001 || dist2 > 0.00001);
+            if (needsRedraw) {
                 this.animatedMoodColor.lerp(targetColor, safeDt * 5.0);
                 this.animatedCompColor.lerp(targetCompColor, safeDt * 5.0);
+            }
+
+            if (this.hoveredCellIndex !== -1) {
+                needsRedraw = true;
+            }
+
+            if (needsRedraw) {
                 this.redrawCompassGrid(this.hoveredCellIndex);
             }
 
@@ -2183,7 +2191,7 @@ export class JugnuSystem extends createSystem({
       }
 
       // Draw solid dark obsidian background for the center display area first
-      ctx.fillStyle = 'rgba(5, 5, 12, 1.0)';
+      ctx.fillStyle = 'rgba(5, 5, 12, 0.80)';
       ctx.beginPath();
       ctx.arc(256, 256, 110, 0, 2 * Math.PI);
       ctx.fill();
@@ -2204,12 +2212,11 @@ export class JugnuSystem extends createSystem({
       JugnuSystem.SPOKES.forEach((spoke, idx) => {
           const cx = 256 + R * Math.cos(spoke.angle);
           const cy = 256 + R * Math.sin(spoke.angle);
-          const iconY = cy - 8;
 
-          // 3a. Draw complementary color background circle
+          // 3a. Draw complementary color background circle (static position)
           ctx.fillStyle = compColorHex;
           ctx.beginPath();
-          ctx.arc(cx, iconY, 40, 0, 2 * Math.PI);
+          ctx.arc(cx, cy - 8, 40, 0, 2 * Math.PI);
           ctx.fill();
 
           // 3b. Determine active and border states
@@ -2226,14 +2233,21 @@ export class JugnuSystem extends createSystem({
               borderColor = '#22c55e'; // Green for locked
           }
 
-          // 3c. Draw outer primary mood color border (ring) if active or hovered
+          // 3c. Draw outer primary mood color border (ring) if active or hovered (static position)
           if (activeBorder || hoveredIdx === idx) {
               ctx.strokeStyle = borderColor;
               ctx.lineWidth = hoveredIdx === idx ? 5 : 3;
               ctx.beginPath();
-              ctx.arc(cx, iconY, hoveredIdx === idx ? 45 : 43, 0, 2 * Math.PI);
+              ctx.arc(cx, cy - 8, hoveredIdx === idx ? 45 : 43, 0, 2 * Math.PI);
               ctx.stroke();
           }
+
+          // Compute dynamic hover float offset for the vector icons inside the circles
+          let hoverOffset = 0;
+          if (hoveredIdx === idx) {
+              hoverOffset = Math.sin(this.floatTime * 6.0) * 4.0;
+          }
+          const iconY = cy - 8 + hoverOffset;
 
           // 3d. Render vector icons in bold white
           ctx.lineWidth = 4;
