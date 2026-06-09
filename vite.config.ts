@@ -183,7 +183,12 @@ export default defineConfig(({ mode }) => {
       outDir: "dist",
       sourcemap: false,
       target: "esnext",
-      rollupOptions: { input: "./index.html" },
+      rollupOptions: {
+        input: {
+          main: "./index.html",
+          sticker: "./sticker.html"
+        }
+      },
     },
 
     esbuild: { target: "esnext" },

@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Global Debugging & Error Catching for Mobile/PC -->
+    <script>
+        window.addEventListener('error', function(event) {
+            if (event.target && (event.target.tagName === 'SCRIPT' || event.target.tagName === 'LINK')) {
+                alert("Resource Load Error:\nFailed to load: " + (event.target.src || event.target.href) + "\n\nThis could be due to a network connection issue, or CORS block by your browser.");
+            } else {
+                alert("Runtime Error:\n" + event.message + "\nAt: " + event.filename + ":" + event.lineno);
+            }
+        }, true);
+        window.addEventListener('unhandledrejection', function(event) {
+            alert("Unhandled Promise Rejection:\n" + event.reason);
+        });
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jugnu Sticker Creator</title>
+	<link rel="icon" type="image/png" href="./stickar/favicon.png">
+    
+    <!-- Core Script Extensions -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <!-- Unified CDN Module Importmap (Ignored gracefully by browser if run locally) -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+            "mindar-face-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-three.prod.js"
+        }
+    }
+    </script>
+    
+    <style>
+        :root {
+            --bg-color: #0f0f11;
+            --card-color: #18181c;
+            --accent-color: #ff6b35;
+            --text-color: #ffffff;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 450px;
+            padding: 20px;
+            box-sizing: border-box;
+            text-align: center;
+            transition: opacity 0.3s ease;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            margin-bottom: 5px;
+            letter-spacing: 2px;
+            font-weight: 800;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: var(--accent-color);
+            margin-bottom: 25px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 340px;
+            height: 340px;
+            margin: 0 auto 25px auto;
+            background: #141417;
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        #stickerCanvas {
+            max-width: 100%;
+            height: auto;
+            z-index: 2;
+        }
+
+        .section-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #6c6c78;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .control-panel {
+            background-color: var(--card-color);
+            border: 2px solid #26262b;
+            border-radius: 16px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .color-picker-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .color-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #a0a0ab;
+        }
+
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            background: none;
+        }
+
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+
+        input[type="color"]::-webkit-color-swatch {
+            border: 2px solid #ffffff33;
+            border-radius: 50%;
+        }
+
+        .expression-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+
+        .exp-btn {
+            background-color: var(--card-color);
+            border: 2px solid #26262b;
+            border-radius: 16px;
+            color: white;
+            padding: 18px 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .exp-btn:hover {
+            border-color: #555;
+            transform: translateY(-2px);
+        }
+
+        .exp-btn.active {
+            border-color: var(--accent-color);
+            background-color: rgba(255, 107, 53, 0.12);
+            box-shadow: 0 0 15px rgba(255, 107, 53, 0.2);
+        }
+
+        .action-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .action-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 16px;
+            border: none;
+            border-radius: 16px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background-color: var(--accent-color);
+            color: white;
+            box-shadow: 0 8px 20px rgba(255, 107, 53, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px rgba(255, 107, 53, 0.4);
+        }
+
+        /* --- AR CAMERA INTERFACE OVERLAYS --- */
+        #ar-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 50;
+            background: #000;
+        }
+
+        /* Spinner animation for loading state */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .ar-ui {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 400px;
+            z-index: 60;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .cheek-selector {
+            display: flex;
+            background: rgba(24, 24, 28, 0.85);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 6px;
+            backdrop-filter: blur(10px);
+        }
+
+        .cheek-btn {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #a0a0ab;
+            padding: 12px;
+            font-weight: 700;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .cheek-btn.active {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .qr-modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(15, 15, 17, 0.9);
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .qr-modal.show {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background-color: #1c1c22;
+            padding: 30px;
+            border-radius: 24px;
+            border: 2px solid #2d2d35;
+            max-width: 300px;
+            width: 80%;
+            text-align: center;
+            transform: scale(0.8);
+            transition: transform 0.3s ease;
+        }
+
+        .qr-modal.show .modal-content {
+            transform: scale(1);
+        }
+
+        #qrcode {
+            background: white;
+            padding: 16px;
+            border-radius: 16px;
+            display: inline-block;
+            margin: 20px 0;
+        }
+
+        #qrcode img {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .close-btn {
+            background: #2d2d35;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container" id="main-ui">
+        <h1>XRCC_GG</h1>
+        <div class="subtitle">Jugnu Spatial Companion</div>
+
+        <div class="canvas-container">
+            <canvas id="stickerCanvas" width="1024" height="1024"></canvas>
+        </div>
+
+        <div class="section-title">Customize Companion</div>
+        <div class="control-panel">
+            <div class="color-picker-wrapper">
+                <input type="color" id="jugnuColor" value="#ff6b35" oninput="handleColorChange()">
+                <span class="color-label">Jugnu Hue Color</span>
+            </div>
+        </div>
+
+        <div class="section-title">Select Expression</div>
+        <div class="expression-grid">
+            <button class="exp-btn active" onclick="setExpression('classic', event)">^ _ ^</button>
+            <button class="exp-btn" onclick="setExpression('happy', event)">♥ _ ♥</button>
+            <button class="exp-btn" onclick="setExpression('wink', event)">O _ &lt;</button>
+            <button class="exp-btn" onclick="setExpression('shocked', event)">O _ O</button>
+        </div>
+
+        <div class="action-stack">
+            <button class="btn" onclick="downloadSticker()">
+                ⬇️ Download Sticker
+            </button>
+            <div class="action-row">
+                <button class="btn" onclick="shareSticker()">
+                    📢 Share Sticker
+                </button>
+                <button class="btn" onclick="triggerARPipeline()">
+                    ✨ View AR Face
+                </button>
+            </div>
+            <button class="btn" onclick="toggleQRModal(true)">
+                📱 Scan QR Link
+            </button>
+        </div>
+    </div>
+
+    <div id="ar-container">
+        <div id="ar-loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 1.2rem; font-weight: bold; text-align: center; z-index: 55; font-family: sans-serif;">
+            <div style="border: 4px solid rgba(255,255,255,0.1); border-left-color: #ff6b35; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 15px auto;"></div>
+            Loading AR Face Camera...
+        </div>
+        <div class="ar-ui">
+            <div class="cheek-selector">
+                <button id="tattooBtn" class="cheek-btn active">Cheek Tattoo</button>
+                <button id="orbitBtn" class="cheek-btn">Face Orbit</button>
+                <button id="shoulderBtn" class="cheek-btn">Jugnu Badge</button>
+            </div>
+            <div style="display: flex; gap: 12px; width: 100%;">
+                <button id="captureBtn" class="btn" style="background: #28a745; box-shadow: none; flex: 1;">
+                    📸 Capture Selfie
+                </button>
+                <button id="exitArBtn" class="btn" style="background: rgba(220, 53, 69, 0.9); box-shadow: none; flex: 1;">
+                    ❌ Exit AR Mode
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="qrModal" class="qr-modal" onclick="toggleQRModal(false)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3 style="margin-top: 0; font-weight: 800;">Scan to Open App!</h3>
+            <p style="color: #a0a0ab; font-size: 0.85rem; margin-bottom: 0;">Share this code with friends to promote JugnuXR!</p>
+            <div id="qrcode"></div>
+            <button class="close-btn" onclick="toggleQRModal(false)">Close</button>
+        </div>
+    </div>
+
+    <!-- STANDARD JAVASCRIPT: Safely initializes variables in the global namespace instantly to support file:/// double-clicking -->
+    <script>
+        const canvas = document.getElementById('stickerCanvas');
+        const ctx = canvas.getContext('2d');
+        const colorPicker = document.getElementById('jugnuColor');
+
+        // Synthesize camera shutter sound programmatically using Web Audio API
+        function playCameraSound() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // 1. Sci-Fi Frequency Sweep (Rise and Fall)
+                const osc1 = audioCtx.createOscillator();
+                const gain1 = audioCtx.createGain();
+                osc1.type = 'sine';
+                
+                // Sweep frequency quickly from 600Hz up to 2200Hz, then down to 300Hz
+                osc1.frequency.setValueAtTime(600, audioCtx.currentTime);
+                osc1.frequency.exponentialRampToValueAtTime(2200, audioCtx.currentTime + 0.08);
+                osc1.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.25);
+                
+                gain1.gain.setValueAtTime(0.4, audioCtx.currentTime);
+                gain1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+                
+                osc1.connect(gain1);
+                gain1.connect(audioCtx.destination);
+                
+                // 2. High-frequency "magical sparkle" chime
+                const osc2 = audioCtx.createOscillator();
+                const gain2 = audioCtx.createGain();
+                osc2.type = 'triangle';
+                
+                osc2.frequency.setValueAtTime(2500, audioCtx.currentTime);
+                osc2.frequency.setValueAtTime(3200, audioCtx.currentTime + 0.05);
+                
+                gain2.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+                
+                osc2.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                
+                osc1.start();
+                osc1.stop(audioCtx.currentTime + 0.25);
+                
+                osc2.start();
+                osc2.stop(audioCtx.currentTime + 0.15);
+            } catch (e) {
+                console.warn("Web Audio API failed to play sound: User interaction required or context blocked.", e);
+            }
+        }
+
+        // Show a premium glassmorphic toast notification
+        function showToast(message) {
+            const existingToast = document.getElementById('camera-toast');
+            if (existingToast) existingToast.remove();
+
+            const toast = document.createElement('div');
+            toast.id = 'camera-toast';
+            toast.innerHTML = `
+                <span style="font-size: 1.2rem; margin-right: 10px; display: flex; align-items: center;">📸</span>
+                <span>${message}</span>
+            `;
+            
+            Object.assign(toast.style, {
+                position: 'fixed',
+                bottom: '120px',
+                left: '50%',
+                transform: 'translateX(-50%) translateY(20px)',
+                backgroundColor: 'rgba(24, 24, 28, 0.85)',
+                backdropFilter: 'blur(12px)',
+                webkitBackdropFilter: 'blur(12px)',
+                border: '1.5px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '16px',
+                color: '#ffffff',
+                padding: '14px 28px',
+                fontSize: '0.9rem',
+                fontWeight: '600',
+                zIndex: '9999',
+                boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.1)',
+                transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                opacity: '0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                pointerEvents: 'none',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            });
+
+            document.body.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateX(-50%) translateY(0)';
+            });
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(-50%) translateY(-20px)';
+                setTimeout(() => toast.remove(), 400);
+            }, 2500);
+        }
+        
+        let currentExpression = 'classic';
+        let targetHueShift = 0;
+        
+        let animationFrameId = null;
+        let waveOffsetY = 0;
+        let waveRotation = 0; 
+
+        let arActive = false;
+        let currentCheek = 'left';
+
+        // Bind global reference handlers directly to window to bypass local security context blocks
+        window.setExpression = function(type, event) {
+            currentExpression = type;
+            document.querySelectorAll('.exp-btn').forEach(btn => btn.classList.remove('active'));
+            if(event && event.currentTarget) {
+                event.currentTarget.classList.add('active');
+            }
+        };
+
+        window.handleColorChange = function() {
+            const hex = colorPicker.value;
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            
+            let min = Math.min(r, g, b);
+            let max = Math.max(r, g, b);
+            let hue = 0;
+            if (max !== min) {
+                if (max === r) hue = (g - b) / (max - min);
+                else if (max === g) hue = 2 + (b - r) / (max - min);
+                else hue = 4 + (r - g) / (max - min);
+                hue = Math.round(hue * 60);
+                if (hue < 0) hue += 360;
+            }
+            targetHueShift = (hue - 20 + 360) % 360;
+        };
+
+        const jugnuBase = new Image();
+        jugnuBase.src = './stickar/Jugnu_base.png';
+
+        function render(timestamp = 0) {
+            // Jugnu body waves rotate continuously
+            waveRotation = timestamp * 0.0008;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (!jugnuBase.complete || jugnuBase.naturalWidth === 0) return;
+
+            const imgWidth = jugnuBase.naturalWidth;
+            const imgHeight = jugnuBase.naturalHeight;
+            const aspectRatio = imgWidth / imgHeight;
+
+            let renderWidth, renderHeight;
+            if (aspectRatio > 1) {
+                renderWidth = canvas.width;
+                renderHeight = canvas.width / aspectRatio;
+            } else {
+                renderHeight = canvas.height;
+                renderWidth = canvas.height * aspectRatio;
+            }
+
+            const xOffset = (canvas.width - renderWidth) / 2;
+            const yOffset = (canvas.height - renderHeight) / 2;
+
+            const cx = canvas.width / 2;
+            const cy = yOffset + (renderHeight * 0.445); 
+
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(waveRotation);
+            // Boost saturation and contrast to make Jugnu vibrant, energetic, and attractive
+            ctx.filter = `hue-rotate(${targetHueShift}deg) saturate(1.85) contrast(1.2)`;
+            
+            // Volumetric glowing shades of the same custom color
+            ctx.shadowColor = colorPicker.value || '#ff6b35';
+            ctx.shadowBlur = 30;
+            
+            ctx.drawImage(jugnuBase, -renderWidth / 2, -renderHeight * 0.445, renderWidth, renderHeight);
+            ctx.restore();
+
+            // Make the facial expression float independently inside the rotating body to look alive
+            const floatX = Math.cos(timestamp / 350) * 8;
+            const floatY = Math.sin(timestamp / 250) * 10;
+            drawExpressionLayer(ctx, cx + floatX, cy + floatY, currentExpression);
+
+            // Dynamically dispatch tracking canvas map pipeline updates if requested by external modules
+            if (arActive && window.arTextureRef) {
+                window.arTextureRef.needsUpdate = true;
+            }
+
+            animationFrameId = requestAnimationFrame(render);
+        }
+
+        function drawExpressionLayer(ctx, cx, cy, type) {
+            // scale is the base resolution scaling factor (base canvas was 600x600)
+            const scale = canvas.width / 600;
+            
+            // strokeScale controls the line thickness (2.2x thicker for high visibility at distance)
+            const strokeScale = scale * 2.2;
+            
+            // featureScale controls position offsets and sizing of eyes/mouth 
+            // (1.25x larger to lie safely inside the central red core of the Jugnu body)
+            const featureScale = scale * 1.25;
+
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 6 * strokeScale;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.fillStyle = '#ffffff';
+
+            const eyeY = cy - (10 * featureScale);      
+            const mouthY = cy + (14 * featureScale);    
+            const eyeOffset = 42 * featureScale; 
+            const mouthWidth = 14 * featureScale; 
+
+            if (type === 'classic') {
+                ctx.beginPath(); 
+                ctx.moveTo(cx - eyeOffset - (12 * featureScale), eyeY + (6 * featureScale)); 
+                ctx.lineTo(cx - eyeOffset, eyeY - (6 * featureScale)); 
+                ctx.lineTo(cx - eyeOffset + (12 * featureScale), eyeY + (6 * featureScale)); 
+                ctx.stroke();
+
+                ctx.beginPath(); 
+                ctx.moveTo(cx + eyeOffset - (12 * featureScale), eyeY + (6 * featureScale)); 
+                ctx.lineTo(cx + eyeOffset, eyeY - (6 * featureScale)); 
+                ctx.lineTo(cx + eyeOffset + (12 * featureScale), eyeY + (6 * featureScale)); 
+                ctx.stroke();
+            } 
+            else if (type === 'happy') {
+                for (let offset of [-eyeOffset, eyeOffset]) {
+                    ctx.save(); 
+                    ctx.translate(cx + offset, eyeY); 
+                    ctx.scale(0.85 * featureScale, 0.85 * featureScale); 
+                    ctx.beginPath(); 
+                    ctx.moveTo(0, 8);
+                    ctx.bezierCurveTo(0, 6, -14, -6, -14, -14); 
+                    ctx.bezierCurveTo(-14, -24, -2, -24, 0, -12);
+                    ctx.bezierCurveTo(2, -24, 14, -24, 14, -14); 
+                    ctx.bezierCurveTo(14, -6, 0, 6, 0, 8); 
+                    ctx.fill(); 
+                    ctx.restore();
+                }
+            } 
+            else if (type === 'wink') {
+                ctx.beginPath(); 
+                ctx.arc(cx - eyeOffset, eyeY, 11 * featureScale, 0, Math.PI * 2); 
+                ctx.stroke();
+
+                ctx.beginPath(); 
+                ctx.moveTo(cx + eyeOffset + (10 * featureScale), eyeY - (10 * featureScale)); 
+                ctx.lineTo(cx + eyeOffset - (4 * featureScale), eyeY); 
+                ctx.lineTo(cx + eyeOffset + (10 * featureScale), eyeY + (10 * featureScale)); 
+                ctx.stroke();
+            } 
+            else if (type === 'shocked') {
+                ctx.beginPath(); 
+                ctx.arc(cx - eyeOffset, eyeY, 11 * featureScale, 0, Math.PI * 2); 
+                ctx.stroke();
+
+                ctx.beginPath(); 
+                ctx.arc(cx + eyeOffset, eyeY, 11 * featureScale, 0, Math.PI * 2); 
+                ctx.stroke();
+            }
+
+            ctx.fillStyle = 'transparent'; 
+            if (type === 'classic' || type === 'happy') {
+                ctx.beginPath(); 
+                ctx.moveTo(cx - mouthWidth, mouthY); 
+                ctx.quadraticCurveTo(cx, mouthY + (10 * featureScale), cx + mouthWidth, mouthY); 
+                ctx.stroke();
+            } 
+            else if (type === 'wink') {
+                ctx.beginPath(); 
+                ctx.moveTo(cx - mouthWidth, mouthY + (4 * featureScale)); 
+                ctx.bezierCurveTo(cx - mouthWidth/2, mouthY + (10 * featureScale), cx + mouthWidth/2, mouthY - (4 * featureScale), cx + mouthWidth, mouthY + (2 * featureScale)); 
+                ctx.stroke();
+            } 
+            else if (type === 'shocked') {
+                ctx.beginPath(); 
+                ctx.arc(cx, mouthY + (4 * featureScale), 8 * featureScale, 0, Math.PI * 2); 
+                ctx.stroke();
+            }
+        }
+
+        window.downloadSticker = function() {
+            let temporaryWaveOffset = waveOffsetY;
+            let temporaryRotationOffset = waveRotation;
+            waveOffsetY = 0; waveRotation = 0; render(0); 
+            const dataUrl = canvas.toDataURL('image/png');
+            waveOffsetY = temporaryWaveOffset; waveRotation = temporaryRotationOffset;
+            
+            const link = document.createElement('a');
+            link.download = `jugnu-${currentExpression}-sticker.png`;
+            link.href = dataUrl;
+            link.click();
+        };
+
+        window.shareSticker = async function() {
+            try {
+                let temporaryWaveOffset = waveOffsetY; let temporaryRotationOffset = waveRotation;
+                waveOffsetY = 0; waveRotation = 0; render(0); 
+                const imgDataUrl = canvas.toDataURL('image/png');
+                waveOffsetY = temporaryWaveOffset; waveRotation = temporaryRotationOffset;
+
+                const blob = await (await fetch(imgDataUrl)).blob();
+                const file = new File([blob], `jugnu-${currentExpression}.png`, { type: blob.type });
+
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share({ files: [file], title: 'Jugnu Sticker!', text: 'Check out my spatial companion for JugnuXR! 🚀' });
+                } else {
+                    await navigator.clipboard.writeText(window.location.href);
+                    alert("App link copied to clipboard! Share it to promote JugnuXR! 📢");
+                }
+            } catch (err) { console.error(err); }
+        };
+
+        let qrGenerated = false;
+        window.toggleQRModal = function(show) {
+            const modal = document.getElementById('qrModal');
+            if (show) {
+                modal.classList.add('show');
+                if (!qrGenerated) {
+                    new QRCode(document.getElementById("qrcode"), { text: window.location.href, width: 180, height: 180, colorDark : "#0f0f11", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H });
+                    qrGenerated = true;
+                }
+            } else { modal.classList.remove('show'); }
+        };
+
+        // Fallback interface warning handler if AR is activated on local drive restrictions
+        window.triggerARPipeline = function() {
+            if (window.location.protocol === 'file:') {
+                alert("Security Restriction: To launch the live AR tracking camera on your PC or mobile phone, you must open this directory using a local development server or host it online securely over HTTPS (like GitHub Pages).");
+                return;
+            }
+
+            // Check for Secure Context (HTTPS or localhost) required by WebAR/Camera API
+            if (!window.isSecureContext) {
+                alert("Security Restriction: AR camera access requires a Secure Context (HTTPS or localhost).\n\nYou are accessing this page via: " + window.location.href + "\n\nPlease host this page securely (e.g., using GitHub Pages over HTTPS, or local port forwarding/ngrok) to enable camera access.");
+                return;
+            }
+
+            if (window.startAsynchronousAR) {
+                window.startAsynchronousAR().catch(err => {
+                    alert("AR Initialization Error:\n" + err.message + "\n\nPlease verify that your device has a camera, camera permissions are granted, and you are accessing a secure URL.");
+                });
+            } else {
+                alert("AR modules are not initialized yet.\n\nPossible reasons:\n- The browser does not support ES modules or import maps.\n- The external 3D libraries (Three.js/MindAR) failed to download.\n- A JavaScript error occurred during load.\n\nPlease reload or check the developer console.");
+            }
+        };
+
+        // Listen for internal mode toggles inside standard namespace layout boundaries
+        document.getElementById('tattooBtn').addEventListener('click', () => { if(window.switchARMode) window.switchARMode('tattoo'); });
+        document.getElementById('orbitBtn').addEventListener('click', () => { if(window.switchARMode) window.switchARMode('orbit'); });
+        document.getElementById('shoulderBtn').addEventListener('click', () => { if(window.switchARMode) window.switchARMode('shoulder'); });
+        document.getElementById('captureBtn').addEventListener('click', () => { 
+            playCameraSound();
+            window.shouldTakeSelfie = true; 
+        });
+        document.getElementById('exitArBtn').addEventListener('click', () => { if(window.terminateARViewport) window.terminateARViewport(); });
+
+        // Expose global execution state toggles safely
+        window.setArStateActive = function(isActive) { arActive = isActive; };
+        window.getCanvasRef = function() { return canvas; };
+
+        window.shouldTakeSelfie = false;
+        
+        window.executeSelfieCapture = function(canvas3D) {
+            const arContainer = document.getElementById('ar-container');
+            const video = arContainer.querySelector('video');
+            if (!video || !canvas3D) return;
+
+            // Get viewport display container dimensions
+            const containerWidth = arContainer.clientWidth;
+            const containerHeight = arContainer.clientHeight;
+
+            // Get video's CSS dimensions to calculate the correct scale and offsets
+            const videoStyleWidth = parseFloat(video.style.width) || containerWidth;
+            const videoStyleHeight = parseFloat(video.style.height) || containerHeight;
+            const videoStyleLeft = parseFloat(video.style.left) || 0;
+            const videoStyleTop = parseFloat(video.style.top) || 0;
+
+            // Calculate the scale factor between the CSS display size and raw video dimensions
+            const scale = video.videoWidth / videoStyleWidth;
+
+            // Capture scale matches the high-resolution rendering scale factor (Math.max(devicePixelRatio, 2))
+            const captureScale = Math.max(window.devicePixelRatio, 2);
+
+            // Compute the cropped region dimensions in raw pixel coordinates scaled to high resolution
+            const cropX = -videoStyleLeft * scale * captureScale;
+            const cropY = -videoStyleTop * scale * captureScale;
+            const cropWidth = containerWidth * scale * captureScale;
+            const cropHeight = containerHeight * scale * captureScale;
+
+            // Create a high-resolution composite canvas matching the container's aspect ratio
+            const compositeCanvas = document.createElement('canvas');
+            compositeCanvas.width = cropWidth;
+            compositeCanvas.height = cropHeight;
+            const ctx = compositeCanvas.getContext('2d');
+
+            // 1. Draw the video element (Webcam background)
+            // The raw camera feed is unmirrored, so we apply horizontal flip to mirror it.
+            ctx.save();
+            ctx.translate(cropWidth, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, -cropX, -cropY, video.videoWidth * captureScale, video.videoHeight * captureScale);
+            ctx.restore();
+
+            // 2. Draw the WebGL canvas (3D model overlay containing Jugnu)
+            // The WebGL canvas is already rendered mirrored internally by the MindAR tracking solver.
+            // Therefore, we draw it unmirrored (without scale(-1, 1)) so it is not double-flipped.
+            // Since it was rendered at high resolution, we draw it 1:1 on the high-res composite canvas.
+            ctx.drawImage(canvas3D, -cropX, -cropY, video.videoWidth * captureScale, video.videoHeight * captureScale);
+
+            // 3. Trigger download
+            try {
+                const dataUrl = compositeCanvas.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.download = `jugnu-selfie-${Date.now()}.png`;
+                link.href = dataUrl;
+                link.click();
+
+                // Show user notification that photo is saved
+                showToast("Photo saved to gallery!");
+            } catch (err) {
+                console.error(err);
+                alert("Error exporting selfie: " + err.message);
+            }
+        };
+
+        jugnuBase.onload = function() { render(); };
+        jugnuBase.onerror = function() {
+            ctx.fillStyle = '#ff6b35'; ctx.font = '20px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText('Error: Cannot find "Jugnu_base.png"', canvas.width / 2, canvas.height / 2);
+        };
+    </script>
+
+    <!-- ISOLATED INTERPOLATION STREAM MODULE: Dynamically imported. Stays sleeping and doesn't interfere locally until online secure parameters are met -->
+    <script type="module">
+        import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+        import { MindARThree } from 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-three.prod.js';
+
+        let mindarThree = null;
+        let leftAnchor = null;
+        let rightAnchor = null;
+        let noseAnchor = null;
+        let chinAnchor = null;
+        let anchorMesh = null;
+        let material = null;
+        let currentArMode = 'tattoo';
+        let randomCheek = 'left';
+
+        window.startAsynchronousAR = async function() {
+            const mainUi = document.getElementById('main-ui');
+            const arContainer = document.getElementById('ar-container');
+            
+            mainUi.style.opacity = '0';
+            setTimeout(() => mainUi.style.display = 'none', 300);
+            arContainer.style.display = 'block';
+
+            mindarThree = new MindARThree({ container: arContainer });
+            const { renderer, scene, camera } = mindarThree;
+            
+            // Override renderer.setSize to increase drawing resolution (removes pixelation)
+            const originalSetSize = renderer.setSize.bind(renderer);
+            renderer.setSize = function(width, height, updateStyle) {
+                const scaleFactor = Math.max(window.devicePixelRatio, 2);
+                originalSetSize(width * scaleFactor, height * scaleFactor, updateStyle);
+            };
+
+            window.arTextureRef = new THREE.CanvasTexture(window.getCanvasRef());
+            
+            // Configure high-quality texture filtering & anisotropic filtering to ensure sharpness
+            window.arTextureRef.minFilter = THREE.LinearMipmapLinearFilter;
+            window.arTextureRef.magFilter = THREE.LinearFilter;
+            window.arTextureRef.generateMipmaps = true;
+            if (renderer.capabilities && typeof renderer.capabilities.getMaxAnisotropy === 'function') {
+                const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+                window.arTextureRef.anisotropy = maxAnisotropy;
+            }
+            
+            material = new THREE.MeshBasicMaterial({ map: window.arTextureRef, transparent: true });
+            const geometry = new THREE.PlaneGeometry(0.35, 0.35);
+            anchorMesh = new THREE.Mesh(geometry, material);
+            
+            // Randomly choose left or right cheek on startup for the tattoo mode
+            randomCheek = Math.random() < 0.5 ? 'left' : 'right';
+            currentArMode = 'tattoo';
+
+            // Use landmarks 123 (left cheek) and 352 (right cheek) for center cheek placement
+            leftAnchor = mindarThree.addAnchor(123);
+            rightAnchor = mindarThree.addAnchor(352);
+            noseAnchor = mindarThree.addAnchor(4);
+            chinAnchor = mindarThree.addAnchor(152);
+
+            // Initial placement: place anchorMesh on the selected random cheek anchor group
+            if (randomCheek === 'left') {
+                leftAnchor.group.add(anchorMesh);
+            } else {
+                rightAnchor.group.add(anchorMesh);
+            }
+            
+            anchorMesh.position.set(0, 0, 0.005);
+            anchorMesh.rotation.set(0, 0, 0);
+            anchorMesh.scale.setScalar(1.0);
+
+            window.setArStateActive(true);
+            
+            try {
+                await mindarThree.start();
+                const loadingEl = document.getElementById('ar-loading');
+                if (loadingEl) loadingEl.style.display = 'none';
+                
+                renderer.setAnimationLoop(() => {
+                    // Update animation for orbiting if in orbit mode
+                    if (currentArMode === 'orbit') {
+                        const angle = (Date.now() / 1000) * 1.5; // Orbit speed
+                        const radius = 0.45; // Orbit radius
+                        const x = Math.sin(angle) * radius;
+                        const y = Math.sin(angle * 1.5) * 0.08; // 3D wave motion
+                        const z = Math.cos(angle) * radius; // depth relative to nose tip
+                        
+                        anchorMesh.position.set(x, y, z);
+                        anchorMesh.rotation.set(0, 0, 0); 
+                        
+                        // Depth illusion (scale and fade out when behind the face)
+                        if (z < 0) {
+                            const factor = (radius + z) / radius; // 1 to 0
+                            material.opacity = 0.2 + factor * 0.8;
+                            anchorMesh.scale.setScalar(0.6 + factor * 0.4);
+                        } else {
+                            material.opacity = 1.0;
+                            anchorMesh.scale.setScalar(1.0);
+                        }
+                    }
+                    
+                    renderer.render(scene, camera);
+
+                    if (window.shouldTakeSelfie) {
+                        window.executeSelfieCapture(renderer.domElement);
+                        window.shouldTakeSelfie = false;
+                    }
+                });
+            } catch (err) {
+                console.error(err);
+                window.terminateARViewport();
+                throw err;
+            }
+        };
+
+        window.switchARMode = function(mode) {
+            document.querySelectorAll('.cheek-btn').forEach(btn => btn.classList.remove('active'));
+            const btnId = mode === 'tattoo' ? 'tattooBtn' : (mode === 'orbit' ? 'orbitBtn' : 'shoulderBtn');
+            const activeBtn = document.getElementById(btnId);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            currentArMode = mode;
+
+            if (leftAnchor && rightAnchor && noseAnchor && chinAnchor && anchorMesh) {
+                // Remove from all groups
+                leftAnchor.group.remove(anchorMesh);
+                rightAnchor.group.remove(anchorMesh);
+                noseAnchor.group.remove(anchorMesh);
+                chinAnchor.group.remove(anchorMesh);
+
+                // Reset material & scaling defaults
+                material.opacity = 1.0;
+                anchorMesh.scale.setScalar(1.0);
+                anchorMesh.rotation.set(0, 0, 0);
+
+                if (mode === 'tattoo') {
+                    randomCheek = Math.random() < 0.5 ? 'left' : 'right';
+                    if (randomCheek === 'left') {
+                        leftAnchor.group.add(anchorMesh);
+                    } else {
+                        rightAnchor.group.add(anchorMesh);
+                    }
+                    anchorMesh.position.set(0, 0, 0.005);
+                } else if (mode === 'orbit') {
+                    noseAnchor.group.add(anchorMesh);
+                    // Dynamically positioned in rendering loop
+                } else if (mode === 'shoulder') {
+                    chinAnchor.group.add(anchorMesh);
+                    anchorMesh.position.set(-0.15, -0.25, -0.05); // Pinned on the screen-left chest (lapel/badge position)
+                    anchorMesh.scale.setScalar(0.65); // Badge-sized scale
+                }
+            }
+        };
+
+        window.terminateARViewport = function() {
+            window.setArStateActive(false);
+            const arContainer = document.getElementById('ar-container');
+            const loadingEl = document.getElementById('ar-loading');
+            if (loadingEl) loadingEl.style.display = 'block';
+            
+            // Reset button active state for next run
+            document.querySelectorAll('.cheek-btn').forEach(btn => btn.classList.remove('active'));
+            const defaultBtn = document.getElementById('tattooBtn');
+            if (defaultBtn) defaultBtn.classList.add('active');
+
+            if (mindarThree) {
+                mindarThree.stop();
+                const elSelectors = arContainer.querySelectorAll('video, canvas');
+                elSelectors.forEach(el => el.remove());
+            }
+            window.arTextureRef = null;
+            leftAnchor = null;
+            rightAnchor = null;
+            noseAnchor = null;
+            chinAnchor = null;
+            anchorMesh = null;
+            material = null;
+            arContainer.style.display = 'none';
+            const mainUi = document.getElementById('main-ui');
+            mainUi.style.display = 'block';
+            setTimeout(() => mainUi.style.opacity = '1', 50);
+        };
+    </script>
+</body>
+</html>

@@ -7,6 +7,17 @@
       content="width=device-width, initial-scale=1, shrink-to-fit=no"
     />
     <title>Jugnu_v1</title>
+    <!-- Instant Mobile Redirect (Android/iOS) to Sticker WebAR, excluding Quest Headsets -->
+    <script>
+      (function() {
+        const ua = navigator.userAgent;
+        const isMobile = /Android|iPhone|iPad|iPod|Windows Phone|webOS/i.test(ua);
+        const isHeadset = /Oculus|Quest|OculusBrowser/i.test(ua);
+        if (isMobile && !isHeadset) {
+          window.location.replace('./sticker.html');
+        }
+      })();
+    </script>
   </head>
   <body style="margin: 0">
     <div id="scene-container"></div>
