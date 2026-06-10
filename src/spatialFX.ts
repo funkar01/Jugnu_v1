@@ -150,7 +150,7 @@ export class SpatialFXSystem extends createSystem({}) {
 
     // --- Synthesizer APIs ---
 
-    playPositionalSound(type: 'click' | 'sparkle' | 'lockBreak' | 'fireworkLaunch' | 'fireworkExplode', pos: THREE.Vector3, volumeScale = 1.0) {
+    playPositionalSound(type: 'click' | 'sparkle' | 'lockBreak' | 'fireworkLaunch' | 'fireworkExplode' | 'cameraShutter', pos: THREE.Vector3, volumeScale = 1.0) {
         this.resumeAudio();
         if (!this.ctx) return;
 
@@ -175,6 +175,55 @@ export class SpatialFXSystem extends createSystem({}) {
 
             osc.start(t);
             osc.stop(t + 0.03);
+
+        } else if (type === 'cameraShutter') {
+            // Mechanical camera shutter sound
+            // Click 1 (shutter open)
+            const osc1 = this.ctx.createOscillator();
+            const gain1 = this.ctx.createGain();
+            osc1.connect(gain1);
+            gain1.connect(panner);
+            osc1.type = 'triangle';
+            osc1.frequency.setValueAtTime(800, t);
+            osc1.frequency.exponentialRampToValueAtTime(100, t + 0.04);
+            gain1.gain.setValueAtTime(0.25 * volumeScale, t);
+            gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+            osc1.start(t);
+            osc1.stop(t + 0.05);
+
+            // Click 2 (shutter close) after 80ms
+            const t2 = t + 0.08;
+            const osc2 = this.ctx.createOscillator();
+            const gain2 = this.ctx.createGain();
+            osc2.connect(gain2);
+            gain2.connect(panner);
+            osc2.type = 'sawtooth';
+            osc2.frequency.setValueAtTime(600, t2);
+            osc2.frequency.exponentialRampToValueAtTime(80, t2 + 0.05);
+            gain2.gain.setValueAtTime(0.20 * volumeScale, t2);
+            gain2.gain.exponentialRampToValueAtTime(0.001, t2 + 0.05);
+            osc2.start(t2);
+            osc2.stop(t2 + 0.06);
+
+            // White noise burst for the mechanical iris movement sound
+            const noise = this.createNoiseBufferNode();
+            if (noise) {
+                const noiseFilter = this.ctx.createBiquadFilter();
+                noiseFilter.type = 'bandpass';
+                noiseFilter.frequency.setValueAtTime(1800, t);
+                noiseFilter.Q.setValueAtTime(3.0, t);
+
+                const noiseGain = this.ctx.createGain();
+                noise.connect(noiseFilter);
+                noiseFilter.connect(noiseGain);
+                noiseGain.connect(panner);
+
+                noiseGain.gain.setValueAtTime(0.15 * volumeScale, t);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+
+                noise.start(t);
+                noise.stop(t + 0.14);
+            }
 
         } else if (type === 'sparkle') {
             const osc = this.ctx.createOscillator();

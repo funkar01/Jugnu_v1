@@ -181,6 +181,25 @@ export class JugnuSystem extends createSystem({
   private hasLeftPinchCompleted = false;
   private leftIndexTipWorld = new THREE.Vector3();
   private leftThumbTipWorld = new THREE.Vector3();
+  private leftIndexProximal = new THREE.Vector3();
+  private leftMiddleTip = new THREE.Vector3();
+  private leftRingTip = new THREE.Vector3();
+  private leftPinkyTip = new THREE.Vector3();
+  private leftWristWorld = new THREE.Vector3();
+
+  private rightIndexTipWorld = new THREE.Vector3();
+  private rightThumbTipWorld = new THREE.Vector3();
+  private rightIndexProximal = new THREE.Vector3();
+  private rightMiddleTip = new THREE.Vector3();
+  private rightRingTip = new THREE.Vector3();
+  private rightPinkyTip = new THREE.Vector3();
+  private rightWristWorld = new THREE.Vector3();
+
+  private momentCooldown = 0.0;
+  private flashMesh: THREE.Mesh | null = null;
+  private flashOpacity = 0.0;
+  private floatingPhotos: { mesh: THREE.Mesh; age: number; spawnPos: THREE.Vector3; yaw: number }[] = [];
+
   private threadCooldownTimer = 0.0;
   private lockEscapeTimer = 0.0;
 
@@ -627,6 +646,162 @@ export class JugnuSystem extends createSystem({
     }
 
     const safeDt = Math.min(dt, 0.03);
+
+    // --- Capture Moment Screenshot Feature ---
+    // Update cooldown
+    if (this.momentCooldown > 0.0) {
+        this.momentCooldown -= safeDt;
+    }
+
+    // Update screen flash visual effect
+    if (this.flashOpacity > 0.0) {
+        this.flashOpacity -= safeDt * 4.0; // decay over 0.25 seconds
+        if (this.flashOpacity < 0.0) this.flashOpacity = 0.0;
+        
+        if (this.flashMesh) {
+            this.flashMesh.visible = this.flashOpacity > 0.0;
+            (this.flashMesh.material as THREE.MeshBasicMaterial).opacity = this.flashOpacity;
+        }
+    }
+
+    // Update floating photographs animation
+    for (let i = this.floatingPhotos.length - 1; i >= 0; i--) {
+        const photo = this.floatingPhotos[i];
+        photo.age += safeDt;
+        const mesh = photo.mesh;
+        
+        // Fade out the photo's white flash layer
+        const photoFlash = mesh.userData.photoFlash as THREE.Mesh;
+        if (photoFlash) {
+            const flashMat = photoFlash.material as THREE.MeshBasicMaterial;
+            flashMat.opacity = Math.max(0.0, 0.95 - photo.age * 3.5); // fade over 0.27s
+            if (flashMat.opacity <= 0.0) {
+                photoFlash.visible = false;
+            }
+        }
+
+        if (photo.age < 0.6) {
+            // Stage 1: Scale up with overshoot
+            const t = photo.age / 0.6;
+            const scale = Math.sin(t * Math.PI * 0.5) * 1.15;
+            mesh.scale.setScalar(THREE.MathUtils.lerp(0.001, 1.0, scale));
+        } else if (photo.age < 3.2) {
+            // Stage 2: Bob in place gently
+            mesh.scale.setScalar(1.0);
+            const bob = Math.sin((photo.age - 0.6) * 3.0) * 0.012;
+            mesh.position.y = photo.spawnPos.y + bob;
+        } else if (photo.age < 4.2) {
+            // Stage 3: Float upwards, shrink, and fade out
+            const t = (photo.age - 3.2) / 1.0;
+            const fade = 1.0 - t;
+            mesh.scale.setScalar(fade);
+            mesh.position.y = photo.spawnPos.y + t * 0.15;
+            
+            mesh.traverse((child) => {
+                if (child instanceof THREE.Mesh && child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach((mat) => {
+                            mat.transparent = true;
+                            mat.opacity = (mat.userData.baseOpacity || 0.88) * fade;
+                        });
+                    } else {
+                        const mat = child.material;
+                        mat.transparent = true;
+                        mat.opacity = (mat.userData.baseOpacity || 1.0) * fade;
+                    }
+                } else if (child instanceof THREE.LineSegments && child.material) {
+                    const mat = child.material as THREE.LineBasicMaterial;
+                    mat.transparent = true;
+                    mat.opacity = fade * 0.8;
+                }
+            });
+        } else {
+            // Stage 4: Clean up resources from GPU
+            this.world.scene.remove(mesh);
+            mesh.traverse((child) => {
+                if (child instanceof THREE.Mesh) {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach((mat) => mat.dispose());
+                        } else {
+                            child.material.dispose();
+                        }
+                    }
+                } else if (child instanceof THREE.LineSegments) {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) (child.material as THREE.Material).dispose();
+                }
+            });
+            this.floatingPhotos.splice(i, 1);
+        }
+    }
+
+    // Gesture detection for both hands
+    let doubleGestureDetected = false;
+    const lSrc = this.input.getPrimaryInputSource('left');
+    const rSrc = this.input.getPrimaryInputSource('right');
+
+    if (lSrc && lSrc.hand && rSrc && rSrc.hand && this.xrFrame) {
+        const hasLeftIndex = this.getJointWorldData('left', 'index-finger-tip', this.leftIndexTipWorld);
+        const hasLeftIndexProx = this.getJointWorldData('left', 'index-finger-phalanx-proximal', this.leftIndexProximal);
+        const hasLeftThumb = this.getJointWorldData('left', 'thumb-tip', this.leftThumbTipWorld);
+        const hasLeftWrist = this.getJointWorldData('left', 'wrist', this.leftWristWorld);
+        const hasLeftMiddle = this.getJointWorldData('left', 'middle-finger-tip', this.leftMiddleTip);
+        const hasLeftRing = this.getJointWorldData('left', 'ring-finger-tip', this.leftRingTip);
+        const hasLeftPinky = this.getJointWorldData('left', 'pinky-finger-tip', this.leftPinkyTip);
+
+        const hasRightIndex = this.getJointWorldData('right', 'index-finger-tip', this.rightIndexTipWorld);
+        const hasRightIndexProx = this.getJointWorldData('right', 'index-finger-phalanx-proximal', this.rightIndexProximal);
+        const hasRightThumb = this.getJointWorldData('right', 'thumb-tip', this.rightThumbTipWorld);
+        const hasRightWrist = this.getJointWorldData('right', 'wrist', this.rightWristWorld);
+        const hasRightMiddle = this.getJointWorldData('right', 'middle-finger-tip', this.rightMiddleTip);
+        const hasRightRing = this.getJointWorldData('right', 'ring-finger-tip', this.rightRingTip);
+        const hasRightPinky = this.getJointWorldData('right', 'pinky-finger-tip', this.rightPinkyTip);
+
+        if (hasLeftIndex && hasLeftIndexProx && hasLeftThumb && hasLeftWrist && hasLeftMiddle && hasLeftRing && hasLeftPinky &&
+            hasRightIndex && hasRightIndexProx && hasRightThumb && hasRightWrist && hasRightMiddle && hasRightRing && hasRightPinky) {
+            
+            // Left hand gesture validation
+            const leftIndexDist = this.leftIndexTipWorld.distanceTo(this.leftWristWorld);
+            const leftThumbDist = this.leftThumbTipWorld.distanceTo(this.leftWristWorld);
+            
+            const leftIndexDir = this.scratchV3_1.subVectors(this.leftIndexTipWorld, this.leftIndexProximal).normalize();
+            const isLeftIndexUp = leftIndexDir.y > 0.70;
+
+            const isLeftIndexExtended = leftIndexDist > 0.12;
+            const isLeftThumbExtended = leftThumbDist > 0.10;
+            const isLeftOtherCurled = (this.leftMiddleTip.distanceTo(this.leftWristWorld) < 0.08) &&
+                                      (this.leftRingTip.distanceTo(this.leftWristWorld) < 0.08) &&
+                                      (this.leftPinkyTip.distanceTo(this.leftWristWorld) < 0.08);
+
+            const isLeftValid = isLeftIndexExtended && isLeftThumbExtended && isLeftIndexUp && isLeftOtherCurled;
+
+            // Right hand gesture validation
+            const rightIndexDist = this.rightIndexTipWorld.distanceTo(this.rightWristWorld);
+            const rightThumbDist = this.rightThumbTipWorld.distanceTo(this.rightWristWorld);
+
+            const rightIndexDir = this.scratchV3_2.subVectors(this.rightIndexTipWorld, this.rightIndexProximal).normalize();
+            const isRightIndexUp = rightIndexDir.y > 0.70;
+
+            const isRightIndexExtended = rightIndexDist > 0.12;
+            const isRightThumbExtended = rightThumbDist > 0.10;
+            const isRightOtherCurled = (this.rightMiddleTip.distanceTo(this.rightWristWorld) < 0.08) &&
+                                       (this.rightRingTip.distanceTo(this.rightWristWorld) < 0.08) &&
+                                       (this.rightPinkyTip.distanceTo(this.rightWristWorld) < 0.08);
+
+            const isRightValid = isRightIndexExtended && isRightThumbExtended && isRightIndexUp && isRightOtherCurled;
+
+            if (isLeftValid && isRightValid) {
+                doubleGestureDetected = true;
+            }
+        }
+    }
+
+    if (doubleGestureDetected && this.momentCooldown <= 0.0) {
+        this.momentCooldown = 4.0; // Cooldown to prevent multiple screenshot calls
+        this.captureScreenshot();
+    }
 
     // --- Pinch State Machine ---
     let isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
@@ -3210,6 +3385,166 @@ export class JugnuSystem extends createSystem({
       }
 
       this.compassDebugTexture.needsUpdate = true;
+  }
+
+  private initFlashMesh() {
+      if (this.flashMesh) return;
+      if (!this.player || !this.player.head) return;
+
+      const flashGeo = new THREE.PlaneGeometry(0.3, 0.3);
+      const flashMat = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.0,
+          depthTest: false,
+          depthWrite: false
+      });
+      this.flashMesh = new THREE.Mesh(flashGeo, flashMat);
+      // Place 12cm in front of camera (just past near plane of 10cm)
+      this.flashMesh.position.set(0, 0, -0.12);
+      this.player.head.add(this.flashMesh);
+  }
+
+  private captureScreenshot() {
+      try {
+          // Temporarily hide flash mesh while capturing screenshot
+          if (this.flashMesh) this.flashMesh.visible = false;
+
+          // Force render of the active camera to the WebGL drawing buffer
+          const activeCamera = this.renderer.xr.isPresenting ? this.renderer.xr.getCamera() : this.camera;
+          this.renderer.render(this.world.scene, activeCamera);
+          
+          const width = this.renderer.domElement.width;
+          const height = this.renderer.domElement.height;
+          const offscreenCanvas = document.createElement('canvas');
+          offscreenCanvas.width = width;
+          offscreenCanvas.height = height;
+          const ctx = offscreenCanvas.getContext('2d');
+          if (ctx) {
+              ctx.drawImage(this.renderer.domElement, 0, 0);
+              const dataUrl = offscreenCanvas.toDataURL('image/png');
+
+              // Play synthesized shutter click sound at user head position
+              const spatialFX = (window as any).spatialFX;
+              if (spatialFX) {
+                  const headPos = new THREE.Vector3();
+                  this.player.head.getWorldPosition(headPos);
+                  spatialFX.playPositionalSound('cameraShutter', headPos);
+              }
+
+              // Trigger screen flash
+              this.initFlashMesh();
+              this.flashOpacity = 0.95;
+              if (this.flashMesh) {
+                  this.flashMesh.visible = true;
+                  (this.flashMesh.material as THREE.MeshBasicMaterial).opacity = 0.95;
+              }
+
+              // Spawn floating photograph in 3D space
+              this.spawnFloatingPhoto(dataUrl);
+
+              // Auto-download to user's browser
+              const link = document.createElement('a');
+              link.download = `JugnuMoment_${Date.now()}.png`;
+              link.href = dataUrl;
+              link.click();
+              
+              console.log("[JugnuSystem] Capture Moment successful!");
+          }
+      } catch (err) {
+          console.warn("[JugnuSystem] Capture Moment failed:", err);
+      }
+  }
+
+  private spawnFloatingPhoto(dataUrl: string) {
+      const loader = new THREE.TextureLoader();
+      loader.load(dataUrl, (texture) => {
+          const aspect = 4 / 3;
+          const photoW = 0.20;
+          const photoH = photoW / aspect;
+          
+          const photoGeo = new THREE.PlaneGeometry(photoW, photoH);
+          const photoMat = new THREE.MeshBasicMaterial({
+              map: texture,
+              side: THREE.DoubleSide
+          });
+          photoMat.userData.baseOpacity = 1.0;
+          const photoMesh = new THREE.Mesh(photoGeo, photoMat);
+
+          const frameW = 0.23;
+          const frameH = 0.21;
+          const frameGeo = new THREE.PlaneGeometry(frameW, frameH);
+          const frameMat = new THREE.MeshPhysicalMaterial({
+              color: 0x050a14,
+              transparent: true,
+              opacity: 0.88,
+              roughness: 0.15,
+              metalness: 0.2,
+              transmission: 0.7,
+              thickness: 0.02,
+              side: THREE.DoubleSide
+          });
+          frameMat.userData.baseOpacity = 0.88;
+          const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+
+          // Position photo inside frame with bottom Polaroid margin
+          photoMesh.position.set(0, 0.015, 0.0015);
+          frameMesh.add(photoMesh);
+
+          // Glowing border
+          const borderGeo = new THREE.EdgesGeometry(frameGeo);
+          const borderMat = new THREE.LineBasicMaterial({
+              color: 0x00ffff,
+              linewidth: 2
+          });
+          const borderLine = new THREE.LineSegments(borderGeo, borderMat);
+          borderLine.position.z = 0.0025;
+          frameMesh.add(borderLine);
+
+          // White flash overlay on photo that decays
+          const photoFlashGeo = new THREE.PlaneGeometry(photoW, photoH);
+          const photoFlashMat = new THREE.MeshBasicMaterial({
+              color: 0xffffff,
+              transparent: true,
+              opacity: 0.95,
+              depthWrite: false,
+              depthTest: false
+          });
+          const photoFlashMesh = new THREE.Mesh(photoFlashGeo, photoFlashMat);
+          photoFlashMesh.position.set(0, 0.015, 0.002);
+          frameMesh.add(photoFlashMesh);
+          frameMesh.userData.photoFlash = photoFlashMesh;
+
+          // Spawn in front of the head
+          const headPos = new THREE.Vector3();
+          this.player.head.getWorldPosition(headPos);
+          const headQuat = new THREE.Quaternion();
+          this.player.head.getWorldQuaternion(headQuat);
+
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(headQuat);
+          forward.y = 0;
+          forward.normalize();
+
+          const spawnPos = new THREE.Vector3().copy(headPos).addScaledVector(forward, 0.55);
+          spawnPos.y = headPos.y - 0.10;
+
+          frameMesh.position.copy(spawnPos);
+
+          const dx = headPos.x - spawnPos.x;
+          const dz = headPos.z - spawnPos.z;
+          const yaw = Math.atan2(dx, dz);
+          frameMesh.quaternion.setFromEuler(new THREE.Euler(0, yaw + Math.PI, 0));
+
+          frameMesh.scale.set(0.001, 0.001, 0.001);
+          this.world.scene.add(frameMesh);
+
+          this.floatingPhotos.push({
+              mesh: frameMesh,
+              age: 0.0,
+              spawnPos: spawnPos.clone(),
+              yaw: yaw
+          });
+      });
   }
 
   private createHolographicMaterial(texture: THREE.CanvasTexture, initialOpacity: number): THREE.ShaderMaterial {
