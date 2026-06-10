@@ -46,6 +46,7 @@ import { PanelSystem } from "./panel.js";
 import { Robot, RobotSystem } from "./robot.js";
 import { JugnuSystem } from "./jugnu.js";
 import { Jugnu, TranscriptUI } from "./components.js";
+import { init2DGallery } from "./gallery.js";
 import { JugnuV3Model } from "./JugnuV3Model.js";
 import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
 import { JugnuDebugBoard } from "./JugnuDebugBoard.js";
@@ -226,6 +227,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   if (renderer) {
       renderer.toneMapping = ACESFilmicToneMapping;
       renderer.outputColorSpace = SRGBColorSpace;
+      init2DGallery(renderer);
   }
 
   // Set premium B2B dark slate-navy scene background

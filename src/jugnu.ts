@@ -885,62 +885,77 @@ PARAMETER: [parameter value or "none"]` },
         }
     }
 
-    // Gesture detection for both hands
+    // Gesture detection for moment capture
     let doubleGestureDetected = false;
     const lSrc = this.input.getPrimaryInputSource('left');
     const rSrc = this.input.getPrimaryInputSource('right');
 
-    if (lSrc && lSrc.hand && rSrc && rSrc.hand && this.xrFrame) {
-        const hasLeftIndex = this.getJointWorldData('left', 'index-finger-tip', this.leftIndexTipWorld);
-        const hasLeftIndexProx = this.getJointWorldData('left', 'index-finger-phalanx-proximal', this.leftIndexProximal);
-        const hasLeftThumb = this.getJointWorldData('left', 'thumb-tip', this.leftThumbTipWorld);
-        const hasLeftWrist = this.getJointWorldData('left', 'wrist', this.leftWristWorld);
-        const hasLeftMiddle = this.getJointWorldData('left', 'middle-finger-tip', this.leftMiddleTip);
-        const hasLeftRing = this.getJointWorldData('left', 'ring-finger-tip', this.leftRingTip);
-        const hasLeftPinky = this.getJointWorldData('left', 'pinky-finger-tip', this.leftPinkyTip);
+    // 1. Controller Shortcut Fallback: Press both triggers simultaneously
+    if (lSrc && lSrc.gamepad && rSrc && rSrc.gamepad) {
+        const leftTrigger = lSrc.gamepad.buttons[0]; // Trigger is index 0
+        const rightTrigger = rSrc.gamepad.buttons[0];
+        if (leftTrigger && leftTrigger.pressed && rightTrigger && rightTrigger.pressed) {
+            doubleGestureDetected = true;
+        }
+    }
 
-        const hasRightIndex = this.getJointWorldData('right', 'index-finger-tip', this.rightIndexTipWorld);
-        const hasRightIndexProx = this.getJointWorldData('right', 'index-finger-phalanx-proximal', this.rightIndexProximal);
-        const hasRightThumb = this.getJointWorldData('right', 'thumb-tip', this.rightThumbTipWorld);
-        const hasRightWrist = this.getJointWorldData('right', 'wrist', this.rightWristWorld);
-        const hasRightMiddle = this.getJointWorldData('right', 'middle-finger-tip', this.rightMiddleTip);
-        const hasRightRing = this.getJointWorldData('right', 'ring-finger-tip', this.rightRingTip);
-        const hasRightPinky = this.getJointWorldData('right', 'pinky-finger-tip', this.rightPinkyTip);
+    // 2. Hand Tracking Gestures
+    if (!doubleGestureDetected && this.xrFrame) {
+        const hasLeftHand = lSrc && lSrc.hand;
+        const hasRightHand = rSrc && rSrc.hand;
 
-        if (hasLeftIndex && hasLeftIndexProx && hasLeftThumb && hasLeftWrist && hasLeftMiddle && hasLeftRing && hasLeftPinky &&
-            hasRightIndex && hasRightIndexProx && hasRightThumb && hasRightWrist && hasRightMiddle && hasRightRing && hasRightPinky) {
-            
-            // Left hand gesture validation
-            const leftIndexDist = this.leftIndexTipWorld.distanceTo(this.leftWristWorld);
-            const leftThumbDist = this.leftThumbTipWorld.distanceTo(this.leftWristWorld);
-            
-            const leftIndexDir = this.scratchV3_1.subVectors(this.leftIndexTipWorld, this.leftIndexProximal).normalize();
-            const isLeftIndexUp = leftIndexDir.y > 0.70;
+        // Retrieve joint data
+        const hasLeftIndex = hasLeftHand ? this.getJointWorldData('left', 'index-finger-tip', this.leftIndexTipWorld) : false;
+        const hasLeftThumb = hasLeftHand ? this.getJointWorldData('left', 'thumb-tip', this.leftThumbTipWorld) : false;
+        const hasLeftWrist = hasLeftHand ? this.getJointWorldData('left', 'wrist', this.leftWristWorld) : false;
+        const hasLeftMiddle = hasLeftHand ? this.getJointWorldData('left', 'middle-finger-tip', this.leftMiddleTip) : false;
+        const hasLeftRing = hasLeftHand ? this.getJointWorldData('left', 'ring-finger-tip', this.leftRingTip) : false;
+        const hasLeftPinky = hasLeftHand ? this.getJointWorldData('left', 'pinky-finger-tip', this.leftPinkyTip) : false;
 
-            const isLeftIndexExtended = leftIndexDist > 0.12;
-            const isLeftThumbExtended = leftThumbDist > 0.10;
-            const isLeftOtherCurled = (this.leftMiddleTip.distanceTo(this.leftWristWorld) < 0.08) &&
-                                      (this.leftRingTip.distanceTo(this.leftWristWorld) < 0.08) &&
-                                      (this.leftPinkyTip.distanceTo(this.leftWristWorld) < 0.08);
+        const hasRightIndex = hasRightHand ? this.getJointWorldData('right', 'index-finger-tip', this.rightIndexTipWorld) : false;
+        const hasRightThumb = hasRightHand ? this.getJointWorldData('right', 'thumb-tip', this.rightThumbTipWorld) : false;
+        const hasRightWrist = hasRightHand ? this.getJointWorldData('right', 'wrist', this.rightWristWorld) : false;
+        const hasRightMiddle = hasRightHand ? this.getJointWorldData('right', 'middle-finger-tip', this.rightMiddleTip) : false;
+        const hasRightRing = hasRightHand ? this.getJointWorldData('right', 'ring-finger-tip', this.rightRingTip) : false;
+        const hasRightPinky = hasRightHand ? this.getJointWorldData('right', 'pinky-finger-tip', this.rightPinkyTip) : false;
 
-            const isLeftValid = isLeftIndexExtended && isLeftThumbExtended && isLeftIndexUp && isLeftOtherCurled;
+        // 2a. Double-Hand "Lens Frame" Gesture: Touch left/right index tips and left/right thumb tips
+        if (hasLeftIndex && hasLeftThumb && hasRightIndex && hasRightThumb) {
+            const distIndex = this.leftIndexTipWorld.distanceTo(this.rightIndexTipWorld);
+            const distThumb = this.leftThumbTipWorld.distanceTo(this.rightThumbTipWorld);
+            // Touch finger tips together (5.5 cm threshold) to form viewfinder frame
+            if (distIndex < 0.055 && distThumb < 0.055) {
+                doubleGestureDetected = true;
+            }
+        }
 
-            // Right hand gesture validation
-            const rightIndexDist = this.rightIndexTipWorld.distanceTo(this.rightWristWorld);
-            const rightThumbDist = this.rightThumbTipWorld.distanceTo(this.rightWristWorld);
+        // 2b. Single-Hand "L-Camera" Gesture (Left or Right hand)
+        if (!doubleGestureDetected) {
+            const checkLCamera = (indexTip: THREE.Vector3, thumbTip: THREE.Vector3, wrist: THREE.Vector3, middle: THREE.Vector3, ring: THREE.Vector3, pinky: THREE.Vector3) => {
+                const indexDist = indexTip.distanceTo(wrist);
+                const thumbDist = thumbTip.distanceTo(wrist);
+                
+                // Relaxed heuristics:
+                // - Index and thumb extended (> 9cm and > 8cm respectively)
+                // - Middle, ring, pinky curled (< 10cm from wrist)
+                const isIndexExtended = indexDist > 0.09;
+                const isThumbExtended = thumbDist > 0.08;
+                const isOthersCurled = middle.distanceTo(wrist) < 0.10 &&
+                                       ring.distanceTo(wrist) < 0.10 &&
+                                       pinky.distanceTo(wrist) < 0.10;
+                
+                return isIndexExtended && isThumbExtended && isOthersCurled;
+            };
 
-            const rightIndexDir = this.scratchV3_2.subVectors(this.rightIndexTipWorld, this.rightIndexProximal).normalize();
-            const isRightIndexUp = rightIndexDir.y > 0.70;
+            const leftLValid = (hasLeftIndex && hasLeftThumb && hasLeftWrist && hasLeftMiddle && hasLeftRing && hasLeftPinky)
+                ? checkLCamera(this.leftIndexTipWorld, this.leftThumbTipWorld, this.leftWristWorld, this.leftMiddleTip, this.leftRingTip, this.leftPinkyTip)
+                : false;
 
-            const isRightIndexExtended = rightIndexDist > 0.12;
-            const isRightThumbExtended = rightThumbDist > 0.10;
-            const isRightOtherCurled = (this.rightMiddleTip.distanceTo(this.rightWristWorld) < 0.08) &&
-                                       (this.rightRingTip.distanceTo(this.rightWristWorld) < 0.08) &&
-                                       (this.rightPinkyTip.distanceTo(this.rightWristWorld) < 0.08);
+            const rightLValid = (hasRightIndex && hasRightThumb && hasRightWrist && hasRightMiddle && hasRightRing && hasRightPinky)
+                ? checkLCamera(this.rightIndexTipWorld, this.rightThumbTipWorld, this.rightWristWorld, this.rightMiddleTip, this.rightRingTip, this.rightPinkyTip)
+                : false;
 
-            const isRightValid = isRightIndexExtended && isRightThumbExtended && isRightIndexUp && isRightOtherCurled;
-
-            if (isLeftValid && isRightValid) {
+            if (leftLValid || rightLValid) {
                 doubleGestureDetected = true;
             }
         }
@@ -3626,6 +3641,28 @@ PARAMETER: [parameter value or "none"]` },
 
               // Spawn floating photograph in 3D space synchronously using CanvasTexture
               this.spawnFloatingPhoto(offscreenCanvas);
+
+              // Save to localStorage so they can be viewed and downloaded outside WebXR
+              try {
+                  const savedMoments = JSON.parse(localStorage.getItem("jugnu_moments") || "[]");
+                  const isVR = this.renderer.xr.isPresenting;
+                  savedMoments.push({
+                      id: Date.now(),
+                      dataUrl: offscreenCanvas.toDataURL("image/png"),
+                      timestamp: new Date().toLocaleString(),
+                      downloaded: !isVR // If in VR, mark as not yet downloaded (auto-download on VR exit)
+                  });
+                  // Limit to last 20 screenshots to prevent localStorage capacity crashes
+                  if (savedMoments.length > 20) {
+                      savedMoments.shift();
+                  }
+                  localStorage.setItem("jugnu_moments", JSON.stringify(savedMoments));
+
+                  // Dispatch custom event to notify 2D gallery UI
+                  window.dispatchEvent(new CustomEvent("jugnu-moment-saved"));
+              } catch (e) {
+                  console.warn("[JugnuSystem] Failed to save moment to localStorage:", e);
+              }
 
               // Only trigger automatic browser file download if we are NOT in an active WebXR session.
               // Triggering file downloads (link.click()) in VR/AR headsets (like Meta Quest Browser)

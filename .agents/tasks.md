@@ -768,11 +768,21 @@
   - `[x]` Implement automatic canvas snapshot capture and browser file download in `src/jugnu.ts`
   - `[x]` Verify zero static type errors (`npx tsc --noEmit`) and successful client production builds (`npm run build`)
 
-- `[x]` WebXR Screenshot Crash & Blank Screen Fixes (Current Run)
+- `[x]` WebXR Screenshot Crash, Blank Screen & Moments Gallery Fixes (Current Run)
   - `[x]` Decoupled `Jugnu` and `TranscriptUI` component declarations into a new standalone file `src/components.ts` to resolve circular dependency imports between `jugnu.ts` and `domainExpansion.ts`.
   - `[x]` Guarded browser screenshot downloads (`link.click()`) to only execute when `!this.renderer.xr.isPresenting`, preventing browser focus changes and WebGL context loss in Quest Browser.
   - `[x]` Modified Polaroid spawning in `src/jugnu.ts` to receive canvas objects directly and instantiate `THREE.CanvasTexture` synchronously, bypassing base64 data URL serialization and asynchronous image loading.
+  - `[x]` Implemented persistent client-side screenshot caching using browser `localStorage` and a custom sync event (`jugnu-moment-saved`).
+  - `[x]` Created a cyberpunk glassmorphic 2D Moments Gallery overlay UI in `src/gallery.ts` (complete with badge triggers, slide-out sidebar, full-screen lightbox, bulk downloaders, and clear actions).
+  - `[x]` Integrated the gallery's lifecycle with the WebXR session start/end listeners, automatically hiding it during active immersive views and showing it when returning to 2D browser mode.
+  - `[x]` Programmed auto-download of all VR-captured screenshots on `sessionend` (exiting WebXR mode) inside `src/gallery.ts` to save files directly to Quest 3 local Downloads folder.
+  - `[x]` Simplified and expanded screenshot input triggers in `src/jugnu.ts`:
+    - Added a double-handed controller trigger shortcut (pressing left + right triggers simultaneously).
+    - Added a double-handed "Lens Frame" gesture (touching left + right index tips together and left + right thumb tips together).
+    - Relaxed heuristics for the single-handed "L-Camera" gesture (index and thumb extended on either left or right hand with broad margins, tilt-agnostic).
   - `[x]` Implemented explicit texture disposal (`mat.map.dispose()`) during Polaroid mesh destruction to eliminate GPU memory leaks.
   - `[x]` Clamped all initial, collapsed, and animation scale targets for cards and UI panels to a minimum of `0.01` to prevent shader divide-by-zero errors.
   - `[x]` Confirmed zero static type errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+
 
