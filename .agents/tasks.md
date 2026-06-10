@@ -767,3 +767,12 @@
   - `[x]` Construct floating 3D Polaroid photograph frame with glassmorphic backing and glowing cyan borders in `src/jugnu.ts`
   - `[x]` Implement automatic canvas snapshot capture and browser file download in `src/jugnu.ts`
   - `[x]` Verify zero static type errors (`npx tsc --noEmit`) and successful client production builds (`npm run build`)
+
+- `[x]` WebXR Screenshot Crash & Blank Screen Fixes (Current Run)
+  - `[x]` Decoupled `Jugnu` and `TranscriptUI` component declarations into a new standalone file `src/components.ts` to resolve circular dependency imports between `jugnu.ts` and `domainExpansion.ts`.
+  - `[x]` Guarded browser screenshot downloads (`link.click()`) to only execute when `!this.renderer.xr.isPresenting`, preventing browser focus changes and WebGL context loss in Quest Browser.
+  - `[x]` Modified Polaroid spawning in `src/jugnu.ts` to receive canvas objects directly and instantiate `THREE.CanvasTexture` synchronously, bypassing base64 data URL serialization and asynchronous image loading.
+  - `[x]` Implemented explicit texture disposal (`mat.map.dispose()`) during Polaroid mesh destruction to eliminate GPU memory leaks.
+  - `[x]` Clamped all initial, collapsed, and animation scale targets for cards and UI panels to a minimum of `0.01` to prevent shader divide-by-zero errors.
+  - `[x]` Confirmed zero static type errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+

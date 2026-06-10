@@ -44,7 +44,8 @@ import {
 import { EnvironmentType, LocomotionEnvironment } from "@iwsdk/core";
 import { PanelSystem } from "./panel.js";
 import { Robot, RobotSystem } from "./robot.js";
-import { Jugnu, JugnuSystem, TranscriptUI } from "./jugnu.js";
+import { JugnuSystem } from "./jugnu.js";
+import { Jugnu, TranscriptUI } from "./components.js";
 import { JugnuV3Model } from "./JugnuV3Model.js";
 import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
 import { JugnuDebugBoard } from "./JugnuDebugBoard.js";

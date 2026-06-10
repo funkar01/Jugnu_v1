@@ -6,7 +6,7 @@ import {
   Interactable,
   AudioUtils,
 } from "@iwsdk/core";
-import { Jugnu, TranscriptUI } from "./jugnu.js";
+import { Jugnu, TranscriptUI } from "./components.js";
 import * as THREE from "three";
 
 // Helper to recursively traverse and find specific virtual object labels in Three.js hierarchies

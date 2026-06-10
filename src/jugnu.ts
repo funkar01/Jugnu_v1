@@ -8,9 +8,8 @@ import * as THREE from "three";
 const BACKEND_URL = ((import.meta as any).env.VITE_BACKEND_URL as string) || "/api/gemini";
 
 import { JugnuInstructionBoard } from "./JugnuInstructionBoard.js";
-
-export const Jugnu = createComponent("Jugnu", { instructionStep: { type: "Int8", default: 0 } });
-export const TranscriptUI = createComponent("TranscriptUI", {});
+import { DomainExpansionSystem } from "./domainExpansion.js";
+import { Jugnu, TranscriptUI } from "./components.js";
 
 export class JugnuSystem extends createSystem({
   jugnu: { required: [Jugnu] },
@@ -451,7 +450,28 @@ export class JugnuSystem extends createSystem({
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: `You are Jugnu, a friendly, concise robotic avatar companion in a WebVR environment. Keep your responses short and conversational. The user provided an audio message. Please transcribe and respond appropriately to their intent.\n\nFormat your exact response like this:\nTRANSCRIPT: [what you heard the user say]\nREPLY: [your conversational answer]\n\nAt the very end of your REPLY, please append exactly one mood tag from this list based on the sentiment: [MOOD: bored], [MOOD: calm], [MOOD: happy], [MOOD: sad], [MOOD: bright], [MOOD: blushing], [MOOD: winking].` },
+              { text: `You are Jugnu, a friendly, concise robotic avatar companion and Voice-to-Action Spatial Controller in a WebVR environment. Keep your responses short, helpful, and conversational.
+The user provided an audio message. Please transcribe it, construct a conversational reply, and detect if they are asking to trigger any environmental or UI actions.
+
+Supported Actions and parameters:
+1. "change_venue": Change the active stadium/map. Parameter must be one of: 'default' (Wankhede cricket), 'berlin' (Olympiastadion football), 'inuit' (basketball arena), 'butterflies' (Butterfly Park), or 'nurburgring' (F1 track).
+2. "toggle_minimap": Open or close the tactical minimap table. Parameter must be one of: 'open', 'close', or 'none'.
+3. "toggle_weather": Change the volumetric weather cycles. Parameter must be one of: 'rain', 'snow' (neon dust), 'clear' (off), or 'dust'.
+4. "play_sports": Play the choreographed sports sequence/replay of the active stadium. Parameter should be 'none'.
+5. "trigger_fireworks": Trigger the manual staged 4-stage holographic pyrotechnic show. Parameter should be 'none'.
+6. "capture_moment": Capture a screenshot moment. Parameter should be 'none'.
+7. "toggle_walls": Toggle the room visualizer walls highlighter. Parameter must be one of: 'show', 'hide', or 'none'.
+8. "toggle_lock": Rigidly anchor the companion/compass UI to freeze position and avoid spring float. Parameter must be one of: 'lock', 'unlock', or 'none'.
+9. "change_mood": Change Jugnu's mood expression. Parameter must be one of: 'bored', 'calm', 'happy', 'sad', 'bright', 'blushing', 'winking'.
+
+If the user request doesn't match any supported actions, set ACTION to "none" and PARAMETER to "none".
+
+You MUST format your exact response like this:
+TRANSCRIPT: [what you heard the user say]
+REPLY: [your conversational answer]
+MOOD: [one of: bored | calm | happy | sad | bright | blushing | winking]
+ACTION: [action name or "none"]
+PARAMETER: [parameter value or "none"]` },
               { inlineData: { mimeType: "audio/webm", data: base64Data } }
             ]
           }]
@@ -466,32 +486,167 @@ export class JugnuSystem extends createSystem({
       
       let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (rawText) {
-         let transcript = "Unknown audio";
-         let reply = rawText;
+          let transcript = "Unknown audio";
+          let reply = rawText;
+          let mood: Mood = 'happy';
+          let action = "none";
+          let parameter = "none";
 
-         const tMatch = rawText.match(/TRANSCRIPT:\s*([\s\S]*?)\nREPLY:\s*([\s\S]*)/i);
-         if (tMatch) {
-             transcript = tMatch[1].trim();
-             reply = tMatch[2].trim();
-         }
+          const lines = rawText.split(/\r?\n/);
+          let currentKey = "";
+          let transcriptBuffer = "";
+          let replyBuffer = "";
 
-         let mood: Mood = 'happy';
-         const moodMatch = reply.match(/\[MOOD:\s*(bored|calm|happy|sad|bright|blushing|winking)\]/i);
-         if (moodMatch) {
-             mood = moodMatch[1].toLowerCase() as Mood;
-         }
-         reply = reply.replace(/\[MOOD:\s*[a-zA-Z]+\]/gi, '').trim();
+          for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.toUpperCase().startsWith("TRANSCRIPT:")) {
+                  currentKey = "TRANSCRIPT";
+                  transcriptBuffer = trimmed.substring("TRANSCRIPT:".length).trim();
+              } else if (trimmed.toUpperCase().startsWith("REPLY:")) {
+                  currentKey = "REPLY";
+                  replyBuffer = trimmed.substring("REPLY:".length).trim();
+              } else if (trimmed.toUpperCase().startsWith("MOOD:")) {
+                  currentKey = "MOOD";
+                  const val = trimmed.substring("MOOD:".length).trim().toLowerCase() as Mood;
+                  if (['bored', 'calm', 'happy', 'sad', 'bright', 'blushing', 'winking'].includes(val)) {
+                      mood = val;
+                  }
+              } else if (trimmed.toUpperCase().startsWith("ACTION:")) {
+                  currentKey = "ACTION";
+                  action = trimmed.substring("ACTION:".length).trim().toLowerCase();
+              } else if (trimmed.toUpperCase().startsWith("PARAMETER:")) {
+                  currentKey = "PARAMETER";
+                  parameter = trimmed.substring("PARAMETER:".length).trim().toLowerCase().replace(/['"]/g, '');
+              } else {
+                  if (currentKey === "TRANSCRIPT") {
+                      transcriptBuffer += "\n" + trimmed;
+                  } else if (currentKey === "REPLY") {
+                      replyBuffer += "\n" + trimmed;
+                  }
+              }
+          }
 
-         this.updateTranscriptUI(transcript, reply);
+          transcript = transcriptBuffer.trim() || transcript;
+          reply = replyBuffer.trim() || reply;
 
-         this.queries.jugnu.entities.forEach(entity => {
-             const jugModel = entity.object3D as JugnuV3Model;
-             if (jugModel && typeof jugModel.setMood === 'function') {
-                 jugModel.setMood(mood);
-             }
-         });
+          this.updateTranscriptUI(transcript, reply);
 
-         this.speak(reply);
+          const moodIndex = this.expressionList.indexOf(mood);
+          if (moodIndex !== -1) {
+              this.currentExpressionIndex = moodIndex;
+          }
+
+          this.queries.jugnu.entities.forEach(entity => {
+              const jugModel = entity.object3D as JugnuV3Model;
+              if (jugModel && typeof jugModel.setMood === 'function') {
+                  jugModel.setMood(mood);
+              }
+          });
+
+          this.speak(reply);
+
+          // Voice Action Router Execution
+          const domainSystem = this.world.getSystem(DomainExpansionSystem);
+
+          if (action === 'change_venue') {
+              if (['default', 'berlin', 'inuit', 'butterflies', 'nurburgring'].includes(parameter)) {
+                  this.selectedStadium = parameter as any;
+                  (window as any).selectedStadiumType = this.selectedStadium;
+                  console.log(`[VoiceAction] Changed stadium to ${this.selectedStadium}`);
+                  const spatialFX = (window as any).spatialFX;
+                  if (spatialFX) {
+                      spatialFX.playPositionalSound('click', this.headPos || new THREE.Vector3(0, 1.4, -0.5));
+                  }
+              }
+          } else if (action === 'toggle_minimap') {
+              const tableVisible = !!(window as any).minimapTableVisible;
+              if (parameter === 'open' && !tableVisible) {
+                  (window as any).triggerMinimapToggle = true;
+              } else if (parameter === 'close' && tableVisible) {
+                  (window as any).triggerMinimapToggle = true;
+              } else if (parameter === 'none' || !parameter) {
+                  (window as any).triggerMinimapToggle = true;
+              }
+          } else if (action === 'toggle_weather') {
+              if (domainSystem) {
+                  let mode: 'off' | 'rain' | 'neon_dust' = 'off';
+                  if (parameter === 'rain') mode = 'rain';
+                  else if (parameter === 'snow' || parameter === 'dust' || parameter === 'neon_dust') mode = 'neon_dust';
+                  else if (parameter === 'clear' || parameter === 'off') mode = 'off';
+                  domainSystem.setWeatherMode(mode);
+              }
+          } else if (action === 'play_sports') {
+              if (domainSystem) {
+                  domainSystem.triggerSportSequence();
+              }
+          } else if (action === 'trigger_fireworks') {
+              if (domainSystem) {
+                  domainSystem.triggerManualFireworks();
+              }
+          } else if (action === 'capture_moment') {
+              this.captureScreenshot();
+          } else if (action === 'toggle_walls') {
+              const val = parameter === 'show' ? true : (parameter === 'hide' ? false : !((window as any).showRoomWalls ?? false));
+              (window as any).showRoomWalls = val;
+              this.redrawCompassGrid(this.hoveredCellIndex);
+          } else if (action === 'toggle_lock') {
+              const targetLock = parameter === 'lock' ? true : (parameter === 'unlock' ? false : !this.isGridLocked);
+              if (this.isGridLocked !== targetLock) {
+                  this.isGridLocked = targetLock;
+                  const title = this.isGridLocked ? "Grid Locked" : "Grid Unlocked";
+                  let detail = "";
+                  
+                  if (this.isGridLocked) {
+                      this.interactionState = 'Anchored';
+                      const isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
+                      this.lockPinchAllowed = !isPinchingLeft;
+                      this.queries.jugnu.entities.forEach(entity => {
+                          if (entity.object3D) {
+                              this.centerPos.copy(entity.object3D.position);
+                              entity.object3D.position.copy(this.centerPos);
+                              this.velocity.set(0, 0, 0);
+                              this.setExpression(6);
+                          }
+                      });
+                      this.chatHistory.push({ sender: 'System', text: 'Rigid Spatial Anchor: LOCKED.' });
+                      this.redrawCompassChat();
+                      detail = "Compass Grid & Companion locked.\n\nStatus: RIGIDLY ANCHORED.\nJugnu will stay at this exact point.\nRelease pinch to let companion stay here.";
+                  } else {
+                      this.interactionState = 'Following';
+                      this.lockedCompassPos = null;
+                      this.lockedCompassQuat = null;
+                      this.chatHistory.push({ sender: 'System', text: 'Rigid Spatial Anchor: RELEASED.' });
+                      this.redrawCompassChat();
+                      this.setExpression(2);
+                      detail = "Compass Grid Unlocked.\n\nStatus: FREE FLOATING.\nClosing delay of 2.0s restored upon pinch release.";
+                  }
+
+                  const spatialFX = (window as any).spatialFX;
+                  if (spatialFX) {
+                      spatialFX.playPositionalSound(this.isGridLocked ? 'lockBreak' : 'click', this.centerPos);
+                      spatialFX.triggerSpark(this.centerPos, this.isGridLocked ? new THREE.Color(0x22c55e) : new THREE.Color(0x00ffcc), 15);
+                  }
+                  
+                  this.centerTitle = title;
+                  this.centerDetail = detail;
+                  this.redrawCompassGrid(this.hoveredCellIndex);
+              }
+          } else if (action === 'change_mood') {
+              const moodMap: Record<string, number> = {
+                  bored: 0,
+                  calm: 1,
+                  happy: 2,
+                  sad: 3,
+                  bright: 4,
+                  blushing: 5,
+                  winking: 6
+              };
+              const targetIdx = moodMap[parameter];
+              if (targetIdx !== undefined) {
+                  this.setExpression(targetIdx);
+                  console.log(`[VoiceAction] Changed expression to index ${targetIdx}`);
+              }
+          }
       }
     } catch (e) {
       console.error("Gemini Error:", e);
@@ -684,7 +839,7 @@ export class JugnuSystem extends createSystem({
             // Stage 1: Scale up with overshoot
             const t = photo.age / 0.6;
             const scale = Math.sin(t * Math.PI * 0.5) * 1.15;
-            mesh.scale.setScalar(THREE.MathUtils.lerp(0.001, 1.0, scale));
+            mesh.scale.setScalar(THREE.MathUtils.lerp(0.01, 1.0, scale));
         } else if (photo.age < 3.2) {
             // Stage 2: Bob in place gently
             mesh.scale.setScalar(1.0);
@@ -694,7 +849,7 @@ export class JugnuSystem extends createSystem({
             // Stage 3: Float upwards, shrink, and fade out
             const t = (photo.age - 3.2) / 1.0;
             const fade = 1.0 - t;
-            mesh.scale.setScalar(fade);
+            mesh.scale.setScalar(Math.max(0.01, fade));
             mesh.position.y = photo.spawnPos.y + t * 0.15;
             
             mesh.traverse((child) => {
@@ -709,10 +864,6 @@ export class JugnuSystem extends createSystem({
                         mat.transparent = true;
                         mat.opacity = (mat.userData.baseOpacity || 1.0) * fade;
                     }
-                } else if (child instanceof THREE.LineSegments && child.material) {
-                    const mat = child.material as THREE.LineBasicMaterial;
-                    mat.transparent = true;
-                    mat.opacity = fade * 0.8;
                 }
             });
         } else {
@@ -722,15 +873,12 @@ export class JugnuSystem extends createSystem({
                 if (child instanceof THREE.Mesh) {
                     if (child.geometry) child.geometry.dispose();
                     if (child.material) {
-                        if (Array.isArray(child.material)) {
-                            child.material.forEach((mat) => mat.dispose());
-                        } else {
-                            child.material.dispose();
-                        }
+                        const mats = Array.isArray(child.material) ? child.material : [child.material];
+                        mats.forEach((mat: any) => {
+                            if (mat.map) mat.map.dispose();
+                            mat.dispose();
+                        });
                     }
-                } else if (child instanceof THREE.LineSegments) {
-                    if (child.geometry) child.geometry.dispose();
-                    if (child.material) (child.material as THREE.Material).dispose();
                 }
             });
             this.floatingPhotos.splice(i, 1);
@@ -1523,8 +1671,8 @@ export class JugnuSystem extends createSystem({
         if (this.isCompassOpen) {
             this.compassGroup.scale.lerp(new THREE.Vector3(1.3, 1.3, 1.3), safeDt * 30.0);
         } else {
-            this.compassGroup.scale.lerp(new THREE.Vector3(0, 0, 0), safeDt * 30.0);
-            if (this.compassGroup.scale.x < 0.01 && this.compassGroup.visible) {
+            this.compassGroup.scale.lerp(new THREE.Vector3(0.01, 0.01, 0.01), safeDt * 30.0);
+            if (this.compassGroup.scale.x < 0.02 && this.compassGroup.visible) {
                 this.compassGroup.visible = false;
             }
             this.isChatOpen = false;
@@ -1729,7 +1877,7 @@ export class JugnuSystem extends createSystem({
                     this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 30.0);
                 } else {
                     this.compassChatMat.opacity = THREE.MathUtils.lerp(this.compassChatMat.opacity, 0.0, safeDt * 30.0);
-                    this.compassChatCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
+                    this.compassChatCard.scale.lerp(new THREE.Vector3(0.01, 0.01, 0.01), safeDt * 30.0);
                     this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, 0.0, safeDt * 30.0);
                     this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, -0.02, safeDt * 30.0);
                     this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 30.0);
@@ -1749,7 +1897,7 @@ export class JugnuSystem extends createSystem({
                     this.redrawCompassTutorial(instructionStep);
                 } else {
                     this.compassTutorialMat.opacity = THREE.MathUtils.lerp(this.compassTutorialMat.opacity, 0.0, safeDt * 30.0);
-                    this.compassTutorialCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
+                    this.compassTutorialCard.scale.lerp(new THREE.Vector3(0.01, 0.01, 0.01), safeDt * 30.0);
                     this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, 0.0, safeDt * 30.0);
                     this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, -0.02, safeDt * 30.0);
                     this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 30.0);
@@ -1766,7 +1914,7 @@ export class JugnuSystem extends createSystem({
                     this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 30.0);
                 } else {
                     this.compassDebugMat.opacity = THREE.MathUtils.lerp(this.compassDebugMat.opacity, 0.0, safeDt * 30.0);
-                    this.compassDebugCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
+                    this.compassDebugCard.scale.lerp(new THREE.Vector3(0.01, 0.01, 0.01), safeDt * 30.0);
                     this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, 0.0, safeDt * 30.0);
                     this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, -0.02, safeDt * 30.0);
                     this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 30.0);
@@ -1783,7 +1931,7 @@ export class JugnuSystem extends createSystem({
                     this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 30.0);
                 } else {
                     this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.0, safeDt * 30.0);
-                    this.compassStadiumCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
+                    this.compassStadiumCard.scale.lerp(new THREE.Vector3(0.01, 0.01, 0.01), safeDt * 30.0);
                     this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, 0.0, safeDt * 30.0);
                     this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, -0.02, safeDt * 30.0);
                     this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 30.0);
@@ -2586,7 +2734,7 @@ export class JugnuSystem extends createSystem({
   private initCompassUI() {
       this.compassGroup = new THREE.Group();
       this.compassGroup.position.set(0, 0.07, 0); 
-      this.compassGroup.scale.setScalar(0.001);
+      this.compassGroup.scale.setScalar(0.01);
       this.compassGroup.visible = false;
 
       const backingGeom = new THREE.PlaneGeometry(0.15, 0.15); 
@@ -2648,7 +2796,7 @@ export class JugnuSystem extends createSystem({
       );
       // Sits behind Jugnu and the compass layer on a medium sized screen
       this.compassChatCard.position.set(0, -0.02, 0.0); // Z slides to -0.04 when open
-      this.compassChatCard.scale.setScalar(0.001); // Shrink initially
+      this.compassChatCard.scale.setScalar(0.01); // Shrink initially
       this.compassGroup.add(this.compassChatCard);
 
       // Draw initial chat screen
@@ -2670,7 +2818,7 @@ export class JugnuSystem extends createSystem({
           this.compassDebugMat
       );
       this.compassDebugCard.position.set(0, -0.02, 0.0); // Z slides to -0.04 when open
-      this.compassDebugCard.scale.setScalar(0.001); // Shrink initially
+      this.compassDebugCard.scale.setScalar(0.01); // Shrink initially
       this.compassGroup.add(this.compassDebugCard);
 
       // Draw initial debug screen
@@ -2692,7 +2840,7 @@ export class JugnuSystem extends createSystem({
           this.compassTutorialMat
       );
       this.compassTutorialCard.position.set(0, -0.02, -0.01);
-      this.compassTutorialCard.scale.setScalar(0.001); // Shrink initially
+      this.compassTutorialCard.scale.setScalar(0.01); // Shrink initially
       this.compassGroup.add(this.compassTutorialCard);
 
       // Initialize Stadium Selector Tab UI
@@ -2711,7 +2859,7 @@ export class JugnuSystem extends createSystem({
           this.compassStadiumMat
       );
       this.compassStadiumCard.position.set(0, -0.02, -0.01);
-      this.compassStadiumCard.scale.setScalar(0.001); // Shrink initially
+      this.compassStadiumCard.scale.setScalar(0.01); // Shrink initially
       this.compassGroup.add(this.compassStadiumCard);
 
       this.redrawCompassStadiumMenu();
@@ -3410,19 +3558,55 @@ export class JugnuSystem extends createSystem({
           // Temporarily hide flash mesh while capturing screenshot
           if (this.flashMesh) this.flashMesh.visible = false;
 
-          // Force render of the active camera to the WebGL drawing buffer
-          const activeCamera = this.renderer.xr.isPresenting ? this.renderer.xr.getCamera() : this.camera;
+          const activeCamera = this.camera;
+          const width = 1024;
+          const height = 768;
+
+          // Create offscreen WebGLRenderTarget
+          const renderTarget = new THREE.WebGLRenderTarget(width, height, {
+              minFilter: THREE.LinearFilter,
+              magFilter: THREE.LinearFilter,
+              format: THREE.RGBAFormat
+          });
+
+          // CRITICAL: Temporarily disable XR rendering override so Three.js renders to our FBO render target
+          const wasXREnabled = this.renderer.xr.enabled;
+          this.renderer.xr.enabled = false;
+
+          // Render scene to target FBO
+          this.renderer.setRenderTarget(renderTarget);
           this.renderer.render(this.world.scene, activeCamera);
-          
-          const width = this.renderer.domElement.width;
-          const height = this.renderer.domElement.height;
+          this.renderer.setRenderTarget(null); // restore to screen
+
+          // Restore XR status immediately
+          this.renderer.xr.enabled = wasXREnabled;
+
+          // Read pixels
+          const pixels = new Uint8Array(width * height * 4);
+          this.renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, pixels);
+
+          // Dispose of FBO immediately to prevent leaks
+          renderTarget.dispose();
+
+          // Copy pixels to offscreen canvas
           const offscreenCanvas = document.createElement('canvas');
           offscreenCanvas.width = width;
           offscreenCanvas.height = height;
           const ctx = offscreenCanvas.getContext('2d');
           if (ctx) {
-              ctx.drawImage(this.renderer.domElement, 0, 0);
-              const dataUrl = offscreenCanvas.toDataURL('image/png');
+              const imageData = ctx.createImageData(width, height);
+              
+              // WebGL reads pixels bottom-up, so we must flip them vertically for 2D Canvas!
+              for (let y = 0; y < height; y++) {
+                  const srcY = height - 1 - y;
+                  const destRow = y * width * 4;
+                  const srcRow = srcY * width * 4;
+                  for (let x = 0; x < width * 4; x++) {
+                      imageData.data[destRow + x] = pixels[srcRow + x];
+                  }
+              }
+
+              ctx.putImageData(imageData, 0, 0);
 
               // Play synthesized shutter click sound at user head position
               const spatialFX = (window as any).spatialFX;
@@ -3440,14 +3624,22 @@ export class JugnuSystem extends createSystem({
                   (this.flashMesh.material as THREE.MeshBasicMaterial).opacity = 0.95;
               }
 
-              // Spawn floating photograph in 3D space
-              this.spawnFloatingPhoto(dataUrl);
+              // Spawn floating photograph in 3D space synchronously using CanvasTexture
+              this.spawnFloatingPhoto(offscreenCanvas);
 
-              // Auto-download to user's browser
-              const link = document.createElement('a');
-              link.download = `JugnuMoment_${Date.now()}.png`;
-              link.href = dataUrl;
-              link.click();
+              // Only trigger automatic browser file download if we are NOT in an active WebXR session.
+              // Triggering file downloads (link.click()) in VR/AR headsets (like Meta Quest Browser)
+              // causes the browser to lose focus, prompting system download overlays which leads to
+              // immediate WebGL context loss and application crash.
+              if (!this.renderer.xr.isPresenting) {
+                  const dataUrl = offscreenCanvas.toDataURL('image/png');
+                  const link = document.createElement('a');
+                  link.download = `JugnuMoment_${Date.now()}.png`;
+                  link.href = dataUrl;
+                  link.click();
+              } else {
+                  console.log("[JugnuSystem] Captured photo spawned in WebXR space. Skipping file download to prevent WebGL context loss.");
+              }
               
               console.log("[JugnuSystem] Capture Moment successful!");
           }
@@ -3456,94 +3648,119 @@ export class JugnuSystem extends createSystem({
       }
   }
 
-  private spawnFloatingPhoto(dataUrl: string) {
-      const loader = new THREE.TextureLoader();
-      loader.load(dataUrl, (texture) => {
-          const aspect = 4 / 3;
-          const photoW = 0.20;
-          const photoH = photoW / aspect;
-          
-          const photoGeo = new THREE.PlaneGeometry(photoW, photoH);
-          const photoMat = new THREE.MeshBasicMaterial({
-              map: texture,
-              side: THREE.DoubleSide
-          });
-          photoMat.userData.baseOpacity = 1.0;
-          const photoMesh = new THREE.Mesh(photoGeo, photoMat);
+  private spawnFloatingPhoto(canvas: HTMLCanvasElement) {
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      
+      const aspect = 4 / 3;
+      const photoW = 0.20;
+      const photoH = photoW / aspect;
+      
+      const photoGeo = new THREE.PlaneGeometry(photoW, photoH);
+      const photoMat = new THREE.MeshBasicMaterial({
+          map: texture,
+          side: THREE.DoubleSide
+      });
+      photoMat.userData.baseOpacity = 1.0;
+      const photoMesh = new THREE.Mesh(photoGeo, photoMat);
 
-          const frameW = 0.23;
-          const frameH = 0.21;
-          const frameGeo = new THREE.PlaneGeometry(frameW, frameH);
-          const frameMat = new THREE.MeshPhysicalMaterial({
-              color: 0x050a14,
-              transparent: true,
-              opacity: 0.88,
-              roughness: 0.15,
-              metalness: 0.2,
-              transmission: 0.7,
-              thickness: 0.02,
-              side: THREE.DoubleSide
-          });
-          frameMat.userData.baseOpacity = 0.88;
-          const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+      const frameW = 0.23;
+      const frameH = 0.21;
+      const frameGeo = new THREE.PlaneGeometry(frameW, frameH);
+      
+      // Avoid screen-space transmission to prevent mobile VR crashes
+      const frameMat = new THREE.MeshStandardMaterial({
+          color: 0x050a14,
+          transparent: true,
+          opacity: 0.88,
+          roughness: 0.15,
+          metalness: 0.2,
+          side: THREE.DoubleSide
+      });
+      frameMat.userData.baseOpacity = 0.88;
+      const frameMesh = new THREE.Mesh(frameGeo, frameMat);
 
-          // Position photo inside frame with bottom Polaroid margin
-          photoMesh.position.set(0, 0.015, 0.0015);
-          frameMesh.add(photoMesh);
+      // Position photo inside frame with bottom Polaroid margin
+      photoMesh.position.set(0, 0.015, 0.0015);
+      frameMesh.add(photoMesh);
 
-          // Glowing border
-          const borderGeo = new THREE.EdgesGeometry(frameGeo);
-          const borderMat = new THREE.LineBasicMaterial({
-              color: 0x00ffff,
-              linewidth: 2
-          });
-          const borderLine = new THREE.LineSegments(borderGeo, borderMat);
-          borderLine.position.z = 0.0025;
-          frameMesh.add(borderLine);
+      // Avoid line primitives (gl.LINES) to prevent GPU driver hangs. Use 4 thin Plane strips.
+      const borderThickness = 0.002;
+      const borderMat = new THREE.MeshBasicMaterial({
+          color: 0x00ffff,
+          transparent: true,
+          opacity: 0.9,
+          side: THREE.DoubleSide
+      });
+      borderMat.userData.baseOpacity = 0.9;
 
-          // White flash overlay on photo that decays
-          const photoFlashGeo = new THREE.PlaneGeometry(photoW, photoH);
-          const photoFlashMat = new THREE.MeshBasicMaterial({
-              color: 0xffffff,
-              transparent: true,
-              opacity: 0.95,
-              depthWrite: false,
-              depthTest: false
-          });
-          const photoFlashMesh = new THREE.Mesh(photoFlashGeo, photoFlashMat);
-          photoFlashMesh.position.set(0, 0.015, 0.002);
-          frameMesh.add(photoFlashMesh);
-          frameMesh.userData.photoFlash = photoFlashMesh;
+      // Top border
+      const topBorderGeo = new THREE.PlaneGeometry(frameW, borderThickness);
+      const topBorder = new THREE.Mesh(topBorderGeo, borderMat);
+      topBorder.position.set(0, frameH / 2 - borderThickness / 2, 0.001);
+      frameMesh.add(topBorder);
 
-          // Spawn in front of the head
-          const headPos = new THREE.Vector3();
-          this.player.head.getWorldPosition(headPos);
-          const headQuat = new THREE.Quaternion();
-          this.player.head.getWorldQuaternion(headQuat);
+      // Bottom border
+      const bottomBorderGeo = new THREE.PlaneGeometry(frameW, borderThickness);
+      const bottomBorder = new THREE.Mesh(bottomBorderGeo, borderMat);
+      bottomBorder.position.set(0, -frameH / 2 + borderThickness / 2, 0.001);
+      frameMesh.add(bottomBorder);
 
-          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(headQuat);
-          forward.y = 0;
-          forward.normalize();
+      // Left border
+      const leftBorderGeo = new THREE.PlaneGeometry(borderThickness, frameH - borderThickness * 2);
+      const leftBorder = new THREE.Mesh(leftBorderGeo, borderMat);
+      leftBorder.position.set(-frameW / 2 + borderThickness / 2, 0, 0.001);
+      frameMesh.add(leftBorder);
 
-          const spawnPos = new THREE.Vector3().copy(headPos).addScaledVector(forward, 0.55);
-          spawnPos.y = headPos.y - 0.10;
+      // Right border
+      const rightBorderGeo = new THREE.PlaneGeometry(borderThickness, frameH - borderThickness * 2);
+      const rightBorder = new THREE.Mesh(rightBorderGeo, borderMat);
+      rightBorder.position.set(frameW / 2 - borderThickness / 2, 0, 0.001);
+      frameMesh.add(rightBorder);
 
-          frameMesh.position.copy(spawnPos);
+      // White flash overlay on photo that decays
+      const photoFlashGeo = new THREE.PlaneGeometry(photoW, photoH);
+      const photoFlashMat = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.95,
+          depthWrite: false,
+          depthTest: false
+      });
+      const photoFlashMesh = new THREE.Mesh(photoFlashGeo, photoFlashMat);
+      photoFlashMesh.position.set(0, 0.015, 0.002);
+      frameMesh.add(photoFlashMesh);
+      frameMesh.userData.photoFlash = photoFlashMesh;
 
-          const dx = headPos.x - spawnPos.x;
-          const dz = headPos.z - spawnPos.z;
-          const yaw = Math.atan2(dx, dz);
-          frameMesh.quaternion.setFromEuler(new THREE.Euler(0, yaw + Math.PI, 0));
+      // Spawn in front of the head
+      const headPos = new THREE.Vector3();
+      this.player.head.getWorldPosition(headPos);
+      const headQuat = new THREE.Quaternion();
+      this.player.head.getWorldQuaternion(headQuat);
 
-          frameMesh.scale.set(0.001, 0.001, 0.001);
-          this.world.scene.add(frameMesh);
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(headQuat);
+      forward.y = 0;
+      forward.normalize();
 
-          this.floatingPhotos.push({
-              mesh: frameMesh,
-              age: 0.0,
-              spawnPos: spawnPos.clone(),
-              yaw: yaw
-          });
+      const spawnPos = new THREE.Vector3().copy(headPos).addScaledVector(forward, 0.55);
+      spawnPos.y = headPos.y - 0.10;
+
+      frameMesh.position.copy(spawnPos);
+
+      const dx = headPos.x - spawnPos.x;
+      const dz = headPos.z - spawnPos.z;
+      const yaw = Math.atan2(dx, dz);
+      frameMesh.quaternion.setFromEuler(new THREE.Euler(0, yaw + Math.PI, 0));
+
+      // Clamp scale >= 0.01 to avoid shader transform divide-by-zero matrix panics
+      frameMesh.scale.set(0.01, 0.01, 0.01);
+      this.world.scene.add(frameMesh);
+
+      this.floatingPhotos.push({
+          mesh: frameMesh,
+          age: 0.0,
+          spawnPos: spawnPos.clone(),
+          yaw: yaw
       });
   }
 

@@ -1,6 +1,6 @@
 import { createSystem, AssetManager } from "@iwsdk/core";
 import * as THREE from "three";
-import { Jugnu } from "./jugnu.js";
+import { Jugnu } from "./components.js";
 
 interface PlayerMarker {
     id: string;
@@ -5631,7 +5631,7 @@ export class DomainExpansionSystem extends createSystem({
         }
     }
 
-    private setWeatherMode(mode: 'off' | 'rain' | 'neon_dust') {
+    public setWeatherMode(mode: 'off' | 'rain' | 'neon_dust') {
         this.weatherMode = mode;
         if (mode === 'off') {
             if (this.weatherMesh) this.weatherMesh.visible = false;
@@ -6472,7 +6472,7 @@ export class DomainExpansionSystem extends createSystem({
         return false;
     }
 
-    private triggerManualFireworks() {
+    public triggerManualFireworks() {
         console.log("[BallTracking] Manual fireworks sequence started!");
         this.fireworkSeqTimer = 0.0; // Starts sequential timer update loop
         this.fireworkSeqIndex = 0;   // Staged at index 0
@@ -6670,7 +6670,7 @@ export class DomainExpansionSystem extends createSystem({
         }
     }
 
-    private triggerSportSequence() {
+    public triggerSportSequence() {
         if (this.isSportSequenceActive) return;
 
         // Store original local scale of the hoops if not already stored
