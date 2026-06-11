@@ -4,7 +4,7 @@ import type { JugnuV3Model, Mood } from "./JugnuV3Model.js";
 import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
 import * as THREE from "three";
 
-// Replace this URL when deploying, or use VITE_BACKEND_URL in .env
+// Replace this URL when deploying, or use VITE_BACKEND_URL in .env ...
 const BACKEND_URL = ((import.meta as any).env.VITE_BACKEND_URL as string) || "/api/gemini";
 
 import { JugnuInstructionBoard } from "./JugnuInstructionBoard.js";
