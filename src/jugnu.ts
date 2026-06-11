@@ -958,43 +958,12 @@ PARAMETER: [parameter value or "none"]` },
         const hasRightRing = hasRightHand ? this.getJointWorldData('right', 'ring-finger-tip', this.rightRingTip) : false;
         const hasRightPinky = hasRightHand ? this.getJointWorldData('right', 'pinky-finger-tip', this.rightPinkyTip) : false;
 
-        // 2a. Double-Hand "Lens Frame" Gesture: Touch left/right index tips and left/right thumb tips
+        // 2a. Double-Hand "Lens Frame" Gesture: Left Index to Right Thumb, and Left Thumb to Right Index
         if (hasLeftIndex && hasLeftThumb && hasRightIndex && hasRightThumb) {
-            const distIndex = this.leftIndexTipWorld.distanceTo(this.rightIndexTipWorld);
-            const distThumb = this.leftThumbTipWorld.distanceTo(this.rightThumbTipWorld);
-            // Touch finger tips together (5.5 cm threshold) to form viewfinder frame
-            if (distIndex < 0.055 && distThumb < 0.055) {
-                doubleGestureDetected = true;
-            }
-        }
-
-        // 2b. Single-Hand "L-Camera" Gesture (Left or Right hand)
-        if (!doubleGestureDetected) {
-            const checkLCamera = (indexTip: THREE.Vector3, thumbTip: THREE.Vector3, wrist: THREE.Vector3, middle: THREE.Vector3, ring: THREE.Vector3, pinky: THREE.Vector3) => {
-                const indexDist = indexTip.distanceTo(wrist);
-                const thumbDist = thumbTip.distanceTo(wrist);
-                
-                // Relaxed heuristics:
-                // - Index and thumb extended (> 9cm and > 8cm respectively)
-                // - Middle, ring, pinky curled (< 10cm from wrist)
-                const isIndexExtended = indexDist > 0.09;
-                const isThumbExtended = thumbDist > 0.08;
-                const isOthersCurled = middle.distanceTo(wrist) < 0.10 &&
-                                       ring.distanceTo(wrist) < 0.10 &&
-                                       pinky.distanceTo(wrist) < 0.10;
-                
-                return isIndexExtended && isThumbExtended && isOthersCurled;
-            };
-
-            const leftLValid = (hasLeftIndex && hasLeftThumb && hasLeftWrist && hasLeftMiddle && hasLeftRing && hasLeftPinky)
-                ? checkLCamera(this.leftIndexTipWorld, this.leftThumbTipWorld, this.leftWristWorld, this.leftMiddleTip, this.leftRingTip, this.leftPinkyTip)
-                : false;
-
-            const rightLValid = (hasRightIndex && hasRightThumb && hasRightWrist && hasRightMiddle && hasRightRing && hasRightPinky)
-                ? checkLCamera(this.rightIndexTipWorld, this.rightThumbTipWorld, this.rightWristWorld, this.rightMiddleTip, this.rightRingTip, this.rightPinkyTip)
-                : false;
-
-            if (leftLValid || rightLValid) {
+            const dist1 = this.leftIndexTipWorld.distanceTo(this.rightThumbTipWorld);
+            const dist2 = this.leftThumbTipWorld.distanceTo(this.rightIndexTipWorld);
+            // Touch cross-fingertips together (5.5 cm threshold) to form viewfinder frame
+            if (dist1 < 0.055 && dist2 < 0.055) {
                 doubleGestureDetected = true;
             }
         }
@@ -3657,6 +3626,42 @@ PARAMETER: [parameter value or "none"]` },
               format: THREE.RGBAFormat
           });
 
+          // Temporarily hide controllers and hand meshes to avoid rendering them in the screenshot
+          const leftHand = this.renderer.xr.getHand(0);
+          const rightHand = this.renderer.xr.getHand(1);
+          const leftController = this.renderer.xr.getController(0);
+          const rightController = this.renderer.xr.getController(1);
+
+          const wasLeftHandVisible = leftHand ? leftHand.visible : true;
+          const wasRightHandVisible = rightHand ? rightHand.visible : true;
+          const wasLeftControllerVisible = leftController ? leftController.visible : true;
+          const wasRightControllerVisible = rightController ? rightController.visible : true;
+
+          if (leftHand) leftHand.visible = false;
+          if (rightHand) rightHand.visible = false;
+          if (leftController) leftController.visible = false;
+          if (rightController) rightController.visible = false;
+
+          // Traverse the scene and hide any custom hand meshes, controller meshes, or occlusion/stencil meshes
+          const hiddenObjects: THREE.Object3D[] = [];
+          this.world.scene.traverse((obj) => {
+              const nameLower = (obj.name || "").toLowerCase();
+              if (
+                  nameLower.includes("hand") || 
+                  nameLower.includes("controller") || 
+                  nameLower.includes("occlusion") ||
+                  nameLower.includes("stencil") ||
+                  obj.name === "hand-mesh" ||
+                  (obj as any).isHand ||
+                  (obj as any).isController
+              ) {
+                  if (obj.visible) {
+                      obj.visible = false;
+                      hiddenObjects.push(obj);
+                  }
+              }
+          });
+
           // CRITICAL: Temporarily disable XR rendering override so Three.js renders to our FBO render target
           const wasXREnabled = this.renderer.xr.enabled;
           this.renderer.xr.enabled = false;
@@ -3675,6 +3680,15 @@ PARAMETER: [parameter value or "none"]` },
 
           // Restore XR status immediately
           this.renderer.xr.enabled = wasXREnabled;
+
+          // Restore visibility of hands and controllers
+          hiddenObjects.forEach((obj) => {
+              obj.visible = true;
+          });
+          if (leftHand) leftHand.visible = wasLeftHandVisible;
+          if (rightHand) rightHand.visible = wasRightHandVisible;
+          if (leftController) leftController.visible = wasLeftControllerVisible;
+          if (rightController) rightController.visible = wasRightControllerVisible;
 
           // Read pixels
           const pixels = new Uint8Array(width * height * 4);

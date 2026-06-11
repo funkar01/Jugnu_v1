@@ -803,6 +803,13 @@
   - `[x]` Define rhythmic Lissajous orbital dance curves and visual lantern tag games
   - `[x]` Deliver premium design proposal artifact in the brain workspace
 
+- `[x]` Screenshot Gesture Refinements & Hand Exclusion (Current Run)
+  - `[x]` Updated the double-handed "Lens Frame" gesture to use cross-touching heuristics (Left Index Tip to Right Thumb Tip, and Left Thumb Tip to Right Index Tip) forming a secure framing viewfinder.
+  - `[x]` Disabled the single-handed L-camera gesture check to eliminate accidental/random screenshots during one-handed spatial interactions.
+  - `[x]` Implemented hand, controller, and stencil/occlusion mesh hiding during the FBO screenshot render pass to exclude them from saved screenshots.
+  - `[x]` Verified static type checking compiles cleanly (`npx tsc --noEmit`).
+  - `[x]` Built production client assets successfully (`npm run build`).
+
 
 
 
