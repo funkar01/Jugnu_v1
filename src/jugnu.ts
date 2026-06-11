@@ -201,6 +201,8 @@ export class JugnuSystem extends createSystem({
 
   private threadCooldownTimer = 0.0;
   private lockEscapeTimer = 0.0;
+  private controllerScreenshotTimer = 0.0;
+  private controllerScreenshotFired = false;
 
   // Optimized Fireflies instanced particle system
   private firefliesMesh!: THREE.InstancedMesh;
@@ -594,7 +596,12 @@ PARAMETER: [parameter value or "none"]` },
                   domainSystem.triggerManualFireworks();
               }
           } else if (action === 'capture_moment') {
-              this.captureScreenshot();
+              if (this.momentCooldown <= 0.0) {
+                  this.momentCooldown = 4.0;
+                  this.captureScreenshot();
+              } else {
+                  console.log("[VoiceAction] Skipping capture_moment due to active screenshot cooldown.");
+              }
           } else if (action === 'toggle_walls') {
               const val = parameter === 'show' ? true : (parameter === 'hide' ? false : !((window as any).showRoomWalls ?? false));
               (window as any).showRoomWalls = val;
@@ -930,12 +937,27 @@ PARAMETER: [parameter value or "none"]` },
     const rSrc = this.input.getPrimaryInputSource('right');
 
     // 1. Controller Shortcut Fallback: Press both triggers simultaneously
-    if (lSrc && lSrc.gamepad && rSrc && rSrc.gamepad) {
+    // Only active when using actual controllers (NOT hands), and must be held for 1 second to avoid accidental quick presses.
+    let controllerTriggersPressed = false;
+    if (lSrc && lSrc.gamepad && !lSrc.hand && rSrc && rSrc.gamepad && !rSrc.hand) {
         const leftTrigger = lSrc.gamepad.buttons[0]; // Trigger is index 0
         const rightTrigger = rSrc.gamepad.buttons[0];
         if (leftTrigger && leftTrigger.pressed && rightTrigger && rightTrigger.pressed) {
-            doubleGestureDetected = true;
+            controllerTriggersPressed = true;
         }
+    }
+
+    if (controllerTriggersPressed) {
+        if (!this.controllerScreenshotFired) {
+            this.controllerScreenshotTimer += safeDt;
+            if (this.controllerScreenshotTimer >= 1.0) {
+                doubleGestureDetected = true;
+                this.controllerScreenshotFired = true;
+            }
+        }
+    } else {
+        this.controllerScreenshotTimer = 0.0;
+        this.controllerScreenshotFired = false;
     }
 
     // 2. Hand Tracking Gestures
@@ -959,12 +981,36 @@ PARAMETER: [parameter value or "none"]` },
         const hasRightPinky = hasRightHand ? this.getJointWorldData('right', 'pinky-finger-tip', this.rightPinkyTip) : false;
 
         // 2a. Double-Hand "Lens Frame" Gesture: Left Index to Right Thumb, and Left Thumb to Right Index
-        if (hasLeftIndex && hasLeftThumb && hasRightIndex && hasRightThumb) {
-            const dist1 = this.leftIndexTipWorld.distanceTo(this.rightThumbTipWorld);
-            const dist2 = this.leftThumbTipWorld.distanceTo(this.rightIndexTipWorld);
-            // Touch cross-fingertips together (5.5 cm threshold) to form viewfinder frame
-            if (dist1 < 0.055 && dist2 < 0.055) {
-                doubleGestureDetected = true;
+        if (hasLeftIndex && hasLeftThumb && hasLeftWrist && hasLeftMiddle && hasLeftRing && hasLeftPinky &&
+            hasRightIndex && hasRightThumb && hasRightWrist && hasRightMiddle && hasRightRing && hasRightPinky) {
+            
+            const checkLCamera = (indexTip: THREE.Vector3, thumbTip: THREE.Vector3, wrist: THREE.Vector3, middle: THREE.Vector3, ring: THREE.Vector3, pinky: THREE.Vector3) => {
+                const indexDist = indexTip.distanceTo(wrist);
+                const thumbDist = thumbTip.distanceTo(wrist);
+                
+                // Index and thumb extended (> 9cm and > 7cm respectively)
+                // Ensure index and thumb are not pinching (distance > 5cm)
+                // Middle, ring, pinky curled (must be at most 75% of index extension) to automatically adapt to hand sizes
+                const isIndexExtended = indexDist > 0.09;
+                const isThumbExtended = thumbDist > 0.07;
+                const isNotPinching = indexTip.distanceTo(thumbTip) > 0.05;
+                const isOthersCurled = middle.distanceTo(wrist) < indexDist * 0.75 &&
+                                       ring.distanceTo(wrist) < indexDist * 0.75 &&
+                                       pinky.distanceTo(wrist) < indexDist * 0.75;
+                
+                return isIndexExtended && isThumbExtended && isNotPinching && isOthersCurled;
+            };
+
+            const leftLValid = checkLCamera(this.leftIndexTipWorld, this.leftThumbTipWorld, this.leftWristWorld, this.leftMiddleTip, this.leftRingTip, this.leftPinkyTip);
+            const rightLValid = checkLCamera(this.rightIndexTipWorld, this.rightThumbTipWorld, this.rightWristWorld, this.rightMiddleTip, this.rightRingTip, this.rightPinkyTip);
+
+            if (leftLValid && rightLValid) {
+                const dist1 = this.leftIndexTipWorld.distanceTo(this.rightThumbTipWorld);
+                const dist2 = this.leftThumbTipWorld.distanceTo(this.rightIndexTipWorld);
+                // Touch cross-fingertips together (3.5 cm threshold) to form viewfinder frame
+                if (dist1 < 0.035 && dist2 < 0.035) {
+                    doubleGestureDetected = true;
+                }
             }
         }
     }

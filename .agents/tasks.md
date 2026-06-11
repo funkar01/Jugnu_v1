@@ -805,8 +805,15 @@
 
 - `[x]` Screenshot Gesture Refinements & Hand Exclusion (Current Run)
   - `[x]` Updated the double-handed "Lens Frame" gesture to use cross-touching heuristics (Left Index Tip to Right Thumb Tip, and Left Thumb Tip to Right Index Tip) forming a secure framing viewfinder.
-  - `[x]` Disabled the single-handed L-camera gesture check to eliminate accidental/random screenshots during one-handed spatial interactions.
+  - `[x]` Enforced dual L-shape validation (index/thumb extended, other fingers curled) on both hands to eliminate false positives during two-handed interactions.
+  - `[x]` Implemented zero-vector tracking loss failsafes by checking extension distances.
+  - `[x]` Added `momentCooldown` guard in the voice action router to prevent duplicate screenshot commands.
+  - `[x]` Disabled the single-handed L-camera gesture check entirely to eliminate accidental/random screenshots.
   - `[x]` Implemented hand, controller, and stencil/occlusion mesh hiding during the FBO screenshot render pass to exclude them from saved screenshots.
+  - `[x]` Prevented gamepad trigger checks from firing when hand tracking is active, eliminating random triggers during dual-pinch interactions (e.g., map scaling).
+  - `[x]` Implemented a 1.0-second hold requirement for physical controller triggers with a single-shot release guard.
+  - `[x]` Reduced the viewfinder finger-touch threshold from 5.5 cm to 3.5 cm for precise proximity gating.
+  - `[x]` Enhanced the L-shape extension heuristic with relative finger curl limits and index-thumb pinch protection.
   - `[x]` Verified static type checking compiles cleanly (`npx tsc --noEmit`).
   - `[x]` Built production client assets successfully (`npm run build`).
 
