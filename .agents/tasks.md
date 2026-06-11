@@ -782,7 +782,27 @@
     - Relaxed heuristics for the single-handed "L-Camera" gesture (index and thumb extended on either left or right hand with broad margins, tilt-agnostic).
   - `[x]` Implemented explicit texture disposal (`mat.map.dispose()`) during Polaroid mesh destruction to eliminate GPU memory leaks.
   - `[x]` Clamped all initial, collapsed, and animation scale targets for cards and UI panels to a minimum of `0.01` to prevent shader divide-by-zero errors.
+  - `[x]` Injected temporary solid cyber-slate background backing (`0x080d1a`) in `captureScreenshot` in `src/jugnu.ts` to prevent transparent/black voids in captured images.
   - `[x]` Confirmed zero static type errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Walkie-Talkie Pinch & Voice Command Discovery (Current Run)
+  - `[x]` Integrated walkie-talkie style Grab-to-Talk triggers: auto-recording starts upon entering the `'Attached'` pinch state and stops/submits for processing when pinch is released.
+  - `[x]` Configured `"help_guide"` action inside the voice router and set up a local regex intercept in `handleAudioQuery` to override requests with `'help_guide'` when they match terms like 'help', 'commands', or 'what can you do'.
+  - `[x]` Implemented `help_guide` routing to close other cards, open/auto-focus the Chat logs card, print a clean bulleted directory of active voice commands, and speak a guide summary.
+  - `[x]` Updated circular HUD detail spoke tooltips to include explicit voice shortcuts for each Compass grid button.
+  - `[x]` Expanded holographic tutorial to 4 steps, adding Step 4 (Voice Commands) complete with a stylized microphone/soundwave vector drawing.
+  - `[x]` Updated `JugnuInstructionBoard.ts` to support Step 4 descriptors and the Completed state.
+  - `[x]` Verified static type checking compiles cleanly (`npx tsc --noEmit`).
+  - `[x]` Built production assets successfully (`npm run build`).
+
+- `[x]` Conceptual Pet Interaction & Mood Boost Proposal (Current Run)
+  - `[x]` Formulate active kinetic mood syncing heuristics via rolling velocity variance
+  - `[x]` Design gamified bioluminescent feeding loop using hand tracking coordinates
+  - `[x]` Specify spatial mesh raycast perching and shoulder/wrist magnet tethers
+  - `[x]` Create portal expansion bubble stencil mask and rideable flight mount mechanics
+  - `[x]` Define rhythmic Lissajous orbital dance curves and visual lantern tag games
+  - `[x]` Deliver premium design proposal artifact in the brain workspace
+
 
 
 

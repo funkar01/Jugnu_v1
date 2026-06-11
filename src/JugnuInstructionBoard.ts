@@ -89,6 +89,10 @@ export class JugnuInstructionBoard extends THREE.Group {
             instructionText = "Touch your index fingers together!";
         } else if (step === 2) {
             instructionText = "Tap the glowing button on your left wrist!";
+        } else if (step === 3) {
+            instructionText = "Pinch me and speak, then release! Say 'Help' for voice commands.";
+        } else {
+            instructionText = "Tutorial Complete! You're ready to explore.";
         }
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';

@@ -463,6 +463,7 @@ Supported Actions and parameters:
 7. "toggle_walls": Toggle the room visualizer walls highlighter. Parameter must be one of: 'show', 'hide', or 'none'.
 8. "toggle_lock": Rigidly anchor the companion/compass UI to freeze position and avoid spring float. Parameter must be one of: 'lock', 'unlock', or 'none'.
 9. "change_mood": Change Jugnu's mood expression. Parameter must be one of: 'bored', 'calm', 'happy', 'sad', 'bright', 'blushing', 'winking'.
+10. "help_guide": Provide help, list available voice commands, or explain what Jugnu can do. Parameter should be 'none'.
 
 If the user request doesn't match any supported actions, set ACTION to "none" and PARAMETER to "none".
 
@@ -528,6 +529,15 @@ PARAMETER: [parameter value or "none"]` },
 
           transcript = transcriptBuffer.trim() || transcript;
           reply = replyBuffer.trim() || reply;
+
+          // Local override failsafe for Help/Commands directory
+          const lowerTrans = transcript.toLowerCase();
+          if (lowerTrans.includes('help') || lowerTrans.includes('command') || lowerTrans.includes('what can you do') || lowerTrans.includes('guide') || lowerTrans.includes('how to use')) {
+              action = 'help_guide';
+              parameter = 'none';
+              reply = "I have printed the active voice shortcuts directory on the Chat Logs card in front of you. Try saying 'Go to Berlin' or 'Make it rain'.";
+              mood = 'happy';
+          }
 
           this.updateTranscriptUI(transcript, reply);
 
@@ -646,6 +656,35 @@ PARAMETER: [parameter value or "none"]` },
                   this.setExpression(targetIdx);
                   console.log(`[VoiceAction] Changed expression to index ${targetIdx}`);
               }
+          } else if (action === 'help_guide') {
+              // 1. Close other tabs and open Chat logs tab
+              this.isTutorialOpen = false;
+              this.isDebugOpen = false;
+              this.isStadiumMenuOpen = false;
+              this.isChatOpen = true;
+              this.lastOpenedTab = 'CHAT';
+
+              // 2. Push structured guide lines into chatHistory
+              this.chatHistory.push({ sender: 'System', text: '=== JUGNU VOICE GUIDE ===' });
+              this.chatHistory.push({ sender: 'System', text: '- "Go to [Venue]" (Berlin | Inuit | Butterflies | Default)' });
+              this.chatHistory.push({ sender: 'System', text: '- "Make it rain" | "Snow" | "Clear weather"' });
+              this.chatHistory.push({ sender: 'System', text: '- "Open minimap" | "Close minimap"' });
+              this.chatHistory.push({ sender: 'System', text: '- "Play sports" | "Trigger fireworks"' });
+              this.chatHistory.push({ sender: 'System', text: '- "Capture photo" | "Lock companion" | "Unlock"' });
+              this.chatHistory.push({ sender: 'System', text: '- "Show walls" | "Hide walls"' });
+              this.chatHistory.push({ sender: 'System', text: '- "Happy" | "Winking" | "Bored" (Change mood)' });
+              this.redrawCompassChat();
+          }
+
+          // If a voice command is successfully parsed (action !== 'none'), advance tutorial step 3 -> 4
+          if (action !== 'none') {
+              this.queries.jugnu.entities.forEach(entity => {
+                  const currentStep = entity.getValue(Jugnu, "instructionStep") as number;
+                  if (currentStep === 3) {
+                      entity.setValue(Jugnu, "instructionStep", 4);
+                      console.log(`[JugnuSystem] Step 3 complete: voice command '${action}' triggered! Advancing to Step 4.`);
+                  }
+              });
           }
       }
     } catch (e) {
@@ -1163,6 +1202,10 @@ PARAMETER: [parameter value or "none"]` },
             
             if (this.lerpTime >= this.lerpDuration) {
                 this.interactionState = 'Attached';
+                // Walkie-Talkie Auto-Record: Start recording on grab
+                if (!this.isListening && !this.isProcessingAudio) {
+                    this.startRecording();
+                }
             }
         }
     } else if (this.interactionState === 'Attached') {
@@ -1172,6 +1215,10 @@ PARAMETER: [parameter value or "none"]` },
         if (!isPinching) {
             this.attachedHand = null;
             this.threadCooldownTimer = 5.0;
+            // Walkie-Talkie Stop-and-Process: stop recording on release
+            if (this.isListening && this.mediaRecorder && this.mediaRecorder.state === "recording") {
+                this.mediaRecorder.stop();
+            }
             if (this.handVelocity.lengthSq() > 1.0) {
                 this.interactionState = 'Idle';
                 this.throwTimer = 3.0; 
@@ -2419,35 +2466,35 @@ PARAMETER: [parameter value or "none"]` },
   private static readonly SPOKE_DETAILS: Record<string, { title: string, detail: string }> = {
       "CHAT": {
           title: "CHAT LOGS",
-          detail: "Conversational transcript & debug diagnostics pipeline."
+          detail: "Logs. Say: 'Help' or 'Show commands' for guide."
       },
       "TUTORIAL": {
           title: "TUTORIAL",
-          detail: "Holographic manual showing gesture control steps."
+          detail: "Manual. Say: 'Show tutorial' or swipe page."
       },
       "STADIUM": {
           title: "MINIMAP",
-          detail: "Toggles the 3D tactical minimap table in front of you."
+          detail: "Toggles 3D minimap. Say: 'Open minimap' or 'Close minimap'."
       },
       "STADIUM_SEL": {
           title: "VENUE",
-          detail: "Select from Wankhede, Nürburgring, or other stadiums."
+          detail: "Select map. Say: 'Go to Berlin', 'Open butterflies', 'Default venue'."
       },
       "LOCK": {
           title: "GRID LOCK",
-          detail: "Locks/unlocks companion's rigid spatial anchor point."
+          detail: "Anchors companion. Say: 'Lock companion' or 'Unlock companion'."
       },
       "VOICE": {
           title: "VOICE INPUT",
-          detail: "Speech synthesis and AI query voice detection pipeline."
+          detail: "AI voice parser. Speak prompts after poking head. Say 'Help'."
       },
       "DEBUG": {
           title: "DONT TOUCH",
-          detail: "Cyberpunk system developer log console."
+          detail: "Debug log. Say: 'Show console' or 'Close console'."
       },
       "WALLS": {
           title: "ROOM WALLS",
-          detail: "Visualizes detected physical room planes and meshes."
+          detail: "Toggles room mesh. Say: 'Show walls' or 'Hide walls'."
       }
   };
 
@@ -3229,7 +3276,7 @@ PARAMETER: [parameter value or "none"]` },
       // Current Active Instruction
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 15px monospace';
-      ctx.fillText(`STEP ${step + 1} OF 3`, w / 2, 85);
+      ctx.fillText(`STEP ${step + 1} OF 4`, w / 2, 85);
 
       // Draw tutorial illustration/diagram representing the steps
       let title = "";
@@ -3286,9 +3333,35 @@ PARAMETER: [parameter value or "none"]` },
           ctx.fillStyle = '#ffffff';
           ctx.font = 'bold 12px monospace';
           ctx.fillText("MAP TOGGLE", w / 2, 174);
+      } else if (step === 3) {
+          title = "Voice Action Commands";
+          desc = "Pinch and grab Jugnu like a walkie-talkie to speak, then release to send. Say 'Help' to list shortcuts on the Chat Card. Try: 'Go to Berlin' or 'Make it rain'.";
+          
+          // Draw a stylized microphone illustration
+          ctx.strokeStyle = '#00ffff';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(w / 2, 165, 12, 0, 2 * Math.PI); // Mic grid top
+          ctx.stroke();
+          ctx.fillStyle = '#00ffff';
+          ctx.beginPath();
+          ctx.roundRect(w / 2 - 8, 160, 16, 20, 6); // Mic body
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(w / 2, 172, 12, 0, Math.PI); // Stand curve
+          ctx.moveTo(w / 2, 184); ctx.lineTo(w / 2, 194); // Stand base leg
+          ctx.stroke();
+          
+          // Soundwave ripples
+          ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+          ctx.beginPath();
+          ctx.arc(w / 2, 170, 26, -Math.PI / 4, Math.PI / 4);
+          ctx.arc(w / 2, 170, 26, 3 * Math.PI / 4, 5 * Math.PI / 4);
+          ctx.stroke();
       } else {
           title = "Tutorial Complete";
-          desc = "All core gestures learned successfully! You are fully configured to operate Jugnu XR Core features. Use the Compass UI for stadium controls at any time.";
+          desc = "All core gestures and voice commands learned! You are fully configured to operate Jugnu XR Core. Use the Compass UI or voice control to trigger actions at any time.";
           
           // Draw checkmark
           ctx.strokeStyle = '#22c55e';
@@ -3588,10 +3661,17 @@ PARAMETER: [parameter value or "none"]` },
           const wasXREnabled = this.renderer.xr.enabled;
           this.renderer.xr.enabled = false;
 
+          // Save original background to restore after rendering (could be null in AR)
+          const originalBg = this.world.scene.background;
+          this.world.scene.background = new THREE.Color(0x080d1a);
+
           // Render scene to target FBO
           this.renderer.setRenderTarget(renderTarget);
           this.renderer.render(this.world.scene, activeCamera);
           this.renderer.setRenderTarget(null); // restore to screen
+
+          // Restore original background
+          this.world.scene.background = originalBg;
 
           // Restore XR status immediately
           this.renderer.xr.enabled = wasXREnabled;
