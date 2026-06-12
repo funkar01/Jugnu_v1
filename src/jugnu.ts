@@ -179,6 +179,7 @@ export class JugnuSystem extends createSystem({
   private compassStadiumMat!: THREE.ShaderMaterial;
   private compassStadiumCard!: THREE.Mesh;
   private selectedStadium: 'default' | 'berlin' | 'inuit' | 'butterflies' | 'nurburgring' = 'default';
+  private stadiumImages: (HTMLImageElement | null)[] = [null, null, null, null, null];
 
   // Swipe & Scroll State
   private isSwiping = false;
@@ -1245,19 +1246,24 @@ export class JugnuSystem extends createSystem({
         this.buttonCooldown -= safeDt;
     }
 
-    const isMinimapSpawned = !!(window as any).isMinimapSpawned;
-    if (isMinimapSpawned) {
-        if (!this.isCompassOpen) {
-            this.isCompassOpen = true;
-            this.compassGroup.visible = true;
+    // Wrist-button close-stack: peel back the last opened layer each tap.
+    if ((window as any).wristCloseRequest) {
+        (window as any).wristCloseRequest = false;
+        if (this.isDebugOpen) {
+            this.isDebugOpen = false;
             this.redrawCompassGrid(this.hoveredCellIndex);
-        }
-        this.wasMinimapSpawned = true;
-    } else {
-        if (this.wasMinimapSpawned) {
+        } else if (this.isTutorialOpen) {
+            this.isTutorialOpen = false;
+            this.redrawCompassGrid(this.hoveredCellIndex);
+        } else if (this.isChatOpen) {
+            this.isChatOpen = false;
+            this.redrawCompassGrid(this.hoveredCellIndex);
+        } else if (this.isStadiumMenuOpen) {
+            this.isStadiumMenuOpen = false;
+            this.redrawCompassGrid(this.hoveredCellIndex);
+        } else if (this.isCompassOpen) {
             this.isCompassOpen = false;
         }
-        this.wasMinimapSpawned = false;
     }
 
     if (activeJugnuModel) {
@@ -1471,14 +1477,30 @@ export class JugnuSystem extends createSystem({
 
             const numOpen = openCards.length;
 
-            // Swipe-to-scroll detection over the Compass board & Info Cards using the right index finger
+            // Swipe-to-scroll: only active when finger is fully inside an open card's bounds
             if (hasRight && numOpen > 0) {
                 const localRightTip = this.scratchV3_1.copy(rightIndexTip).applyMatrix4(this.scratchMatrix.copy(this.compassGroup.matrixWorld).invert());
-                const isWithinSwipeZ = Math.abs(localRightTip.z) < 0.05; // 5cm hover depth
-                const isWithinSwipeX = localRightTip.x > -0.09 && localRightTip.x < 0.33; // Expanded horizontally to cover cards at x=0.21
-                const isWithinSwipeY = localRightTip.y > -0.20 && localRightTip.y < 0.20; // Expanded vertically for generous drag space
+                const hw = 0.12, hh = 0.09, swipeZThresh = 0.05;
+                let isOverOpenCard = false;
+                if (Math.abs(localRightTip.z) < swipeZThresh) {
+                    if (this.isChatOpen && this.compassChatCard) {
+                        const p = this.compassChatCard.position;
+                        if (localRightTip.x > p.x - hw && localRightTip.x < p.x + hw &&
+                            localRightTip.y > p.y - hh && localRightTip.y < p.y + hh) isOverOpenCard = true;
+                    }
+                    if (!isOverOpenCard && this.isTutorialOpen && this.compassTutorialCard) {
+                        const p = this.compassTutorialCard.position;
+                        if (localRightTip.x > p.x - hw && localRightTip.x < p.x + hw &&
+                            localRightTip.y > p.y - hh && localRightTip.y < p.y + hh) isOverOpenCard = true;
+                    }
+                    if (!isOverOpenCard && this.isDebugOpen && this.compassDebugCard) {
+                        const p = this.compassDebugCard.position;
+                        if (localRightTip.x > p.x - hw && localRightTip.x < p.x + hw &&
+                            localRightTip.y > p.y - hh && localRightTip.y < p.y + hh) isOverOpenCard = true;
+                    }
+                }
 
-                if (isWithinSwipeZ && isWithinSwipeX && isWithinSwipeY) {
+                if (isOverOpenCard) {
                     if (!this.isSwiping) {
                         this.isSwiping = true;
                         this.lastSwipeY = localRightTip.y;
@@ -1490,21 +1512,20 @@ export class JugnuSystem extends createSystem({
 
                         this.swipeAccumulatedY += Math.abs(deltaY);
                         if (this.swipeAccumulatedY > 0.015) {
-                            this.swipeLocked = true; // Lock click interactions while dragging
+                            this.swipeLocked = true;
                         }
 
                         if (this.swipeLocked) {
-                            // Apply 3x sensitivity multiplier for effort-free, smooth scrolling
                             this.scrollY += deltaY * 3.0;
                         }
                     }
                 } else {
                     this.isSwiping = false;
-                    this.swipeLocked = false; // Reset lock when finger leaves hover range
+                    this.swipeLocked = false;
                 }
             } else {
                 this.isSwiping = false;
-                this.swipeLocked = false; // Reset lock when right hand is lost/released
+                this.swipeLocked = false;
             }
 
             // Continuous scroll boundaries clamp and snapping behavior
@@ -1551,7 +1572,7 @@ export class JugnuSystem extends createSystem({
 
             if (this.isStadiumMenuOpen) {
                 targetStadiumMenuX = 0.0;
-                targetStadiumMenuY = 0.15;
+                targetStadiumMenuY = 0.14;
             }
 
             const tabSpacing = 0.20; // Vertical stack spacing
@@ -1628,19 +1649,19 @@ export class JugnuSystem extends createSystem({
                 }
             }
 
-            // Smooth scaling & sliding transition for the Stadium Selector card (slides vertically on the right side of the board)
+            // Smooth scaling & sliding transition for the Stadium Selector card — sits at a distinct Z depth to prevent mistouch
             if (this.compassStadiumCard) {
                 if (this.isStadiumMenuOpen) {
                     this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.95, safeDt * 30.0);
                     this.compassStadiumCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
                     this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, targetStadiumMenuX, safeDt * 30.0);
                     this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, targetStadiumMenuY, safeDt * 30.0);
-                    this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, 0.03, safeDt * 30.0);
                 } else {
                     this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.0, safeDt * 30.0);
                     this.compassStadiumCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
                     this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, 0.0, safeDt * 30.0);
-                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, -0.02, safeDt * 30.0);
+                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, 0.02, safeDt * 30.0);
                     this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 30.0);
                 }
             }
@@ -1713,20 +1734,24 @@ export class JugnuSystem extends createSystem({
             let hoveredStadiumOption = -1;
             if (this.isStadiumMenuOpen && activeTip && this.compassStadiumCard) {
                 const cardLocalTip = this.scratchV3_1.copy(activeTip).applyMatrix4(this.scratchMatrix.copy(this.compassStadiumCard.matrixWorld).invert());
+                // Card is now PlaneGeometry(0.28, 0.10) — half-extents: x±0.14, y±0.05
                 const isWithinCardHoverZ = Math.abs(cardLocalTip.z) < 0.025;
-                const isWithinCardBoundsX = cardLocalTip.x > -0.12 && cardLocalTip.x < 0.12;
-                const isWithinCardBoundsY = cardLocalTip.y > -0.09 && cardLocalTip.y < 0.09;
+                const isWithinCardBoundsX = cardLocalTip.x > -0.14 && cardLocalTip.x < 0.14;
+                const isWithinCardBoundsY = cardLocalTip.y > -0.05 && cardLocalTip.y < 0.05;
 
                 if (isWithinCardHoverZ && isWithinCardBoundsX && isWithinCardBoundsY) {
-                    const canvasX = (cardLocalTip.x + 0.12) / 0.24 * 512;
-                    const canvasY = (0.09 - cardLocalTip.y) / 0.18 * 384;
+                    // Canvas 560×200: map local coords to pixel coords
+                    const canvasX = (cardLocalTip.x + 0.14) / 0.28 * 560;
+                    const canvasY = (0.05 - cardLocalTip.y) / 0.10 * 200;
 
-                    if (canvasX >= 40 && canvasX <= 472) {
-                        if (canvasY >= 68 && canvasY <= 116) hoveredStadiumOption = 0;
-                        else if (canvasY >= 126 && canvasY <= 174) hoveredStadiumOption = 1;
-                        else if (canvasY >= 184 && canvasY <= 232) hoveredStadiumOption = 2;
-                        else if (canvasY >= 242 && canvasY <= 290) hoveredStadiumOption = 3;
-                        else if (canvasY >= 300 && canvasY <= 348) hoveredStadiumOption = 4;
+                    // Tile images sit at canvasY [42, 142]; tiles are X-indexed
+                    // startX=14, tileSize=100, gap=8 → tile starts: 14, 122, 230, 338, 446
+                    if (canvasY >= 42 && canvasY <= 155) {
+                        if      (canvasX >= 14  && canvasX < 114)  hoveredStadiumOption = 0;
+                        else if (canvasX >= 122 && canvasX < 222)  hoveredStadiumOption = 1;
+                        else if (canvasX >= 230 && canvasX < 330)  hoveredStadiumOption = 2;
+                        else if (canvasX >= 338 && canvasX < 438)  hoveredStadiumOption = 3;
+                        else if (canvasX >= 446 && canvasX < 546)  hoveredStadiumOption = 4;
                     }
 
                     const isPressed = Math.abs(cardLocalTip.z) < 0.014;
@@ -2664,10 +2689,10 @@ export class JugnuSystem extends createSystem({
       this.compassTutorialCard.scale.setScalar(0.001); // Shrink initially
       this.compassGroup.add(this.compassTutorialCard);
 
-      // Initialize Stadium Selector Tab UI
+      // Initialize Stadium Selector Tab UI — horizontal tile gallery
       this.compassStadiumCanvas = document.createElement('canvas');
-      this.compassStadiumCanvas.width = 512;
-      this.compassStadiumCanvas.height = 384;
+      this.compassStadiumCanvas.width = 560;
+      this.compassStadiumCanvas.height = 200;
       this.compassStadiumCtx = this.compassStadiumCanvas.getContext('2d')!;
 
       this.compassStadiumTexture = new THREE.CanvasTexture(this.compassStadiumCanvas);
@@ -2675,13 +2700,31 @@ export class JugnuSystem extends createSystem({
 
       this.compassStadiumMat = this.createHolographicMaterial(this.compassStadiumTexture, 0.0);
 
+      // Wider, shorter card to match horizontal gallery layout
       this.compassStadiumCard = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.24, 0.18),
+          new THREE.PlaneGeometry(0.28, 0.10),
           this.compassStadiumMat
       );
-      this.compassStadiumCard.position.set(0, -0.02, -0.01);
-      this.compassStadiumCard.scale.setScalar(0.001); // Shrink initially
+      this.compassStadiumCard.position.set(0, 0.02, -0.01);
+      this.compassStadiumCard.scale.setScalar(0.001);
       this.compassGroup.add(this.compassStadiumCard);
+
+      // Preload venue images — canvas redraws once each arrives
+      const imageSrcs = [
+          '/textures/wankde.jpg',
+          '/textures/olympia.jpg',
+          '/textures/crytpo.jpg',
+          '/textures/butterfly park.avif',
+          '/textures/nuburning 24h.jpg',
+      ];
+      imageSrcs.forEach((src, i) => {
+          const img = new Image();
+          img.onload = () => {
+              this.stadiumImages[i] = img;
+              if (this.isStadiumMenuOpen) this.redrawCompassStadiumMenu();
+          };
+          img.src = src;
+      });
 
       this.redrawCompassStadiumMenu();
 
@@ -3128,109 +3171,131 @@ export class JugnuSystem extends createSystem({
 
   private redrawCompassStadiumMenu(hoveredIdx: number = -1) {
       const ctx = this.compassStadiumCtx;
-      const w = 512;
-      const h = 384;
+      const w = 560, h = 200;
       ctx.clearRect(0, 0, w, h);
 
-      // Dark glassmorphic background
-      ctx.fillStyle = 'rgba(5, 5, 26, 0.96)';
+      // Dark glass panel
+      ctx.fillStyle = 'rgba(5,5,26,0.97)';
       ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 16);
+      ctx.roundRect(0, 0, w, h, 14);
       ctx.fill();
 
-      // Cyberpunk style neon border (cyan)
+      // Cyan neon border
       ctx.strokeStyle = '#22d3ee';
-      ctx.lineWidth = 6;
+      ctx.lineWidth = 5;
+      ctx.shadowColor = '#22d3ee';
+      ctx.shadowBlur = 8;
       ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 16);
+      ctx.roundRect(0, 0, w, h, 14);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Inner subtle border
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(6, 6, w - 12, h - 12, 10);
       ctx.stroke();
 
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(10, 10, w - 20, h - 20, 12);
-      ctx.stroke();
-
-      // Header text
+      // Header
       ctx.fillStyle = '#22d3ee';
-      ctx.font = 'bold 20px monospace';
+      ctx.font = 'bold 13px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText("STADIUM GEOMETRY SELECTOR", w / 2, 38);
+      ctx.fillText('VENUE SELECTOR', w / 2, 22);
 
-      // Divider line
-      ctx.strokeStyle = 'rgba(34, 211, 238, 0.3)';
-      ctx.lineWidth = 2;
+      // Divider
+      ctx.strokeStyle = 'rgba(34,211,238,0.3)';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(24, 52); ctx.lineTo(w - 24, 52);
+      ctx.moveTo(20, 33); ctx.lineTo(w - 20, 33);
       ctx.stroke();
 
-      // Options
-      const options = [
-          { key: 'default',     label: "WANKHEDE  —  Mumbai, India",     desc: "IPL Final 2026 • RCB vs RR • Cricket" },
-          { key: 'berlin',      label: "OLYMPIASTADION  —  Berlin, Germany", desc: "Bundesliga • FC Bayern vs Hertha • Football" },
-          { key: 'inuit',       label: "CRYPTO.COM ARENA  —  Los Angeles, USA",  desc: "NBA Finals • LA Lakers vs Boston Celtics • Basketball" },
-          { key: 'butterflies', label: "BUTTERFLY PARK  —  Immersive 360",    desc: "Butterfly Sanctuary • 10 x 360° Panoramas • Relaxing" },
-          { key: 'nurburgring', label: "NÜRBURGRING 24H  —  Nürburg, Germany", desc: "24-Hour Racetrack Mockup • High Speed Cars • Sports" }
+      // Tile layout: 5 tiles × 100 px + 4 gaps × 8 px = 532; side margin = (560-532)/2 = 14
+      const tileSize = 100;
+      const gap = 8;
+      const startX = (w - (5 * tileSize + 4 * gap)) / 2; // = 14
+      const tileY = 42;
+      const nameY = tileY + tileSize + 13;
+
+      const venues: { key: string; name: string; sub: string; img: HTMLImageElement | null }[] = [
+          { key: 'default',     name: 'WANKHEDE',   sub: 'Mumbai, India',        img: this.stadiumImages[0] },
+          { key: 'berlin',      name: 'OLYMPIA',    sub: 'Berlin, Germany',      img: this.stadiumImages[1] },
+          { key: 'inuit',       name: 'CRYPTO',     sub: 'Los Angeles, USA',     img: this.stadiumImages[2] },
+          { key: 'butterflies', name: 'BUTTERFLY',  sub: 'Immersive 360°',       img: this.stadiumImages[3] },
+          { key: 'nurburgring', name: 'NÜRBURGRING',sub: 'Nürburg, Germany',     img: this.stadiumImages[4] },
       ];
 
-      const btnX = 40;
-      const btnW = 432;
-      const btnH = 48;
-      const btnYs = [68, 126, 184, 242, 300];
+      venues.forEach((venue, i) => {
+          const tx = startX + i * (tileSize + gap);
+          const isSelected = this.selectedStadium === venue.key;
+          const isHovered  = hoveredIdx === i;
 
-      options.forEach((opt, idx) => {
-          const by = btnYs[idx];
-          const isSelected = this.selectedStadium === opt.key;
-          const isHovered = hoveredIdx === idx;
-
-          // Drawing shadow glow for hover or selection
-          if (isHovered || isSelected) {
-              ctx.shadowColor = isSelected ? '#22d3ee' : 'rgba(34, 211, 238, 0.5)';
-              ctx.shadowBlur = 15;
-          } else {
-              ctx.shadowBlur = 0;
-          }
-
-          // Button backing
-          ctx.fillStyle = isSelected ? 'rgba(34, 211, 238, 0.25)' : 'rgba(5, 5, 20, 0.75)';
+          // Tile background (placeholder colour while image loads)
+          ctx.fillStyle = 'rgba(34,211,238,0.06)';
           ctx.beginPath();
-          ctx.roundRect(btnX, by, btnW, btnH, 10);
+          ctx.roundRect(tx, tileY, tileSize, tileSize, 8);
           ctx.fill();
 
-          // Reset shadow
+          // Draw image — center-cropped to square
+          const img = venue.img;
+          if (img && img.naturalWidth > 0) {
+              ctx.save();
+              ctx.beginPath();
+              ctx.roundRect(tx, tileY, tileSize, tileSize, 8);
+              ctx.clip();
+              const iw = img.naturalWidth, ih = img.naturalHeight;
+              let sx = 0, sy = 0, sw = iw, sh = ih;
+              if (iw > ih) { sw = ih; sx = (iw - ih) / 2; }
+              else         { sh = iw; sy = (ih - iw) / 2; }
+              ctx.drawImage(img, sx, sy, sw, sh, tx, tileY, tileSize, tileSize);
+              ctx.restore();
+          }
+
+          // Hover / selection tint overlay
+          if (isSelected) {
+              ctx.fillStyle = 'rgba(34,211,238,0.28)';
+              ctx.beginPath();
+              ctx.roundRect(tx, tileY, tileSize, tileSize, 8);
+              ctx.fill();
+          } else if (isHovered) {
+              ctx.fillStyle = 'rgba(255,255,255,0.14)';
+              ctx.beginPath();
+              ctx.roundRect(tx, tileY, tileSize, tileSize, 8);
+              ctx.fill();
+          }
+
+          // Tile border
+          ctx.strokeStyle = isSelected ? '#22d3ee' : (isHovered ? 'rgba(34,211,238,0.75)' : 'rgba(34,211,238,0.25)');
+          ctx.lineWidth = isSelected ? 3 : 1.5;
+          ctx.shadowColor = isSelected ? '#22d3ee' : 'transparent';
+          ctx.shadowBlur  = isSelected ? 10 : 0;
+          ctx.beginPath();
+          ctx.roundRect(tx, tileY, tileSize, tileSize, 8);
+          ctx.stroke();
           ctx.shadowBlur = 0;
 
-          // Button border
-          ctx.strokeStyle = isSelected ? '#22d3ee' : (isHovered ? 'rgba(34, 211, 238, 0.8)' : 'rgba(34, 211, 238, 0.3)');
-          ctx.lineWidth = isSelected ? 3 : 2;
-          ctx.beginPath();
-          ctx.roundRect(btnX, by, btnW, btnH, 10);
-          ctx.stroke();
-
-          // Button label text
-          ctx.fillStyle = isSelected ? '#ffffff' : (isHovered ? '#22d3ee' : '#a5f3fc');
-          ctx.font = 'bold 13px monospace';
-          ctx.textAlign = 'left';
-          ctx.fillText((isSelected ? ">> " : "") + opt.label, btnX + 20, by + 19);
-
-          // Button description text
-          ctx.fillStyle = isSelected ? '#a5f3fc' : '#67e8f9';
-          ctx.font = '9px monospace';
-          ctx.fillText(opt.desc, btnX + 20, by + 36);
-
-          // Draw radio indicator
-          ctx.strokeStyle = isSelected ? '#22d3ee' : 'rgba(34, 211, 238, 0.5)';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(btnX + btnW - 30, by + 24, 7, 0, 2 * Math.PI);
-          ctx.stroke();
-
+          // Selected tick badge (top-right corner)
           if (isSelected) {
               ctx.fillStyle = '#22d3ee';
               ctx.beginPath();
-              ctx.arc(btnX + btnW - 30, by + 24, 3.5, 0, 2 * Math.PI);
+              ctx.roundRect(tx + tileSize - 20, tileY, 20, 18, [0, 8, 0, 8]);
               ctx.fill();
+              ctx.fillStyle = '#05050f';
+              ctx.font = 'bold 11px monospace';
+              ctx.textAlign = 'center';
+              ctx.fillText('✓', tx + tileSize - 10, tileY + 13);
           }
+
+          // Venue name
+          ctx.fillStyle = isSelected ? '#22d3ee' : (isHovered ? '#a5f3fc' : '#67e8f9');
+          ctx.font = isSelected ? 'bold 9px monospace' : '9px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(venue.name, tx + tileSize / 2, nameY);
+
+          // Sub-label (city)
+          ctx.fillStyle = isSelected ? 'rgba(34,211,238,0.7)' : 'rgba(255,255,255,0.3)';
+          ctx.font = '7px monospace';
+          ctx.fillText(venue.sub, tx + tileSize / 2, nameY + 11);
       });
 
       this.compassStadiumTexture.needsUpdate = true;
