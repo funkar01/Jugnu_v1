@@ -42,6 +42,7 @@ import {
 } from "@iwsdk/core";
 
 import { EnvironmentType, LocomotionEnvironment } from "@iwsdk/core";
+import { Spatial } from "@webspatial/core-sdk";
 import { PanelSystem } from "./panel.js";
 import { Robot, RobotSystem } from "./robot.js";
 import { Jugnu, JugnuSystem, TranscriptUI } from "./jugnu.js";
@@ -221,6 +222,19 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   },
 }).then((world) => {
   const { camera, renderer } = world;
+
+  // Initialize WebSpatial if supported (Pico OS 6 WebApp Runtime)
+  try {
+    const spatial = new Spatial();
+    if (spatial.isSupported()) {
+      const wsSession = spatial.requestSession();
+      if (wsSession) {
+        console.log("[WebSpatial] Session initialized successfully in PICO OS environment.");
+      }
+    }
+  } catch (e) {
+    console.warn("[WebSpatial] Initialization skipped/not supported in this environment:", e);
+  }
 
   if (renderer) {
       renderer.toneMapping = ACESFilmicToneMapping;

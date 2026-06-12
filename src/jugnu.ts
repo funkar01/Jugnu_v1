@@ -119,9 +119,23 @@ export class JugnuSystem extends createSystem({
   private pinchReleasedTimer = 0.0;
   private hoveredCellIndex = -1;
   private lastHoveredStadiumOption = -1;
-  private activeCompassTileIndex = -1; // -1 for none
+   private activeCompassTileIndex = -1; // -1 for none
   private holographicMaterials: THREE.ShaderMaterial[] = [];
   private glitchFrameCount = 0;
+
+  // Action Compass Subsystem
+  private actionCompassGroup!: THREE.Group;
+  private actionBackingBoard!: THREE.Mesh;
+  private actionBackingCanvas!: HTMLCanvasElement;
+  private actionBackingCtx!: CanvasRenderingContext2D;
+  private actionBackingTexture!: THREE.CanvasTexture;
+  private actionOuterTintCanvas!: HTMLCanvasElement;
+  private actionOuterTintCtx!: CanvasRenderingContext2D;
+  private actionInnerTintCanvas!: HTMLCanvasElement;
+  private actionInnerTintCtx!: CanvasRenderingContext2D;
+  private actionHoveredSpokeIndex = -1;
+  private actionFloatTime = 0.0;
+  private actionHolographicMat!: THREE.ShaderMaterial;
 
   private buttonCooldown = 0.0;
   private isChatOpen = false;
@@ -150,6 +164,7 @@ export class JugnuSystem extends createSystem({
   private wasTutorialOpen = false;
   private wasDebugOpen = false;
   private wasScaledMax = false;
+  private wasMinimapSpawned = false;
   private isTutorialOpen = false;
   private compassTutorialCard!: THREE.Mesh;
   private compassTutorialMat!: THREE.ShaderMaterial;
@@ -1278,7 +1293,7 @@ export class JugnuSystem extends createSystem({
             if (this.wasScaledMax) {
                 // Just transitioned back: restore states
                 this.isCompassOpen = this.wasCompassOpen;
-                if (this.isGridLocked) {
+                if (this.isGridLocked || isMinimapSpawned) {
                     this.isCompassOpen = true;
                 }
                 if (this.isCompassOpen) {
@@ -1350,7 +1365,7 @@ export class JugnuSystem extends createSystem({
                 if (isAnyPinchHeld) {
                     this.pinchReleasedTimer = 0.0; // Keep open as long as a pinch is held
                 } else {
-                    if (!this.isGridLocked) {
+                    if (!this.isGridLocked && !isMinimapSpawned) {
                         this.pinchReleasedTimer += safeDt;
                         if (this.pinchReleasedTimer >= 2.0) {
                             this.isCompassOpen = false;
@@ -1790,6 +1805,88 @@ export class JugnuSystem extends createSystem({
                     }
                 }
             }
+
+            // ─── Action Compass Update Subsystem ───
+            if (this.actionCompassGroup) {
+                const isMinimapSpawned = !!(window as any).isMinimapSpawned;
+                const isSportSeqActive = !!(window as any).isSportSequenceActive;
+                const showActionCompass = this.isCompassOpen && isMinimapSpawned && !isSportSeqActive;
+
+                if (showActionCompass) {
+                    if (!this.actionCompassGroup.visible) {
+                        this.actionCompassGroup.visible = true;
+                        this.actionCompassGroup.scale.setScalar(0.001);
+                    }
+                    this.actionCompassGroup.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 10.0);
+                    
+                    let activeActionTip: THREE.Vector3 | null = null;
+                    if (hasLeft && hasRight) {
+                        const boardWorldPos = new THREE.Vector3();
+                        this.actionBackingBoard.getWorldPosition(boardWorldPos);
+                        activeActionTip = leftIndexTip.distanceTo(boardWorldPos) < rightIndexTip.distanceTo(boardWorldPos) ? leftIndexTip : rightIndexTip;
+                    } else if (hasLeft) {
+                        activeActionTip = leftIndexTip;
+                    } else if (hasRight) {
+                        activeActionTip = rightIndexTip;
+                    }
+
+                    let currentActionHoverIdx = -1;
+                    if (activeActionTip) {
+                        const localTip = this.scratchV3_1.copy(activeActionTip).applyMatrix4(this.scratchMatrix.copy(this.actionCompassGroup.matrixWorld).invert());
+                        const isWithinHoverZ = Math.abs(localTip.z) < 0.025;
+                        const isWithinBoundsX = localTip.x > -0.05 && localTip.x < 0.05;
+                        const isWithinBoundsY = localTip.y > -0.05 && localTip.y < 0.05;
+
+                        if (isWithinHoverZ && isWithinBoundsX && isWithinBoundsY) {
+                            const d = Math.sqrt(localTip.x * localTip.x + localTip.y * localTip.y);
+                            if (d >= 0.020 && d <= 0.052) {
+                                const angle = Math.atan2(-localTip.y, localTip.x);
+                                let bestIdx = -1;
+                                let minDiff = Infinity;
+                                for (let i = 0; i < JugnuSystem.ACTION_SPOKES.length; i++) {
+                                    let diff = Math.abs(angle - JugnuSystem.ACTION_SPOKES[i].angle);
+                                    if (diff > Math.PI) {
+                                        diff = 2 * Math.PI - diff;
+                                    }
+                                    if (diff < minDiff) {
+                                        minDiff = diff;
+                                        bestIdx = i;
+                                    }
+                                }
+                                currentActionHoverIdx = bestIdx;
+                            }
+
+                            const isPressed = Math.abs(localTip.z) < 0.012;
+                            if (isPressed && currentActionHoverIdx !== -1 && this.buttonCooldown <= 0.0) {
+                                this.buttonCooldown = 0.8;
+                                const spokeType = JugnuSystem.ACTION_SPOKES[currentActionHoverIdx].type;
+                                this.executeActionSpoke(spokeType, activeActionTip);
+                            }
+                        }
+                    }
+
+                    this.actionFloatTime += safeDt;
+                    if (currentActionHoverIdx !== this.actionHoveredSpokeIndex) {
+                        this.actionHoveredSpokeIndex = currentActionHoverIdx;
+                        this.redrawActionCompass(currentActionHoverIdx);
+                        if (currentActionHoverIdx !== -1 && activeActionTip) {
+                            const spatialFX = (window as any).spatialFX;
+                            if (spatialFX) {
+                                spatialFX.playPositionalSound('sparkle', activeActionTip);
+                                spatialFX.triggerSpark(activeActionTip, new THREE.Color(0x00ffff), 2);
+                            }
+                        }
+                    } else if (currentActionHoverIdx !== -1) {
+                        this.redrawActionCompass(currentActionHoverIdx);
+                    }
+                } else {
+                    this.actionCompassGroup.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 10.0);
+                    if (this.actionCompassGroup.scale.x < 0.01 && this.actionCompassGroup.visible) {
+                        this.actionCompassGroup.visible = false;
+                    }
+                    this.actionHoveredSpokeIndex = -1;
+                }
+            }
         }
     }
     
@@ -2153,6 +2250,32 @@ export class JugnuSystem extends createSystem({
       }
   };
 
+  private static readonly ACTION_SPOKES = [
+      { label: "PLAY SEQ", type: "PLAY",  angle: -Math.PI / 2 },     // 12:00
+      { label: "STORM",    type: "STORM", angle: 0 },                // 3:00
+      { label: "NAVIG",    type: "NAVIG", angle: Math.PI / 2 },      // 6:00
+      { label: "CLEAR",    type: "CLEAR", angle: Math.PI }           // 9:00
+  ];
+
+  private static readonly ACTION_SPOKE_DETAILS: Record<string, { title: string, detail: string }> = {
+      "PLAY": {
+          title: "PLAY SEQUENCE",
+          detail: "Trigger the stadium's spatial replay event simulation."
+      },
+      "STORM": {
+          title: "WEATHER MODE",
+          detail: "Cycle atmospheric effects (Rain, Neon Dust, Clear)."
+      },
+      "NAVIG": {
+          title: "NAVIGATION",
+          detail: "Toggle highlighting of stadium landmarks and paths."
+      },
+      "CLEAR": {
+          title: "CLEAR SYSTEMS",
+          detail: "Reset all active sequences, weather effects, and physics."
+      }
+  };
+
   private wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
       const words = text.split(' ');
       let line = '';
@@ -2485,6 +2608,9 @@ export class JugnuSystem extends createSystem({
       outerImg.onload = () => {
           this.outerBgCanvas = this.makeBlackTransparentCanvas(outerImg);
           this.redrawCompassGrid(this.hoveredCellIndex);
+          if (this.actionCompassGroup) {
+              this.redrawActionCompass(this.actionHoveredSpokeIndex);
+          }
       };
 
       const innerImg = new Image();
@@ -2492,6 +2618,9 @@ export class JugnuSystem extends createSystem({
       innerImg.onload = () => {
           this.innerBgCanvas = this.makeBlackTransparentCanvas(innerImg);
           this.redrawCompassGrid(this.hoveredCellIndex);
+          if (this.actionCompassGroup) {
+              this.redrawActionCompass(this.actionHoveredSpokeIndex);
+          }
       };
 
 
@@ -2602,6 +2731,9 @@ export class JugnuSystem extends createSystem({
       // Draw initial grid
       this.redrawCompassGrid(-1);
 
+      // Initialize Action Compass UI subsystem
+      this.initActionCompassUI();
+
       this.world.createTransformEntity(this.compassGroup);
       this.initLockIcon();
   }
@@ -2665,6 +2797,245 @@ export class JugnuSystem extends createSystem({
       this.lockIconGroup.visible = false;
 
       this.world.createTransformEntity(this.lockIconGroup);
+
+  }
+
+  private initActionCompassUI() {
+      this.actionCompassGroup = new THREE.Group();
+      this.actionCompassGroup.position.set(0.11, 0.03, 0.0);
+      this.actionCompassGroup.scale.setScalar(0.001); // starts shrunk
+      this.actionCompassGroup.visible = false;
+      this.compassGroup.add(this.actionCompassGroup);
+
+      const backingGeom = new THREE.PlaneGeometry(0.10, 0.10);
+
+      this.actionBackingCanvas = document.createElement('canvas');
+      this.actionBackingCanvas.width = 512;
+      this.actionBackingCanvas.height = 512;
+      this.actionBackingCtx = this.actionBackingCanvas.getContext('2d')!;
+
+      this.actionBackingTexture = new THREE.CanvasTexture(this.actionBackingCanvas);
+      this.actionBackingTexture.colorSpace = THREE.SRGBColorSpace;
+
+      this.actionHolographicMat = this.createHolographicMaterial(this.actionBackingTexture, 1.0);
+      this.actionBackingBoard = new THREE.Mesh(backingGeom, this.actionHolographicMat);
+      this.actionCompassGroup.add(this.actionBackingBoard);
+
+      this.actionOuterTintCanvas = document.createElement('canvas');
+      this.actionOuterTintCanvas.width = 512;
+      this.actionOuterTintCanvas.height = 512;
+      this.actionOuterTintCtx = this.actionOuterTintCanvas.getContext('2d')!;
+
+      this.actionInnerTintCanvas = document.createElement('canvas');
+      this.actionInnerTintCanvas.width = 512;
+      this.actionInnerTintCanvas.height = 512;
+      this.actionInnerTintCtx = this.actionInnerTintCanvas.getContext('2d')!;
+
+      this.redrawActionCompass(-1);
+  }
+
+  private redrawActionCompass(hoveredIdx: number) {
+      const ctx = this.actionBackingCtx;
+      if (!ctx) return;
+      const w = 512;
+      const h = 512;
+      const moodColorHex = '#' + this.animatedMoodColor.getHexString();
+      const compColorHex = '#' + this.animatedCompColor.getHexString();
+
+      if (this.outerBgCanvas) {
+          const oCtx = this.actionOuterTintCtx;
+          oCtx.clearRect(0, 0, 512, 512);
+          oCtx.drawImage(this.outerBgCanvas, 0, 0, 512, 512);
+          oCtx.globalCompositeOperation = 'source-in';
+          oCtx.fillStyle = moodColorHex;
+          oCtx.fillRect(0, 0, 512, 512);
+          oCtx.globalCompositeOperation = 'multiply';
+          oCtx.drawImage(this.outerBgCanvas, 0, 0, 512, 512);
+          oCtx.globalCompositeOperation = 'source-over';
+      }
+
+      if (this.innerBgCanvas) {
+          const iCtx = this.actionInnerTintCtx;
+          const size = 240;
+          const x = 256 - size / 2;
+          const y = 256 - size / 2;
+          iCtx.clearRect(0, 0, 512, 512);
+          iCtx.drawImage(this.innerBgCanvas, x, y, size, size);
+          iCtx.globalCompositeOperation = 'source-in';
+          iCtx.fillStyle = moodColorHex;
+          iCtx.fillRect(x, y, size, size);
+          iCtx.globalCompositeOperation = 'multiply';
+          iCtx.drawImage(this.innerBgCanvas, x, y, size, size);
+          iCtx.globalCompositeOperation = 'source-over';
+      }
+
+      ctx.clearRect(0, 0, w, h);
+      if (this.outerBgCanvas) {
+          ctx.globalAlpha = 0.40;
+          ctx.drawImage(this.actionOuterTintCanvas, 0, 0);
+          ctx.globalAlpha = 1.0;
+      } else {
+          ctx.fillStyle = 'rgba(5, 5, 20, 0.40)';
+          ctx.beginPath();
+          ctx.arc(256, 256, 240, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.strokeStyle = moodColorHex;
+          ctx.lineWidth = 4;
+          ctx.stroke();
+      }
+
+      if (this.innerBgCanvas) {
+          ctx.globalAlpha = 0.80;
+          ctx.drawImage(this.actionInnerTintCanvas, 0, 0);
+          ctx.globalAlpha = 1.0;
+      } else {
+          ctx.fillStyle = 'rgba(10, 10, 30, 0.80)';
+          ctx.beginPath();
+          ctx.arc(256, 256, 110, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.strokeStyle = moodColorHex;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+      }
+
+      const R = 180;
+      JugnuSystem.ACTION_SPOKES.forEach((spoke, idx) => {
+          const cx = 256 + R * Math.cos(spoke.angle);
+          const cy = 256 + R * Math.sin(spoke.angle);
+
+          let themeColor = '#ffffff';
+          if (spoke.type === 'PLAY') themeColor = '#ff00ff';
+          else if (spoke.type === 'STORM') themeColor = '#6366f1';
+          else if (spoke.type === 'NAVIG') themeColor = '#ff5500';
+          else if (spoke.type === 'CLEAR') themeColor = '#ff3333';
+
+          ctx.fillStyle = compColorHex;
+          ctx.beginPath();
+          ctx.arc(cx, cy - 8, 40, 0, 2 * Math.PI);
+          ctx.fill();
+
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy - 8, 40, 0, 2 * Math.PI);
+          ctx.stroke();
+
+          let isActive = false;
+          if (spoke.type === 'PLAY') {
+              isActive = !!(window as any).isMinimapSportSequenceActive?.();
+          } else if (spoke.type === 'STORM') {
+              const weatherMode = (window as any).getMinimapWeatherMode?.();
+              isActive = (weatherMode && weatherMode !== 'off');
+          } else if (spoke.type === 'NAVIG') {
+              isActive = !!(window as any).isMinimapNavigationActive?.();
+          }
+
+          if (hoveredIdx === idx || isActive) {
+              ctx.strokeStyle = themeColor;
+              ctx.lineWidth = hoveredIdx === idx ? 5 : 3;
+              ctx.beginPath();
+              ctx.arc(cx, cy - 8, hoveredIdx === idx ? 45 : 43, 0, 2 * Math.PI);
+              ctx.stroke();
+          }
+
+          let hoverOffset = 0;
+          if (hoveredIdx === idx) {
+              hoverOffset = Math.sin(this.actionFloatTime * 6.0) * 4.0;
+          }
+          const iconY = cy - 8 + hoverOffset;
+
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = '#ffffff';
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          if (spoke.type === 'PLAY') {
+              ctx.beginPath();
+              ctx.moveTo(cx - 8, iconY - 12);
+              ctx.lineTo(cx + 12, iconY);
+              ctx.lineTo(cx - 8, iconY + 12);
+              ctx.closePath();
+              ctx.fill();
+              ctx.stroke();
+          } else if (spoke.type === 'STORM') {
+              ctx.beginPath();
+              ctx.arc(cx - 6, iconY + 2, 7, 0.5 * Math.PI, 1.5 * Math.PI);
+              ctx.arc(cx, iconY - 4, 9, 1.0 * Math.PI, 2.0 * Math.PI);
+              ctx.arc(cx + 6, iconY + 2, 7, 1.5 * Math.PI, 0.5 * Math.PI);
+              ctx.closePath();
+              ctx.fill();
+              ctx.stroke();
+          } else if (spoke.type === 'NAVIG') {
+              ctx.beginPath();
+              ctx.moveTo(cx, iconY - 14);
+              ctx.lineTo(cx + 11, iconY + 11);
+              ctx.lineTo(cx, iconY + 5);
+              ctx.lineTo(cx - 11, iconY + 11);
+              ctx.closePath();
+              ctx.fill();
+              ctx.stroke();
+          } else if (spoke.type === 'CLEAR') {
+              ctx.beginPath();
+              ctx.moveTo(cx - 10, iconY - 10);
+              ctx.lineTo(cx + 10, iconY + 10);
+              ctx.moveTo(cx + 10, iconY - 10);
+              ctx.lineTo(cx - 10, iconY + 10);
+              ctx.stroke();
+          }
+
+          ctx.fillStyle = hoveredIdx === idx || isActive ? themeColor : '#ffffff';
+          ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+          ctx.fillText(spoke.label, cx, cy + 52);
+      });
+
+      let activeSpokeType = "";
+      if (hoveredIdx >= 0 && hoveredIdx < JugnuSystem.ACTION_SPOKES.length) {
+          activeSpokeType = JugnuSystem.ACTION_SPOKES[hoveredIdx].type;
+      }
+
+      const activeDetails = activeSpokeType ? JugnuSystem.ACTION_SPOKE_DETAILS[activeSpokeType] : null;
+      const displayTitle = activeDetails ? activeDetails.title : "ACTION DECK";
+      const displayDetail = activeDetails ? activeDetails.detail : "Stadium control compass UI. Dwell focus to trigger.";
+
+      ctx.fillStyle = hoveredIdx >= 0 && activeSpokeType ? (
+          activeSpokeType === 'PLAY' ? '#ff00ff' :
+          activeSpokeType === 'STORM' ? '#6366f1' :
+          activeSpokeType === 'NAVIG' ? '#ff5500' : '#ff3333'
+      ) : '#00ffff';
+      ctx.font = 'bold 20px "Segoe UI", system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(displayTitle, 256, 215);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 12px "Segoe UI", system-ui, -apple-system, sans-serif';
+      this.wrapCanvasText(ctx, displayDetail, 256, 242, 180, 16);
+
+      this.actionBackingTexture.needsUpdate = true;
+  }
+
+  private executeActionSpoke(type: string, activeTip: THREE.Vector3) {
+      const spatialFX = (window as any).spatialFX;
+      if (spatialFX) {
+          spatialFX.playPositionalSound('click', activeTip);
+          let sparkColor = 0x00ffff;
+          if (type === 'PLAY') sparkColor = 0xff00ff;
+          else if (type === 'STORM') sparkColor = 0x6366f1;
+          else if (type === 'NAVIG') sparkColor = 0xff5500;
+          else if (type === 'CLEAR') sparkColor = 0xff3333;
+          spatialFX.triggerSpark(activeTip, new THREE.Color(sparkColor), 15);
+      }
+
+      if (type === 'PLAY') {
+          (window as any).triggerMinimapSportSequence?.();
+      } else if (type === 'STORM') {
+          (window as any).cycleMinimapWeather?.();
+      } else if (type === 'NAVIG') {
+          (window as any).toggleMinimapNavigation?.();
+      } else if (type === 'CLEAR') {
+          (window as any).clearMinimapSystems?.();
+      }
   }
 
 

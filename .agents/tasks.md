@@ -758,3 +758,261 @@
   - `[x]` Analyze tech stack of Jugnu_Stickar (MindAR, CDN Three.js, Canvas)
   - `[x]` Formulate integration architecture (Multi-Page App vs Single-Page DOM routing)
   - `[x]` Deliver comparative analysis and feasibility report
+
+- `[x]` PICO OS 6 & WebSpatial SDK Porting (Current Run)
+  - `[x]` Fixed the User-Agent redirect regex in [index.html](file:///c:/Users/SSD/Documents/GitHub/Jugnu_v1/index.html) to prevent Pico headsets from being redirected to `sticker.html`.
+  - `[x]` Installed `@webspatial/core-sdk` package dependency.
+  - `[x]` Integrated dynamic `Spatial` runtime initialization inside [src/index.ts](file:///c:/Users/SSD/Documents/GitHub/Jugnu_v1/src/index.ts) to support Pico OS 6 native WebApp spatial sessions while maintaining Quest/IWSDK fallback.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Nürburgring 10 F1 Cars Expansion (Current Run)
+  - `[x]` Updated `createNurburgringGroup()` to define and spawn 10 detailed F1 cars (Mercedes, Red Bull, Ferrari, McLaren, Aston Martin, Alpine, Williams, Haas, Sauber, and VCARB) with unique body, helmet, and visor colors.
+  - `[x]` Updated the animation loop inside `update()` to calculate staggered track progress offsets (0.05 step lag) for the trailing 8 cars to space them along the spline.
+  - `[x]` Verified type safety using `npx tsc --noEmit` and completed client production bundle build.
+  - `[x]` Solved wheel/chassis clipping by offsetting the vertical Y-position of cars (+0.0011m for the F1 car, +0.0006m for tiny sports cars) to sit exactly on the flat road surface
+  - `[x]` Corrected car heading direction by applying a 180-degree rotation (`rotateY(Math.PI)`) after `.lookAt(target)` since Three.js aligns the local negative Z-axis with target
+  - `[x]` Re-enabled AR scoreboard addition to `tableGroup` in `initARBillboard()` and implemented safe fade-out/hide (`arBillboard.visible = false` and `targetOpacity = 0.0`) during active sports sequence playbacks to resolve minimap visibility glitches
+  - `[x]` Verified zero static type errors (`npx tsc --noEmit`) and compiled client bundle successfully (`npm run build`)
+
+- `[x]` Visual Solidness, Nav Opacities & Cylinder Borders Overhaul (Current Run)
+  - `[x]` Overhauled the immersive cylinder wireframe structure by swapping `WireframeGeometry` with `EdgesGeometry` to remove diagonal triangulation lines while retaining outer rings and vertical segment borders
+  - `[x]` Configured stadium meshes to remain 100% solid (`stFadeFactor = 1.0`) in minimal tabletop view (`scale < 2.0`)
+  - `[x]` Configured stadium meshes to stay 90% solid (`stFadeFactor = 0.90`) in medium scale view (`2.0 <= scale < 2.5`)
+  - `[x]` Programmed stadium meshes to transition to 30% transparency (`opacity: 0.70`, i.e. 70% solid) when navigation layer is toggled active
+  - `[x]` Verified zero compile errors with type safety check and client production bundler
+- `[x]` Ball Y-Clamping, Sizing Boost & Dual-Ring Projector Disk (Current Run)
+  - `[x]` Implemented dynamic lookup method `getFloorY()` for Wankhede (0.001), Berlin (0.001), and Crypto.com (0.010)
+  - `[x]` Boosted tabletop ball sizing scale factors by ~1.65x (Cricket: 0.85, Football/Basketball: 1.65) for higher readability in MR space
+  - `[x]` Constructed procedural dual-ring holographic projector disk in `initSportSequenceProps()` consisting of an inner solid core (radius 0.0018) and outer thin telemetry ring (0.0042 to 0.005)
+  - `[x]` Implemented `updateBallProjectorDisk()` that positions projector disk directly on the active stadium floor and adjusts scale and opacity based on active ball height
+  - `[x]` Clamp active, sandbox, sequence, and hawkeye ball Y-positions to enforce bottom-radius floor clearance check to resolve floor clipping
+  - `[x]` Verified zero compile warnings or static type check errors (`npx tsc --noEmit`)
+  - `[x]` Verified Vite production bundle compiles cleanly (`npm run build`)
+- `[x]` Production Backend API & Vercel Edge Runtime Optimization (Current Run)
+  - `[x]` Upgraded production proxy `api/gemini.js` model to `gemini-2.5-flash` for parity with development
+  - `[x]` Migrated both Gemini and Street View serverless handlers to Vercel's Edge Runtime (`runtime: 'edge'`) to cut cold start latencies to <10ms
+  - `[x]` Configured `vercel.json` wildcard rewrite rules mapping `/api/sv/*` requests to the unified proxy handler
+  - `[x]` Built custom Node/Edge Street View proxy API in `api/sv.js` handling session creation, panoid lookup, and binary tile byte streaming
+  - `[x]` Enforced request-origin CORS locks on headers in `api/sv.js` and `api/gemini.js`
+  - `[x]` Confirmed zero static type errors (`npx tsc --noEmit`) and successful Vite client build (`npm run build`)
+
+- `[x]` Formula 1 Immersive Features (Dynamic Telemetry HUD, Tire Thermals & Brake Glow, Vortex Vapor Trails, and Wet Track/Tire Spray Particles) (Current Run)
+  - `[x]` Setup class fields for F1 Telemetry HUD, unique Wheel Materials, Vortex Lines, and Instanced Spray Particles inside `src/domainExpansion.ts`
+  - `[x]` Cache track asphalt material as `nurburgringTrackMat` in `createNurburgringGroup()`
+  - `[x]` Construct unique wheels materials and dynamic telemetry HUD mesh in `createNurburgringF1Car()`
+  - `[x]` Construct vortex line geometries and instanced tire spray mesh in `createNurburgringF1Car()`
+  - `[x]` Implement track material updates (roughness/metalness reflection changes) under rain mode in `src/domainExpansion.ts`
+  - `[x]` Profile speed, gear, RPM, throttle, and brake outputs based on lap progression $t$
+  - `[x]` Render dynamic canvas dashboard HUD text and input bars, updating the look-at orientation
+  - `[x]` Update wheel emissive colors to simulate brake disc glow and cornering thermals
+  - `[x]` Record rear-wing tips and render trailing vortex lines
+  - `[x]` Simulate wet spray particles emitted from rear tires when raining
+  - `[x]` Verified zero compile warnings or static type check errors (`npx tsc --noEmit`)
+  - `[x]` Verified Vite production bundle compiles cleanly (`npm run build`)
+
+- `[x]` Spatial Orientation, Dynamic Floor Height & HUD Size Expansion (Current Run)
+  - `[x]` Replaced Frenet frame lookups with continuous LookAt-based Parallel Transport Frame orientation math for both detailed F1 car and tiny sports cars (using tangent, worldUp, and cross-products) to align vehicles upright, pointing exactly forward, and sitting flat on the track.
+  - `[x]` Double F1 HUD mesh scale size by 100% (to 0.020m x 0.010m) and raise its vertical position above the helmet (y = 0.0095) to prevent helmet clipping
+  - `[x]` Implemented `calculateDynamicFloorY()` that traverses active GLTF stadium models recursively, finds the playing surface mesh (pitch, grass, or court), and computes its local bounding box to transform its top Y coordinate into table-local space
+  - `[x]` Modified `getFloorY()` to dynamically return the computed stadium surface level, preventing ball clipping into various elevated stadium geometries
+  - `[x]` Programmed auto-retraction for the TCD command panel and Compass UI upon starting any sports sequence replay, restoring visibility after the sequence finishes
+  - `[x]` Confirmed zero static type errors (`npx tsc --noEmit`) and successful Vite client build (`npm run build`)
+
+- `[x]` Stadium Mesh Replay Sorting & Transparency Fix (Current Run)
+  - `[x]` Optimized stadium mesh material traversal in `src/domainExpansion.ts` to dynamically set `material.transparent = false` when opacity is at or near 1.0 (fully visible), restoring the meshes to the opaque queue to avoid transparent sorting artifacts.
+  - `[x]` Set high `renderOrder` (999 and 1000) for all transparent `sportCelebrationCard` elements (glass backing, neon borders, text planes) to ensure they are rendered last and sit cleanly on top of the stadium mesh.
+  - `[x]` Set high `renderOrder` (990) for `arBillboard` scoreboard and banner elements to prevent similar transparent depth occlusion issues.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully bundled client assets with `npm run build`.
+
+- `[x]` Pitch Offset, Replay Banner Removal & Zoom Occlusion Fix (Current Run)
+  - `[x]` Raised the cricket stadium pitch/field/grass meshes vertically by exactly 1cm in the local Y axis inside the loader inside `src/domainExpansion.ts`.
+  - `[x]` Removed the dynamic AR celebration banner (`sportCelebrationCard`) completely from replay sequences by forcing it to `visible = false` inside `updateSportSequence` for all sports.
+  - `[x]` Solved player mesh rendering corruption during zoom-in states by dynamically setting `child.visible = false` on invisible stadium meshes when their material opacity falls below `0.005`.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+- `[x]` Nurburgring Wider Track, F1 Racing Simulation & Scale Range Expansion (Current Run)
+  - `[x]` Expanded maximum userTableScale clamp limit from 3.5 to 4.5.
+  - `[x]` Updated mapLinear range boundaries to [2.5, 4.5] for smooth stFadeFactor, cylinderAlpha, and wireframeAlpha transitions.
+  - `[x]` Widened Nürburgring extruded road geometry by 50% (roadWidth = 0.018m).
+  - `[x]` Redesigned vehicle simulation to instantiate three distinct detailed F1 cars scaled down by 20% (0.8 scale): Mercedes (silver), Red Bull (dark blue/yellow), and Ferrari (red).
+  - `[x]` Programmed parallel F1 racing simulation in update loop: Mercedes and Red Bull weave and swap leads via harmonic sine progress offsets and lateral lane offsets, while Ferrari chases in 3rd.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+- `[x]` Pitch Offset Lowering & Wickets/Bat Raising (Current Run)
+  - `[x]` Lowered the green pitch/field/grass mesh coordinate Y-axis by 2cm relative to its raised position (setting offset to `-0.01 / stadiumBaseScale` locally).
+  - `[x]` Raised the wickets (`cricketStumpsMesh`) and bat (`cricketBatMesh`) to Y=0.009 to sit flush with where the players are standing.
+  - `[x]` Updated all cricket sports sequence ball and firework strike Y-coordinates to match the raised stumps and bat height (Y=0.010 for wickets, Y=0.012 for bat hits).
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Nurburgring Elevation, Overtaking Physics & HUD Orientation Fix (Current Run)
+  - `[x]` Raised the entire Nürburgring racetrack group (`nurburgringGroup`) UP by 1cm (`position.y = 0.01`).
+  - `[x]` Implemented corner-aware F1 racing and overtaking logic using curvature tangent dot product checking (only advancing overtake phase when in corners).
+  - `[x]` Prevented F1 car clipping by separating vehicles laterally by 10mm (`+-0.005m` offsets) during overtake transitions, separating progresses by 0.028 (leaving a safe 2.5mm nose-to-tail gap), and increasing Ferrari lag to 0.052 (leaving 7.9mm clearance behind battle).
+  - `[x]` Fixed F1 telemetry HUD world-space lookAt orientation to adaptively face the user's headset without carrying driver helmet pitch or roll tilts.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Zero-GC Trajectories, F1 Steering Yaw & Multi-Car Spray (Current Run)
+  - `[x]` Eliminated dynamic THREE.Vector3 allocations in sport sequence paths and sandbox physics loop.
+  - `[x]` Refactored sequenceBallTrail to write coordinate indices in-place, eliminating dynamic Float32BufferAttribute updates.
+  - `[x]` Implemented dynamic steering slip yaw angle based on lateral overtaking velocity.
+  - `[x]` Expanded instanced rain tyre spray capacity to 180 and added independent vortex line tracking for Mercedes, Red Bull, and Ferrari cars.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Removal of Flick/Throw Ball Features & TCD Panel Cleanup (Current Run)
+  - `[x]` Completely deleted activeBall and sandboxBall meshes, physics parameters, and updating loops.
+  - `[x]` Removed KOHLI, SHARMA, and SCOOP buttons from the TCD Command backplane.
+  - `[x]` Redesigned the TCD panel with a clean 2x2 grid containing the 4 remaining options (Play SEQ, STORM, NAVIG, CLEAR) and mapped click triggers to new indices.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Stadium GLB Upgrade, Amenities Pulsing & ACTION TAB Renaming (Current Run)
+  - `[x]` Incorporated the updated Crypto.com Stadium (`Crypto.comStadium.glb`) and Olympiastadion (`Olympiastadion.glb`) meshes, removing previous meshes totally.
+  - `[x]` Removed procedural goal, net, post, and hoop creation code, and mapped them to the GLTF model's built-in nodes (`OlympiaGoalPost`, `Inuit Basket`, `InuitNet`) during lazy loader mesh traversal.
+  - `[x]` Programmed custom `applyStadiumMaterial` mappings for `goal`, `net`, `post`, `basket`, and `ameneties` meshes.
+  - `[x]` Integrated dynamic pulsing highlight for the amenities mesh. When the navigation layer is active (NAVIG button), the amenities mesh stays fully opaque and pulsates with a high-fidelity amber-gold emissive glow, while other structural meshes fade to 0.7 opacity.
+  - `[x]` Renamed "CORE DOCK" (TCD) to "ACTION TAB" on the hexagonal launcher button canvas and cleaned up associated logs/comments.
+  - `[x]` Expanded maximum userTableScale clamp limit from 4.5 to 6.0 and mapped linear interpolation ranges to 6.0.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Lock Breakout UI, Walls Reset Fix, and Basketball Replay Opposite Hoop Scale Lock Break (Current Run)
+  - `[x]` Replaced walls button type from `"RESET"` to `"WALLS"` and removed `this.activateJugnu()` from its click handler, fixing Jugnu's position reset behavior.
+  - `[x]` Created a floating green lock icon group (`lockIconGroup`) above Jugnu when locked, billboarded to always face the player.
+  - `[x]` Constructed the lock icon using a 128x128 green lock canvas split down the center into separate left/right canvas textures mapped to dual-sided plane meshes.
+  - `[x]` Made the lock icon 55% smaller total (`0.018m` x `0.036m` planes) and anchored it exactly along Jugnu's local Y axis vector (`obj.quaternion` * unit Y) at `1.15 * scale.y + 0.01` distance to sit neatly 1cm above Jugnu's head without overlaying or clipping the mesh.
+  - `[x]` Implemented breakout vibration on Jugnu. When summoning Jugnu while locked, applied a high-frequency position shudder that builds up with pinch time.
+  - `[x]` Programmed splitting breakout animation: once the 1.5s pinch timer completes, the lock is broken, the left/right halves rotate outward, translate away, and fade out, and Jugnu lerps to the hand.
+  - `[x]` Implemented full Compass UI state save/restore caching, automatically reloading open panels (Chat, Maps, Debug, Tutorial) when transitioning back from a scaled-up minimap.
+  - `[x]` Updated basketball sequence to scale up the opposite hoop (`basketballHoop1`) by 50 times its original scale when scoring completes at `time >= 15.8`.
+  - `[x]` Saved/restored hoop scales using `restoreHoopScales()` helper on resets, and corrected the wiggling net mesh and flashed rim references to `hoop2NetMesh` / `basketballHoop2` to match the ball trajectory.
+  - `[x]` Moved the lock icon higher on Jugnu's local Y axis by an additional 1cm (changing local Y-axis offset constant to +0.02) to prevent clipping with Jugnu's 3D mesh.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Spatial audio & interactive Sparks (Current Run)
+  - `[x]` Create `src/spatialFX.ts` with spatial audio synthesis and particle instancing
+  - `[x]` Register `SpatialFXSystem` in `src/index.ts`
+  - `[x]` Integrate hover hums, breakout hums, and lock break sounds in `src/jugnu.ts`
+  - `[x]` Trigger tactile clicks and sparks on Compass UI tile hovers/clicks in `src/jugnu.ts`
+  - `[x]` Trigger sparks and clicks on Action Tab (TCD) hovers/clicks in `src/domainExpansion.ts`
+  - `[x]` Wire fireworks launch/explosion sounds to pyrotechnics show in `src/domainExpansion.ts`
+  - `[x]` Implement custom holographic `ShaderMaterial` with vertex/fragment shader properties in `src/jugnu.ts`
+  - `[x]` Map Compass backing board, chat, debug, tutorial, stadium cards, and lock panels to custom ShaderMaterial
+  - `[x]` Program moving horizontal scanline filters and soft vignette borders running on GPU
+  - `[x]` Hook lock breakout trigger to activate 3-frame chromatic aberration (RGB offset) glitch uniform updates
+  - `[x]` Run static typecheck verification (`npx tsc --noEmit`)
+  - `[x]` Compile production bundle (`npm run build`)
+- `[x]` Radial Compass UI Rehaul (Current Run)
+  - `[x]` Remove current 3D needle and ring meshes from `src/jugnu.ts`
+  - `[x]` Initialize image assets and offscreen canvases in `initCompassUI()`
+  - `[x]` Resize backing board geometry to `0.15`x`0.15` and canvas size to `512`x`512`
+  - `[x]` Define the `SPOKES` static metadata array with reflected clock coordinates
+  - `[x]` Implement `redrawCompassGrid` with offscreen tinting blend modes
+  - `[x]` Write canvas text wrapping helper and draw centered title/status details
+  - `[x]` Update collision intersection logic in `update()` to calculate radial distance and angle sectors
+  - `[x]` Monitor expression changes to dynamically update canvas colors
+  - `[x]` Update `handleCompassTileClick` to resolve spoke actions and update status text
+  - `[x]` Run typechecks and verify client builds
+- `[x]` Transparent Background Images Implementation (Current Run)
+  - `[x]` Copy `CompassUiOuter.png` and `CompassUiInner.png` to `public/textures/`
+  - `[x]` Implement `makeBlackTransparentCanvas` pixel processing helper in `src/jugnu.ts`
+  - `[x]` Load assets and run them through transparent pixel pipeline in `src/jugnu.ts`
+  - `[x]` Verify clean static compilation and bundle Vite builds
+- `[x]` Compass UI Scaling & Lock breakout Refinements (Current Run)
+  - `[x]` Scale `compassGroup` by 1.3 in the update loop
+  - `[x]` Restore happy orange expression when lock is released (both click and breakout)
+  - `[x]` Enforce pinch release checking to prevent immediate breakout upon locking
+  - `[x]` Ignore right hand pinches for lock escape breakouts
+  - `[x]` Verify clean static compilation and bundle Vite builds
+- `[x]` Compass UI Dual Color & Locked Zoom Visibility (Current Run)
+  - `[x]` Draw complementary color circles below bold white icons matching Jugnu's colors
+  - `[x]` Animate entire color transitions (background, borders, text) smoothly using `animatedMoodColor` and `animatedCompColor`
+  - `[x]` Fix locked compass UI visibility loss when zooming out of the minimap
+  - `[x]` Verify clean static compilation and client build
+- `[x]` Compass UI Visual Scale & Readability Polish (Current Run)
+  - `[x]` Double complementary background circle size to 40px radius (100% upscale)
+  - `[x]` Scale vector icons 1.5x (50% upscale) and thicken outlines to 4px
+  - `[x]` Reposition spoke labels to 52px offset to prevent clipping large circles
+  - `[x]` Reduce outer background template opacity to 40%
+  - `[x]` Create solid dark backing (`rgba(5, 5, 12, 1.0)`) for center panel with subtle 35% overlay texture
+  - `[x]` Increase center text size and use bold system-ui sans-serif fonts for perfect legibility
+  - `[x]` Verify clean static compilation and client build
+- `[x]` Compass UI Icon Hover Animations & Transparency Tuning (Current Run)
+  - `[x]` Make the center panel 80% opacity (20% more transparent: `rgba(5, 5, 12, 0.80)`)
+  - `[x]` Increase center title text size to bold 24px and details to bold 15px with balanced line wrapping
+  - `[x]` Implement dynamic sine wave Y-axis hover float animation for spoke icons (`Math.sin(floatTime * 6.0) * 4.0`)
+  - `[x]` Keep complementary background circles and active border rings static while icons float above them
+  - `[x]` Verify clean static compilation and client build
+- `[x]` Center Panel Transparency Refinements (Current Run)
+  - `[x]` Remove custom solid center circular overlay backing from main canvas
+  - `[x]` Draw the provided center template image (`innerTintCanvas`) at 80% opacity with colors linked to Jugnu
+  - `[x]` Verify clean static compilation and client build
+- `[x]` Run dev server and retrieve network testing link (Current Run)
+  - `[x]` Run npm install to populate node_modules
+  - `[x]` Run dev server via npm run dev (bypassing PowerShell policy via cmd /c)
+  - `[x]` Retrieve network IP address of the host machine (10.232.137.127)
+  - `[x]` Generate the headset-testing URL (https://10.232.137.127:8081/)
+
+- `[x]` Jugnu Sticker Integration Feasibility Analysis (Current Run)
+  - `[x]` Analyze tech stack of JugnuXR (IWSDK, Three.js, Vite)
+  - `[x]` Analyze tech stack of Jugnu_Stickar (MindAR, CDN Three.js, Canvas)
+  - `[x]` Formulate integration architecture (Multi-Page App vs Single-Page DOM routing)
+  - `[x]` Deliver comparative analysis and feasibility report
+
+- `[x]` PICO OS 6 & WebSpatial SDK Porting (Current Run)
+  - `[x]` Fixed the User-Agent redirect regex in [index.html](file:///c:/Users/SSD/Documents/GitHub/Jugnu_v1/index.html) to prevent Pico headsets from being redirected to `sticker.html`.
+  - `[x]` Installed `@webspatial/core-sdk` package dependency.
+  - `[x]` Integrated dynamic `Spatial` runtime initialization inside [src/index.ts](file:///c:/Users/SSD/Documents/GitHub/Jugnu_v1/src/index.ts) to support Pico OS 6 native WebApp spatial sessions while maintaining Quest/IWSDK fallback.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Nürburgring 10 F1 Cars Expansion (Current Run)
+  - `[x]` Updated `createNurburgringGroup()` to define and spawn 10 detailed F1 cars (Mercedes, Red Bull, Ferrari, McLaren, Aston Martin, Alpine, Williams, Haas, Sauber, and VCARB) with unique body, helmet, and visor colors.
+  - `[x]` Updated the animation loop inside `update()` to calculate staggered track progress offsets (0.05 step lag) for the trailing 8 cars to space them along the spline.
+  - `[x]` Verified type safety using `npx tsc --noEmit` and completed client production bundle build.
+
+- `[x]` Nürburgring Visual Polish & Z-Fighting Resolution (Current Run)
+  - `[x]` Scaled the holographic containment cylinder dynamically by `1.45x` for custom maps (Nürburgring and Butterflies) to encompass the full track bounds, preventing cars and assets from clipping through the cylinder boundaries.
+  - `[x]` Configured the holographic containment cylinder visibility dynamically in `update()` so that it is only set to visible if its opacity is non-zero, resolving sorting and occlusion glitches.
+  - `[x]` Raised the grid helper and border line positions by `0.45mm` (to `0.0025m` relative height) on custom maps to completely eliminate Z-fighting flicker when zooming in/scaling up.
+  - `[x]` Verified type safety using `npx tsc --noEmit` and successfully compiled client production bundle with `npm run build`.
+
+- `[x]` Action Compass UI Subsystem & Grid Floor Removal (Current Run)
+  - `[x]` Removed physical `tcdLauncherButton` and label meshes from stadium roof rim.
+  - `[x]` Cleared all holographic `GridHelper` floor lines from `berlinGroup`, `inuitGroup`, `butterflyGroup`, and `nurburgringGroup` lazy-loaders.
+  - `[x]` Engineered the smaller Action Compass UI (`PlaneGeometry(0.10, 0.10)`) utilizing offscreen canvas tint overlays of `CompassUiOuter.png` and `CompassUiInner.png` mapped to custom holographic `ShaderMaterial`.
+  - `[x]` Rendered 4 orthogonal spokes: `PLAY SEQ` (magenta play icon), `STORM` (indigo cloud icon), `NAVIG` (orange arrow icon), and `CLEAR` (red X cross icon).
+  - `[x]` Programmed local coordinate proximity checking, billboarding, hover details text updates, haptic vibration, and tap depth triggers.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful client build (`npm run build`).
+
+- `[x]` Action Compass UI Subsystem Attachment & Minimap Sync (Current Run)
+  - `[x]` Relocated Action Compass UI group (`actionCompassGroup`) from the stadium desk space to the companion Compass UI group (`compassGroup`) at local offset `(0.11, 0.11, 0.0)` (top-right corner).
+  - `[x]` Cleaned up duplicate/obsolete TCD properties and updates from the stadium system (`src/domainExpansion.ts`).
+  - `[x]` Programmed companion update loop in `src/jugnu.ts` to open the Action Compass UI when the minimap is spawned and close it when closed, with smooth lerped scale transitions.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production bundling (`npm run build`).
+
+- `[x]` Action UI & Compass Spawning next to Minimap Fixes (Current Run)
+  - `[x]` Called `initActionCompassUI()` in `initCompassUI()` to resolve the missing initialization bug.
+  - `[x]` Added `redrawActionCompass` hooks in the image loader `onload` callbacks to update the CanvasTexture when textures resolve.
+  - `[x]` Modified `src/jugnu.ts` to persist the Compass UI open state as long as `isMinimapSpawned` is true.
+  - `[x]` Bypassed the 2.0-second pinch release auto-close timeout when `isMinimapSpawned` is true.
+  - `[x]` Programmed the Compass UI to close instantly when the minimap is closed (`isMinimapSpawned` transitions from true to false).
+  - `[x]` Ensured state restoration handles the active minimap spawn state properly when returning from scaled-max overlays.
+  - `[x]` Shrunk the local coordinate positioning offset of `actionCompassGroup` to a snug `(0.085, 0.085, 0.0)` to bring it closer to the companion Compass UI.
+  - `[x]` Synchronized the Action spoke backing circles to use `compColorHex` (animated complementary color linked to Jugnu's mood) instead of static dark slate.
+  - `[x]` Verified type check (`npx tsc --noEmit`) and client production build (`npm run build`) complete successfully with zero errors.
+
+- `[x]` Action UI Fine-Tuning, Bubble Charge, F1 Winner, Speedline Origin, and F1 Model Overhaul (Current Run)
+  - `[x]` Repositioned companion Action UI offset to `(0.11, 0.03, 0.0)` in `src/jugnu.ts` to push it lower and right.
+  - `[x]` Updated bubble progress draining factor to `/ 1.0` in `src/domainExpansion.ts` to align with the 1.0-second charge threshold.
+  - `[x]` Fixed speedline (vortex trail) origin by adding `this.f1VortexInitialized = false` inside the non-immersive `else` block of `updateNurburgringMap()`.
+  - `[x]` Extended F1 winner celebration card duration and floating animations up to `26.0s` (the end of the replay) and bypassed early card hiding at `20.0s` for F1.
+  - `[x]` Overhauled the procedural F1 car mesh with aerodynamic tapered nosecone, swept front wings, sculpted sidepods (inlet + ramp), tapered engine cover, multi-element rear wings, and color-coded Pirelli-style tire sidewall stripes.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful client build (`npm run build`).
+
+- `[x]` Dynamic Stadium Scoreboard & Soccer UI Integration (Current Run)
+  - `[x]` Copied the 5 generated soccer graphics to clean, recognizable filenames: `bayern_stats.png`, `soccer_metrics.png`, `ucl_score_banner.png`, `soccer_boundaries.png`, and `bvb_stats.png`.
+  - `[x]` Declared texture cache properties in `src/domainExpansion.ts` (`iplTextures`, `soccerTextures`, `iplBillboardTexture`, and `soccerBillboardTexture`).
+  - `[x]` Preloaded and processed both Cricket and Soccer textures inside `initScoreDisplay()` and `initARBillboard()` using a transparent luma threshold canvas filter.
+  - `[x]` Coded dynamic scoreboard material swapping in `setStadiumType()`, scaling the portrait player card textures (Slot 0 and Slot 4) to maintain aspect ratio, and shifting their Y coordinates to avoid clipping.
+  - `[x]` Synced the central floating AR billboard to display `ucl_score_banner.png` in Berlin (Soccer) mode.
+  - `[x]` Gated the scoreboard panels and central billboard visibility, hiding them completely in `inuit` (Basketball), `nurburgring` (F1), and `butterflies` (Butterfly Park) modes to prevent Cricket graphics leak.
+  - `[x]` Verified type checks (`npx tsc --noEmit`) and completed client production build compilation.
+
+- `[x]` Dev Server Execution & Headset Connection Link (Current Run)
+  - `[x]` Execute `npm run dev` in background
+  - `[x]` Retrieve host local network IP addresses (`https://192.168.1.2:8081/` and `https://172.16.0.2:8081/`) for VR headset WebXR debugging

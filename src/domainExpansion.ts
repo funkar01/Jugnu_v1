@@ -280,6 +280,10 @@ export class DomainExpansionSystem extends createSystem({
 
 
     private scoreDisplayMeshes: THREE.Mesh[] = [];
+    private iplTextures: (THREE.Texture | null)[] = [];
+    private soccerTextures: (THREE.Texture | null)[] = [];
+    private iplBillboardTexture: THREE.Texture | null = null;
+    private soccerBillboardTexture: THREE.Texture | null = null;
     // Roof arc parameters (in table-local space)
     private readonly ROOF_Y = 0.095;      // Height of stadium roof rim
     private readonly ROOF_RADIUS = 0.096; // Radius of stadium inner roof arc
@@ -333,6 +337,7 @@ export class DomainExpansionSystem extends createSystem({
     private f1VortexRight!: THREE.Line;
     private f1VortexLeftPoints: THREE.Vector3[] = [];
     private f1VortexRightPoints: THREE.Vector3[] = [];
+    private f1VortexInitialized = false;
 
     private f1VortexLeft_RB!: THREE.Line;
     private f1VortexRight_RB!: THREE.Line;
@@ -455,18 +460,7 @@ export class DomainExpansionSystem extends createSystem({
     private celebrationCardCanvas!: HTMLCanvasElement;
     private celebrationCardCtx!: CanvasRenderingContext2D;
 
-    // Tactical Core Deck (TCD) Menu System
-    private tcdVisible = false;
-    private tcdPanelGroup!: THREE.Group;
-    private tcdLauncherButton!: THREE.Mesh;
-    private tcdLauncherMat!: THREE.MeshBasicMaterial;
-    private tcdLauncherPinchProgress = 0.0;
-    private tcdButtons: THREE.Mesh[] = [];
-    private tcdButtonMats: THREE.MeshBasicMaterial[] = [];
-    private tcdButtonLabels: THREE.Mesh[] = [];
-    private tcdButtonHoverTimes = new Float32Array(7); // 7 buttons
-    private tcdLauncherHoveredLast = false;
-    private tcdButtonHoveredLast = new Uint8Array(7);
+
 
     // Per-stadium domain key/name tables
     private readonly DOMAIN_KEYS_DEFAULT  = ["mivVideo","iplCam2","iplCam3","iplCam4","iplCam5","iplCam6"];
@@ -1124,6 +1118,32 @@ export class DomainExpansionSystem extends createSystem({
         } catch (e) {
             console.warn("[DomainExpansionSystem] Shader pre-compilation failed/skipped:", e);
         }
+
+        // Expose global minimap APIs for the Action Compass UI in JugnuSystem
+        (window as any).triggerMinimapSportSequence = () => this.triggerSportSequence();
+        (window as any).cycleMinimapWeather = () => {
+            if (this.weatherMode === 'off') this.setWeatherMode('rain');
+            else if (this.weatherMode === 'rain') this.setWeatherMode('neon_dust');
+            else this.setWeatherMode('off');
+            console.log(`[ActionCompass] Weather cycled to: ${this.weatherMode}`);
+        };
+        (window as any).toggleMinimapNavigation = () => {
+            this.isNavLayerActive = !this.isNavLayerActive;
+            console.log(`[ActionCompass] Navigation layer: ${this.isNavLayerActive}`);
+        };
+        (window as any).clearMinimapSystems = () => {
+            this.setWeatherMode('off');
+            this.isSportSequenceActive = false;
+            this.restoreHoopScales();
+            if (this.sportCelebrationCard) this.sportCelebrationCard.visible = false;
+            if (this.sequenceBall) this.sequenceBall.visible = false;
+            if (this.sequenceBallTrail) this.sequenceBallTrail.visible = false;
+            if (this.arBillboard) this.arBillboard.visible = true;
+            console.log("[ActionCompass] All systems cleared!");
+        };
+        (window as any).isMinimapNavigationActive = () => this.isNavLayerActive;
+        (window as any).isMinimapSportSequenceActive = () => this.isSportSequenceActive;
+        (window as any).getMinimapWeatherMode = () => this.weatherMode;
     }
 
     private getIndexData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
@@ -1308,6 +1328,7 @@ export class DomainExpansionSystem extends createSystem({
         } else if (stadiumType === 'nurburgring') {
             this.domainKeys  = [...this.DOMAIN_KEYS_NURBURGRING];
             this.domainNames = [...this.DOMAIN_NAMES_NURBURGRING];
+            this.f1VortexInitialized = false;
         } else {
             this.domainKeys  = [...this.DOMAIN_KEYS_DEFAULT];
             this.domainNames = [...this.DOMAIN_NAMES_DEFAULT];
@@ -1496,10 +1517,7 @@ export class DomainExpansionSystem extends createSystem({
                 berlinGroup.add(cylinderWall);
             }
 
-            // Grid floor & anchor helper
-            const gridHelper = new THREE.GridHelper(0.192, 10, 0x22d3ee, 0x114466);
-            gridHelper.position.y = 0.0015;
-            berlinGroup.add(gridHelper);
+            // Grid floor & anchor helper removed
 
             this.berlinMesh = berlinGroup as any;
             this.tableGroup.add(this.berlinMesh!);
@@ -1649,9 +1667,7 @@ export class DomainExpansionSystem extends createSystem({
                 floorMesh.position.y = 0.009; // raised from 0.001 to 0.009
                 inuitGroup.add(floorMesh);
 
-                const gridHelper = new THREE.GridHelper(0.22 * 1.30, 10, 0xf97316, 0x663311);
-                gridHelper.position.y = 0.0095; // raised from 0.0015 to 0.0095
-                inuitGroup.add(gridHelper);
+                // GridHelper floor lines removed
 
                 // Procedurally generate two glowing NBA basketball hoops (positions scaled by 30%)
                 const hoop1 = this.createBasketballHoop();
@@ -1755,6 +1771,95 @@ export class DomainExpansionSystem extends createSystem({
             this.sportPropsGroup.visible = (stadiumType === 'default');
         }
 
+        // --- Dynamic Scoreboard & Central Billboard Texture Swapping ---
+        const scoreboardConfigs = [
+            { angleOffset: -55 },
+            { angleOffset: -25 },
+            { angleOffset: 0 },
+            { angleOffset: 25 },
+            { angleOffset: 55 }
+        ];
+
+        if (stadiumType === 'default') {
+            // Restore IPL score display meshes
+            this.scoreDisplayMeshes.forEach((mesh, idx) => {
+                mesh.visible = true;
+                mesh.scale.set(1.0, 1.0, 1.0);
+                const angle = Math.PI + (scoreboardConfigs[idx].angleOffset * Math.PI / 180);
+                const px = Math.sin(angle) * this.ROOF_RADIUS;
+                const pz = Math.cos(angle) * this.ROOF_RADIUS;
+                mesh.position.set(px, this.ROOF_Y + 0.006, pz);
+
+                const mat = mesh.material as THREE.MeshBasicMaterial;
+                if (this.iplTextures[idx]) {
+                    mat.map = this.iplTextures[idx];
+                    mat.needsUpdate = true;
+                }
+            });
+
+            // Restore IPL billboard
+            if (this.arBillboard && this.arBillboard.children[0]) {
+                const bannerMat = (this.arBillboard.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
+                if (this.iplBillboardTexture) {
+                    bannerMat.map = this.iplBillboardTexture;
+                    bannerMat.needsUpdate = true;
+                }
+            }
+        } else if (stadiumType === 'berlin') {
+            // Apply Soccer score display meshes
+            this.scoreDisplayMeshes.forEach((mesh, idx) => {
+                mesh.visible = true;
+
+                // Adjust scale and position for vertical panels (Slot 0 and Slot 4)
+                if (idx === 0) {
+                    // Slot 0 (rr_stats replacement): Bayern stats (vertical card)
+                    mesh.scale.set(0.281, 1.818, 1.0);
+                    const angle = Math.PI + (-55 * Math.PI / 180);
+                    const px = Math.sin(angle) * this.ROOF_RADIUS;
+                    const pz = Math.cos(angle) * this.ROOF_RADIUS;
+                    mesh.position.set(px, this.ROOF_Y + 0.006 + 0.009, pz);
+                } else if (idx === 4) {
+                    // Slot 4 (rcb_stats replacement): BVB stats (vertical card)
+                    mesh.scale.set(0.281, 1.905, 1.0);
+                    const angle = Math.PI + (55 * Math.PI / 180);
+                    const px = Math.sin(angle) * this.ROOF_RADIUS;
+                    const pz = Math.cos(angle) * this.ROOF_RADIUS;
+                    mesh.position.set(px, this.ROOF_Y + 0.006 + 0.009, pz);
+                } else {
+                    // Reset scale and position for horizontal panels
+                    mesh.scale.set(1.0, 1.0, 1.0);
+                    const angle = Math.PI + (scoreboardConfigs[idx].angleOffset * Math.PI / 180);
+                    const px = Math.sin(angle) * this.ROOF_RADIUS;
+                    const pz = Math.cos(angle) * this.ROOF_RADIUS;
+                    mesh.position.set(px, this.ROOF_Y + 0.006, pz);
+                }
+
+                const mat = mesh.material as THREE.MeshBasicMaterial;
+                if (this.soccerTextures[idx]) {
+                    mat.map = this.soccerTextures[idx];
+                    mat.needsUpdate = true;
+                }
+            });
+
+            // Set Soccer billboard
+            if (this.arBillboard && this.arBillboard.children[0]) {
+                const bannerMat = (this.arBillboard.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
+                if (this.soccerBillboardTexture) {
+                    bannerMat.map = this.soccerBillboardTexture;
+                    bannerMat.needsUpdate = true;
+                }
+            }
+        } else {
+            // Hide panels for other stadiums
+            this.scoreDisplayMeshes.forEach((mesh) => {
+                mesh.visible = false;
+            });
+            // Hide central billboard for other stadiums
+            if (this.arBillboard) {
+                this.arBillboard.visible = false;
+            }
+        }
+
         // Dynamic Coloring of the Holographic Cylinder and Wireframe
         const colors: Record<string, number> = { default: 0xff6600, berlin: 0x22d3ee, inuit: 0xf97316, butterflies: 0x10b981, nurburgring: 0x22d3ee };
         const activeColor = colors[stadiumType] || 0x00ffff;
@@ -1765,8 +1870,7 @@ export class DomainExpansionSystem extends createSystem({
             (this.holoCylinderWire.material as THREE.LineBasicMaterial).color.setHex(activeColor);
         }
 
-        // Update the Tactical Command Dock (TCD) button labels dynamically
-        this.updateTCDButtonLabels();
+
 
         // Compute dynamic floor Y based on loaded 3D meshes
         this.calculateDynamicFloorY();
@@ -1837,16 +1941,10 @@ export class DomainExpansionSystem extends createSystem({
         console.log(`[DynamicFloorY] Fallback floor Y for '${stType}': ${this.dynamicFloorY}`);
     }
 
-    private updateTCDButtonLabels() {
-        // TCD buttons have fixed functional roles baked in at initTrackingButtons():
-        //   idx 0 → Play SEQ  (magenta)
-        //   idx 1 → STORM     (indigo / weather cycle)
-        //   idx 2 → NAVIG     (orange / nav layer toggle)
-        //   idx 3 → CLEAR     (red / reset all)
-        // No dynamic relabeling needed — labels are set once and persist.
-    }
+
 
     update(dt: number) {
+        (window as any).isMinimapSpawned = this.isTableSpawned;
         (window as any).isSportSequenceActive = this.isSportSequenceActive;
         if (this.middlePinchCooldown > 0) {
             this.middlePinchCooldown -= dt;
@@ -1922,13 +2020,38 @@ export class DomainExpansionSystem extends createSystem({
             const dot = t1.normalize().dot(t2.normalize());
             const isCorner = dot < 0.992; // high curvature = corner
 
-            const targetPhase = Math.round(this.nurburgringOvertakePhase / Math.PI) * Math.PI;
-            if (isCorner) {
-                // Advance overtake phase in corners
-                this.nurburgringOvertakePhase += dt * 1.5;
+            let targetPhase = 0.0;
+            if (this.isSportSequenceActive) {
+                // Cinematic Lap Overtake Choreography:
+                // 0s to 12.0s: Mercedes (Hamilton) leads (overtakePhase = 0)
+                // 12.0s to 13.5s: Red Bull (Verstappen) passes Mercedes (overtakePhase goes 0 -> PI)
+                // 13.5s to 18.0s: Red Bull (Verstappen) leads (overtakePhase = PI) (corresponds to P1 Verstappen card at 15s)
+                // 18.0s to 19.8s: Mercedes passes Red Bull back on finish straight (overtakePhase goes PI -> 2PI)
+                // 19.8s onwards: Mercedes wins! (overtakePhase = 2PI)
+                const time = this.sportSequenceTime;
+                if (time < 12.0) {
+                    this.nurburgringOvertakePhase = 0.0;
+                } else if (time >= 12.0 && time < 13.5) {
+                    const t = (time - 12.0) / 1.5;
+                    this.nurburgringOvertakePhase = t * Math.PI;
+                } else if (time >= 13.5 && time < 18.0) {
+                    this.nurburgringOvertakePhase = Math.PI;
+                } else if (time >= 18.0 && time < 19.8) {
+                    const t = (time - 18.0) / 1.8;
+                    this.nurburgringOvertakePhase = Math.PI + t * Math.PI;
+                } else {
+                    this.nurburgringOvertakePhase = 2.0 * Math.PI;
+                }
+                targetPhase = Math.round(this.nurburgringOvertakePhase / Math.PI) * Math.PI;
             } else {
-                // Snap/lerp to nearest lead state on straights (drafting in single file)
-                this.nurburgringOvertakePhase += (targetPhase - this.nurburgringOvertakePhase) * 5.0 * dt;
+                targetPhase = Math.round(this.nurburgringOvertakePhase / Math.PI) * Math.PI;
+                if (isCorner) {
+                    // Advance overtake phase in corners
+                    this.nurburgringOvertakePhase += dt * 1.5;
+                } else {
+                    // Snap/lerp to nearest lead state on straights (drafting in single file)
+                    this.nurburgringOvertakePhase += (targetPhase - this.nurburgringOvertakePhase) * 5.0 * dt;
+                }
             }
 
             // Update all three detailed F1 cars
@@ -2178,6 +2301,29 @@ export class DomainExpansionSystem extends createSystem({
                         (this.f1VortexRight_FE.material as THREE.LineBasicMaterial).opacity = 0.85;
                     }
 
+                    // Pre-initialize vortex trail points to rear wheels if not done yet to prevent centering glitch
+                    if (!this.f1VortexInitialized) {
+                        this.nurburgringF1Car.updateMatrix();
+                        if (rbCar) rbCar.updateMatrix();
+                        if (feCar) feCar.updateMatrix();
+
+                        for (let i = 0; i < 25; i++) {
+                            this.f1VortexLeftPoints[i].set(-0.0035, 0.0035, -0.007).applyMatrix4(this.nurburgringF1Car.matrix);
+                            this.f1VortexRightPoints[i].set(0.0035, 0.0035, -0.007).applyMatrix4(this.nurburgringF1Car.matrix);
+
+                            if (rbCar) {
+                                this.f1VortexLeftPoints_RB[i].set(-0.0035, 0.0035, -0.007).applyMatrix4(rbCar.matrix);
+                                this.f1VortexRightPoints_RB[i].set(0.0035, 0.0035, -0.007).applyMatrix4(rbCar.matrix);
+                            }
+
+                            if (feCar) {
+                                this.f1VortexLeftPoints_FE[i].set(-0.0035, 0.0035, -0.007).applyMatrix4(feCar.matrix);
+                                this.f1VortexRightPoints_FE[i].set(0.0035, 0.0035, -0.007).applyMatrix4(feCar.matrix);
+                            }
+                        }
+                        this.f1VortexInitialized = true;
+                    }
+
                     // Shift points array back to keep buffer pre-allocated (Zero-GC)
                     for (let i = 0; i < 24; i++) {
                         this.f1VortexLeftPoints[i].copy(this.f1VortexLeftPoints[i + 1]);
@@ -2191,6 +2337,7 @@ export class DomainExpansionSystem extends createSystem({
                     }
 
                     // Copy new wing tip positions in track local coordinates
+                    this.nurburgringF1Car.updateMatrix();
                     this.f1VortexLeftPoints[24].set(-0.0035, 0.0035, -0.007).applyMatrix4(this.nurburgringF1Car.matrix);
                     this.f1VortexRightPoints[24].set(0.0035, 0.0035, -0.007).applyMatrix4(this.nurburgringF1Car.matrix);
 
@@ -2394,6 +2541,7 @@ export class DomainExpansionSystem extends createSystem({
                 // Hide F1 car
                 this.nurburgringF1Car.visible = false;
                 if (this.f1HudMesh) this.f1HudMesh.visible = false;
+                this.f1VortexInitialized = false;
                 if (this.f1VortexLeft) {
                     this.f1VortexLeft.visible = false;
                     this.f1VortexRight.visible = false;
@@ -3214,11 +3362,11 @@ export class DomainExpansionSystem extends createSystem({
                 if (bubblePinchEngaged[i]) {
                     // Accumulate progress
                     this.pinchProgresses[i] += dt;
-                    if (this.pinchProgresses[i] > 3.0) {
-                        this.pinchProgresses[i] = 3.0;
+                    if (this.pinchProgresses[i] > 1.0) {
+                        this.pinchProgresses[i] = 1.0;
                     }
 
-                    const chargeRatio = this.pinchProgresses[i] / 3.0; // 0.0 to 1.0
+                    const chargeRatio = this.pinchProgresses[i] / 1.0; // 0.0 to 1.0
 
                     // 1. Animate Loader Ring
                     loader.scale.setScalar(THREE.MathUtils.lerp(0.01, 1.2, chargeRatio));
@@ -3246,7 +3394,7 @@ export class DomainExpansionSystem extends createSystem({
                     }
 
                     // 3. Check trigger condition
-                    if (this.pinchProgresses[i] >= 3.0 && this.menuToggleCooldown <= 0.0) {
+                    if (this.pinchProgresses[i] >= 1.0 && this.menuToggleCooldown <= 0.0) {
                         this.menuToggleCooldown = 0.8; // Debounce
                         
                         // Flash effect: quick scaling burst
@@ -3294,7 +3442,7 @@ export class DomainExpansionSystem extends createSystem({
                         this.pinchProgresses[i] = Math.max(0.0, this.pinchProgresses[i] - dt * 2.5);
                     }
 
-                    const chargeRatio = this.pinchProgresses[i] / 3.0;
+                    const chargeRatio = this.pinchProgresses[i] / 1.0;
 
                     // Animate loader draining
                     loader.scale.setScalar(THREE.MathUtils.lerp(0.01, 1.2, chargeRatio));
@@ -3411,7 +3559,7 @@ export class DomainExpansionSystem extends createSystem({
                         }
                     }
                 });
-                this.arBillboard.visible = maxOpacity > 0.01;
+                this.arBillboard.visible = (this.currentStadiumType === 'default' || this.currentStadiumType === 'berlin') && (maxOpacity > 0.01);
             }
 
             // 7. Holographic Close "X" Button Billboard & Poke check (hide at scale >= 2.5)
@@ -3589,15 +3737,6 @@ export class DomainExpansionSystem extends createSystem({
             }
 
             if (this.currentStadiumType === 'butterflies') {
-                // Butterflies map: suppress TCD, weather, sequence ball and score panels
-                if (this.weatherMesh) this.weatherMesh.visible = false;
-                if (this.sequenceBall) this.sequenceBall.visible = false;
-                if (this.sequenceBallTrail) this.sequenceBallTrail.visible = false;
-                if (this.tcdLauncherButton && this.tcdLauncherButton.parent) {
-                    this.tcdLauncherButton.parent.visible = false;
-                }
-                if (this.tcdPanelGroup) this.tcdPanelGroup.visible = false;
-                this.tcdVisible = false;
                 this.scoreDisplayMeshes.forEach(s => s.visible = false);
                 this.fireworkSeqTimer = -1.0;
                 this.fireworkSeqIndex = 0;
@@ -3687,20 +3826,7 @@ export class DomainExpansionSystem extends createSystem({
                     });
                 }
 
-                const showTCD = (this.currentTableScale < 2.5);
-                if (this.tcdLauncherButton && this.tcdLauncherButton.parent) {
-                    this.tcdLauncherButton.parent.visible = showTCD;
-                }
-                if (this.tcdPanelGroup) {
-                    this.tcdPanelGroup.visible = showTCD && this.tcdVisible;
-                }
-                this.updateTrackingButtons(
-                    leftIndexPinchPos,
-                    rightIndexPinchPos,
-                    hasLeftIndex,
-                    hasRightIndex,
-                    dt
-                );
+                // TCD (Action Deck) menu system removed from stadium; now handled by Companion Compass UI (jugnu.ts)
             }
 
             // --- Holographic Containment Cylinder Update ---
@@ -3762,8 +3888,7 @@ export class DomainExpansionSystem extends createSystem({
             }
             this.weatherMode = 'off';
             if (this.weatherMesh) this.weatherMesh.visible = false;
-            this.tcdVisible = false;
-            if (this.tcdPanelGroup) this.tcdPanelGroup.visible = false;
+            // TCD visibility resets handled by companion UI
             
             // Reset Navigation and Cylinder Layer states
             this.isNavLayerActive = false;
@@ -4858,8 +4983,20 @@ export class DomainExpansionSystem extends createSystem({
         const texLoader = new THREE.TextureLoader();
         texLoader.load('./ui/ipl/grand_finale_banner.png', (tex) => {
             const alphaTex = this.makeBlackTransparent(tex.image);
-            bannerMat.map = alphaTex;
-            bannerMat.needsUpdate = true;
+            this.iplBillboardTexture = alphaTex;
+            if (this.currentStadiumType === 'default' || !this.currentStadiumType) {
+                bannerMat.map = alphaTex;
+                bannerMat.needsUpdate = true;
+            }
+        });
+
+        texLoader.load('./ui/football/ucl_score_banner.png', (tex) => {
+            const alphaTex = this.makeBlackTransparent(tex.image);
+            this.soccerBillboardTexture = alphaTex;
+            if (this.currentStadiumType === 'berlin') {
+                bannerMat.map = alphaTex;
+                bannerMat.needsUpdate = true;
+            }
         });
 
         // Dummy objects to prevent errors in update/fade logic
@@ -6432,156 +6569,16 @@ export class DomainExpansionSystem extends createSystem({
 
 
     private initTrackingButtons() {
-        // --- 1. CORE DOCK Hexagonal/Cylinder Launcher Button on Stadium Rim ---
-        // Placed at the front-center of the roof rim (angle = 0)
-        const launcherGroup = new THREE.Group();
-        launcherGroup.position.set(0.0, this.ROOF_Y, this.ROOF_RADIUS);
-        launcherGroup.rotation.y = Math.PI; // Face the player
-        this.tableGroup.add(launcherGroup);
-
-        const launcherGeom = new THREE.CylinderGeometry(0.01, 0.01, 0.004, 32);
-        this.tcdLauncherMat = new THREE.MeshBasicMaterial({
-            color: 0x00ffff,
-            transparent: true,
-            opacity: 0.55,
-            depthWrite: false
-        });
-        this.tcdLauncherButton = new THREE.Mesh(launcherGeom, this.tcdLauncherMat);
-        this.tcdLauncherButton.rotation.x = Math.PI / 2; // Lie flat/tilted on rim
-        launcherGroup.add(this.tcdLauncherButton);
-
-        // Glowing Canvas Label on launcher
-        const launchCanvas = document.createElement('canvas');
-        launchCanvas.width = 192;
-        launchCanvas.height = 64;
-        const lCtx = launchCanvas.getContext('2d')!;
-        lCtx.clearRect(0, 0, 192, 64);
-        lCtx.fillStyle = 'rgba(2, 6, 26, 0.94)';
-        lCtx.fillRect(0, 0, 192, 64);
-        lCtx.strokeStyle = '#00ffff';
-        lCtx.lineWidth = 5;
-        lCtx.strokeRect(3, 3, 186, 58);
-        lCtx.fillStyle = '#ffffff';
-        lCtx.font = 'bold 20px monospace';
-        lCtx.textAlign = 'center';
-        lCtx.textBaseline = 'middle';
-        lCtx.fillText("ACTION TAB", 96, 32);
-
-        const lTex = new THREE.CanvasTexture(launchCanvas);
-        lTex.colorSpace = THREE.SRGBColorSpace;
-        lTex.needsUpdate = true;
-
-        const lLabelGeom = new THREE.PlaneGeometry(0.02, 0.0075);
-        const lLabelMat = new THREE.MeshBasicMaterial({
-            map: lTex,
-            transparent: true,
-            opacity: 0.95,
-            side: THREE.DoubleSide,
-            depthWrite: false
-        });
-        const lLabelMesh = new THREE.Mesh(lLabelGeom, lLabelMat);
-        lLabelMesh.position.set(0.0, 0.006, 0.002);
-        launcherGroup.add(lLabelMesh);
-
-        // --- 2. Floating TCD Command Dock Panel Group ---
-        this.tcdPanelGroup = new THREE.Group();
-        this.tcdPanelGroup.position.set(0.0, this.ROOF_Y + 0.045, this.ROOF_RADIUS);
-        this.tcdPanelGroup.visible = false;
-        this.tableGroup.add(this.tcdPanelGroup);
-
-        // Obsidian glass backing plane
-        const backplaneGeom = new THREE.BoxGeometry(0.096, 0.065, 0.002);
-        const backplaneMat = new THREE.MeshBasicMaterial({
-            color: 0x030712,
-            transparent: true,
-            opacity: 0.45,
-            depthWrite: false
-        });
-        const backplane = new THREE.Mesh(backplaneGeom, backplaneMat);
-        this.tcdPanelGroup.add(backplane);
-
-        // Glowing cyan outline border
-        const borderGeom = new THREE.EdgesGeometry(backplaneGeom);
-        const borderMat = new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 2 });
-        const border = new THREE.LineSegments(borderGeom, borderMat);
-        this.tcdPanelGroup.add(border);
-
-        // --- 3. Grid of 4 TCD Action Buttons ---
-        const tcdButtonConfigs = [
-            { label: "Play SEQ", color: 0xff00ff,  x: -0.022, y: 0.012 },
-            { label: "STORM",  color: 0x6366f1,  x: 0.022,  y: 0.012 },
-            { label: "NAVIG",  color: 0xff5500,  x: -0.022,  y: -0.012 },
-            { label: "CLEAR",  color: 0xff3333,  x: 0.022,    y: -0.012 }
-        ];
-
-        const btnGeom = new THREE.BoxGeometry(0.022, 0.011, 0.003);
-
-        tcdButtonConfigs.forEach((cfg, idx) => {
-            const btnGroup = new THREE.Group();
-            btnGroup.position.set(cfg.x, cfg.y, 0.002);
-            this.tcdPanelGroup.add(btnGroup);
-
-            const bMat = new THREE.MeshBasicMaterial({
-                color: cfg.color,
-                transparent: true,
-                opacity: 0.55,
-                depthWrite: false
-            });
-            const btnMesh = new THREE.Mesh(btnGeom, bMat);
-            btnGroup.add(btnMesh);
-            this.tcdButtons.push(btnMesh);
-            this.tcdButtonMats.push(bMat);
-
-            // Canvas Text Label
-            const canvas = document.createElement('canvas');
-            canvas.width = 128;
-            canvas.height = 64;
-            const ctx = canvas.getContext('2d')!;
-            ctx.clearRect(0, 0, 128, 64);
-            ctx.fillStyle = 'rgba(2, 6, 26, 0.94)';
-            ctx.fillRect(0, 0, 128, 64);
-            
-            const hexStr = '#' + cfg.color.toString(16).padStart(6, '0');
-            ctx.strokeStyle = hexStr;
-            ctx.lineWidth = 4;
-            ctx.strokeRect(2, 2, 124, 60);
-
-            ctx.fillStyle = '#ffffff';
-            if (cfg.label.length > 6) {
-                ctx.font = 'bold 15px monospace';
-            } else {
-                ctx.font = 'bold 20px monospace';
-            }
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(cfg.label, 64, 32);
-
-            const tex = new THREE.CanvasTexture(canvas);
-            tex.colorSpace = THREE.SRGBColorSpace;
-            tex.needsUpdate = true;
-
-            const labelGeom = new THREE.PlaneGeometry(0.02, 0.009);
-            const labelMat = new THREE.MeshBasicMaterial({
-                map: tex,
-                transparent: true,
-                opacity: 0.95,
-                side: THREE.DoubleSide,
-                depthWrite: false
-            });
-            const labelMesh = new THREE.Mesh(labelGeom, labelMat);
-            labelMesh.position.set(0.0, 0.0, 0.0025);
-            btnGroup.add(labelMesh);
-            this.tcdButtonLabels.push(labelMesh);
-        });
-
-        // ─── 3D Score Display – curved arc beside the buttons ─────────────────
-        // Placed on the opposite arc segment (score display on the back half of roof)
+        // --- Score Display curved arc ---
         this.initScoreDisplay();
     }
 
     private initScoreDisplay() {
         const texLoader = new THREE.TextureLoader();
         
+        const iplFiles = ['rr_stats.png', 'h2h_metrics.png', 'ipl_champion_trophy.png', 'h2h_boundaries.png', 'rcb_stats.png'];
+        const soccerFiles = ['bayern_stats.png', 'soccer_metrics.png', 'ucl_score_banner.png', 'soccer_boundaries.png', 'bvb_stats.png'];
+
         const configs = [
             { file: 'rr_stats.png', angleOffset: -55, w: 0.08, h: 0.022 },
             { file: 'h2h_metrics.png', angleOffset: -25, w: 0.05, h: 0.029 },
@@ -6590,7 +6587,12 @@ export class DomainExpansionSystem extends createSystem({
             { file: 'rcb_stats.png', angleOffset: 55, w: 0.08, h: 0.021 }
         ];
 
-        configs.forEach((cfg) => {
+        for (let i = 0; i < 5; i++) {
+            this.iplTextures.push(null);
+            this.soccerTextures.push(null);
+        }
+
+        configs.forEach((cfg, idx) => {
             const angle = Math.PI + (cfg.angleOffset * Math.PI / 180);
             const px = Math.sin(angle) * this.ROOF_RADIUS;
             const pz = Math.cos(angle) * this.ROOF_RADIUS;
@@ -6603,10 +6605,22 @@ export class DomainExpansionSystem extends createSystem({
             });
             const panelMesh = new THREE.Mesh(panelGeom, panelMat);
 
-            texLoader.load(`./ui/ipl/${cfg.file}`, (tex) => {
+            texLoader.load(`./ui/ipl/${iplFiles[idx]}`, (tex) => {
                 const alphaTex = this.makeBlackTransparent(tex.image);
-                panelMat.map = alphaTex;
-                panelMat.needsUpdate = true;
+                this.iplTextures[idx] = alphaTex;
+                if (this.currentStadiumType === 'default' || !this.currentStadiumType) {
+                    panelMat.map = alphaTex;
+                    panelMat.needsUpdate = true;
+                }
+            });
+
+            texLoader.load(`./ui/football/${soccerFiles[idx]}`, (tex) => {
+                const alphaTex = this.makeBlackTransparent(tex.image);
+                this.soccerTextures[idx] = alphaTex;
+                if (this.currentStadiumType === 'berlin') {
+                    panelMat.map = alphaTex;
+                    panelMat.needsUpdate = true;
+                }
             });
 
             panelMesh.position.set(px, this.ROOF_Y + 0.006, pz);
@@ -6634,186 +6648,7 @@ export class DomainExpansionSystem extends createSystem({
 
 
 
-    /**
-     * Updates SixHoloview roof buttons.
-     * Activation is driven purely by index-finger hover — no pinch required.
-     * Hold index finger over a button for 2 seconds to trigger it.
-     */
-    private updateTrackingButtons(
-        leftIndexPos: THREE.Vector3,
-        rightIndexPos: THREE.Vector3,
-        hasLeft: boolean,
-        hasRight: boolean,
-        dt: number
-    ) {
-        if (!this.tcdLauncherButton) return;
 
-        const btnWorldPos = new THREE.Vector3();
-        
-        // --- 1. Update ACTION TAB Launcher Button ---
-        this.tcdLauncherButton.getWorldPosition(btnWorldPos);
-        let distL = Infinity;
-        let distR = Infinity;
-        if (hasLeft) distL = leftIndexPos.distanceTo(btnWorldPos);
-        if (hasRight) distR = rightIndexPos.distanceTo(btnWorldPos);
-
-        const isLauncherHovered = distL < 0.025 || distR < 0.025;
-        const targetLauncherOpacity = isLauncherHovered ? 0.97 : 0.55;
-        this.tcdLauncherMat.opacity += (targetLauncherOpacity - this.tcdLauncherMat.opacity) * 10.0 * dt;
-
-        if (isLauncherHovered) {
-            if (!this.tcdLauncherHoveredLast) {
-                this.tcdLauncherHoveredLast = true;
-                const spatialFX = (window as any).spatialFX;
-                if (spatialFX) {
-                    spatialFX.playPositionalSound('sparkle', btnWorldPos);
-                    spatialFX.triggerSpark(btnWorldPos, new THREE.Color(0xff00ff), 3); // 3 magenta sparks
-                }
-            }
-
-            this.tcdLauncherPinchProgress += dt;
-            if (this.tcdLauncherPinchProgress > 0.5) this.tcdLauncherPinchProgress = 0.5;
-
-            const chargeRatio = this.tcdLauncherPinchProgress / 0.5;
-            // Visual stretch & micro-vibration as charge indicators
-            this.tcdLauncherButton.scale.set(1.0 + chargeRatio * 0.4, 1.0 + chargeRatio * 1.5, 1.0 + chargeRatio * 0.4);
-            this.tcdLauncherButton.position.y = Math.sin(this.radarTime * 50.0) * 0.0006 * chargeRatio;
-
-            if (this.tcdLauncherPinchProgress >= 0.5 && this.menuToggleCooldown <= 0.0) {
-                this.menuToggleCooldown = 0.8;
-                this.tcdLauncherPinchProgress = 0.0;
-
-                // Toggle visibility
-                this.tcdVisible = !this.tcdVisible;
-                this.tcdPanelGroup.visible = this.tcdVisible;
-
-                // Click shockwave visual scale burst
-                this.tcdLauncherButton.scale.set(1.4, 0.4, 1.4);
-
-                // Play click audio & sparks
-                const spatialFX = (window as any).spatialFX;
-                if (spatialFX) {
-                    spatialFX.playPositionalSound('click', btnWorldPos);
-                    spatialFX.triggerSpark(btnWorldPos, new THREE.Color(0xff00ff), 15);
-                }
-            }
-        } else {
-            this.tcdLauncherHoveredLast = false;
-            this.tcdLauncherPinchProgress -= dt * 2.0;
-            if (this.tcdLauncherPinchProgress < 0.0) this.tcdLauncherPinchProgress = 0.0;
-
-            this.tcdLauncherButton.scale.x += (1.0 - this.tcdLauncherButton.scale.x) * 10.0 * dt;
-            this.tcdLauncherButton.scale.y += (1.0 - this.tcdLauncherButton.scale.y) * 10.0 * dt;
-            this.tcdLauncherButton.scale.z += (1.0 - this.tcdLauncherButton.scale.z) * 10.0 * dt;
-            this.tcdLauncherButton.position.y += (0.0 - this.tcdLauncherButton.position.y) * 10.0 * dt;
-        }
-
-        // --- 2. Update TCD Panel LookAt Billboarding ---
-        if (this.tcdVisible && this.tcdPanelGroup) {
-            const lPos = new THREE.Vector3();
-            this.tcdLauncherButton.getWorldPosition(lPos);
-            const localLPos = lPos.applyMatrix4(this.tableGroup.matrixWorld.clone().invert());
-            this.tcdPanelGroup.position.set(localLPos.x, localLPos.y + 0.045, localLPos.z);
-
-            if (this.player && this.player.head) {
-                const headPos = new THREE.Vector3();
-                this.player.head.getWorldPosition(headPos);
-
-                const panelWorldPos = new THREE.Vector3();
-                this.tcdPanelGroup.getWorldPosition(panelWorldPos);
-
-                const targetPos = headPos.clone();
-                targetPos.y = panelWorldPos.y;
-
-                const toHead = new THREE.Vector3().subVectors(targetPos, panelWorldPos).normalize();
-                const localToHead = toHead.clone().applyQuaternion(this.tableGroup.quaternion.clone().invert());
-
-                const angle = Math.atan2(localToHead.x, localToHead.z);
-                this.tcdPanelGroup.rotation.y = angle;
-            }
-
-            // --- 3. Raycast Dwell Updates for 7 Dock Buttons ---
-            for (let i = 0; i < this.tcdButtons.length; i++) {
-                const btn = this.tcdButtons[i];
-                btn.getWorldPosition(btnWorldPos);
-
-                let distToLeft = Infinity;
-                let distToRight = Infinity;
-                if (hasLeft) distToLeft = leftIndexPos.distanceTo(btnWorldPos);
-                if (hasRight) distToRight = rightIndexPos.distanceTo(btnWorldPos);
-
-                const isHovered = distToLeft < 0.02 || distToRight < 0.02; // Tight 2.0 cm hover radius
-                const targetOpacity = isHovered ? 0.95 : 0.55;
-                this.tcdButtonMats[i].opacity += (targetOpacity - this.tcdButtonMats[i].opacity) * 10.0 * dt;
-
-                if (isHovered) {
-                    if (this.tcdButtonHoveredLast[i] === 0) {
-                        this.tcdButtonHoveredLast[i] = 1;
-                        const spatialFX = (window as any).spatialFX;
-                        if (spatialFX) {
-                            spatialFX.playPositionalSound('sparkle', btnWorldPos);
-                            spatialFX.triggerSpark(btnWorldPos, new THREE.Color(0xff00ff), 3); // 3 sparks
-                        }
-                    }
-
-                    this.tcdButtonHoverTimes[i] += dt;
-                    if (this.tcdButtonHoverTimes[i] > 0.5) this.tcdButtonHoverTimes[i] = 0.5; // 0.5s dwell hold
-
-                    const ratio = this.tcdButtonHoverTimes[i] / 0.5;
-                    btn.scale.set(1.0 + ratio * 0.2, 1.0 + ratio * 1.5, 1.0 + ratio * 0.2);
-                    btn.position.z = 0.002 + Math.sin(this.radarTime * 60.0) * 0.0005 * ratio;
-
-                    if (this.tcdButtonHoverTimes[i] >= 0.5 && this.menuToggleCooldown <= 0.0) {
-                        this.menuToggleCooldown = 0.8;
-                        this.tcdButtonHoverTimes[i] = 0.0;
-
-                        // Visual squeeze click feedback
-                        btn.scale.set(1.2, 0.4, 1.2);
-
-                        // Trigger click audio & sparks
-                        const spatialFX = (window as any).spatialFX;
-                        if (spatialFX) {
-                            spatialFX.playPositionalSound('click', btnWorldPos);
-                            spatialFX.triggerSpark(btnWorldPos, new THREE.Color(0xff00ff), 15);
-                        }
-
-                        // Trigger actions
-                        if (i === 0) this.triggerSportSequence(); // Play SEQ
-                        else if (i === 1) {
-                            // Cycle weather Mode: off -> rain -> neon_dust -> off
-                            if (this.weatherMode === 'off') this.setWeatherMode('rain');
-                            else if (this.weatherMode === 'rain') this.setWeatherMode('neon_dust');
-                            else this.setWeatherMode('off');
-                            console.log(`[TCD] Weather cycled to: ${this.weatherMode}`);
-                        } else if (i === 2) {
-                            // Toggle Navigation Layer
-                            this.isNavLayerActive = !this.isNavLayerActive;
-                            console.log(`[TCD] Stadium Navigation Layer active: ${this.isNavLayerActive}`);
-                        } else if (i === 3) {
-                            // CLEAR/Reset all
-                            this.setWeatherMode('off');
-                            this.isSportSequenceActive = false;
-                            this.restoreHoopScales();
-                            if (this.sportCelebrationCard) this.sportCelebrationCard.visible = false;
-                            if (this.sequenceBall) this.sequenceBall.visible = false;
-                            if (this.sequenceBallTrail) this.sequenceBallTrail.visible = false;
-                            if (this.arBillboard) this.arBillboard.visible = true; // Restore scoreboard
-                            console.log("[TCD] All animations, physics, and weather systems cleared!");
-                        }
-                    }
-                } else {
-                    this.tcdButtonHoveredLast[i] = 0;
-                    this.tcdButtonHoverTimes[i] -= dt * 2.0;
-                    if (this.tcdButtonHoverTimes[i] < 0.0) this.tcdButtonHoverTimes[i] = 0.0;
-
-                    btn.scale.x += (1.0 - btn.scale.x) * 10.0 * dt;
-                    btn.scale.y += (1.0 - btn.scale.y) * 10.0 * dt;
-                    btn.scale.z += (1.0 - btn.scale.z) * 10.0 * dt;
-                    btn.position.z += (0.002 - btn.position.z) * 10.0 * dt;
-                }
-            }
-        }
-    }
 
     private restoreHoopScales() {
         if (this.basketballHoop1 && this.basketballHoop1.userData.originalScale) {
@@ -6837,11 +6672,10 @@ export class DomainExpansionSystem extends createSystem({
 
         console.log(`[SportSequence] Triggered sequence for: ${this.currentStadiumType}`);
         this.isSportSequenceActive = true;
-        this.tcdVisible = false;
-        if (this.tcdPanelGroup) this.tcdPanelGroup.visible = false;
         this.sportSequenceTime = 0.0;
         this.sportSequencePhase = 0;
         this.sequenceBallTrailCount = 0;
+        this.f1VortexInitialized = false;
 
         // Clear existing trails
         this.sequenceBallTrail.geometry.setDrawRange(0, 0);
@@ -7971,6 +7805,13 @@ export class DomainExpansionSystem extends createSystem({
                     this.triggerFirework(0.0, 0.025, 0.0, 0xa855f7, 0.018, 0, 0.015, 0, 1.4);
                     this.triggerFirework(0.02, 0.022, 0.0, 0x22d3ee, 0.014, 0, 0.011, 0, 1.0);
                 }
+
+                // Chequered flag & Hamilton P1 Winner card at 19.3s
+                if (time >= 19.3 && time < 26.0) {
+                    drawPositionCard('1', 'HAMILTON', 'MERCEDES', '#00d2be');
+                    this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.055, 0.0);
+                    this.sportCelebrationCard.visible = true;
+                }
             }
 
             // ── SEQUENCE BALL is hidden for F1 — disable trail logic ──
@@ -8024,7 +7865,9 @@ export class DomainExpansionSystem extends createSystem({
         // --- 5. AUTOMATIC CELEBRATION CHOREOGRAPHED STAGED FIREWORKS & RESET ---
         if (time >= 20.0 && this.sportSequencePhase < 4) {
             this.sportSequencePhase = 4; // Finished stage
-            this.sportCelebrationCard.visible = false;
+            if (!isF1Seq) {
+                this.sportCelebrationCard.visible = false;
+            }
             if (!isF1Seq) {
                 this.sequenceBall.visible = false;
                 this.sequenceBallTrail.visible = false;
@@ -8043,7 +7886,7 @@ export class DomainExpansionSystem extends createSystem({
         }
 
         // --- 6. CELEBRATION CARD FLOAT ---
-        if (time < 20.0 && this.sportCelebrationCard.visible) {
+        if (time < 26.0 && this.sportCelebrationCard.visible) {
             const cardTime = Math.max(time - 8.0, 0.0);
             
             // Bouncy spring scale LERP
@@ -8225,10 +8068,7 @@ export class DomainExpansionSystem extends createSystem({
         ground.receiveShadow = true;
         this.butterflyGroup.add(ground);
         
-        // 2. Add an elegant grid on top of the ground
-        const gridHelper = new THREE.GridHelper(0.36, 12, 0x10b981, 0x064e3b);
-        gridHelper.position.y = 0.00205;
-        this.butterflyGroup.add(gridHelper);
+        // Elegant grid floor removed
         
         // 3. Add a glowing green border ring
         const borderGeo = new THREE.TorusGeometry(0.18, 0.0015, 8, 100);
@@ -8345,10 +8185,7 @@ export class DomainExpansionSystem extends createSystem({
         ground.receiveShadow = true;
         this.nurburgringGroup.add(ground);
 
-        // 2. Add an elegant grid on top of the ground
-        const gridHelper = new THREE.GridHelper(0.36, 12, 0x00ffff, 0x111122);
-        gridHelper.position.y = 0.00205;
-        this.nurburgringGroup.add(gridHelper);
+        // Elegant grid floor removed
 
         // 3. Add a glowing neon cyan border ring
         const borderGeo = new THREE.TorusGeometry(0.18, 0.0015, 8, 100);
@@ -8474,32 +8311,68 @@ export class DomainExpansionSystem extends createSystem({
             metalness: 0.8
         });
 
-        // 1. Carbon chassis base
+        // 1. Carbon chassis base & Underbody Venturi Skirts
         const baseGeo = new THREE.BoxGeometry(0.004, 0.0008, 0.014);
         const baseMesh = new THREE.Mesh(baseGeo, carbonMat);
         baseMesh.position.y = 0.0006;
         car.add(baseMesh);
 
-        // 2. Tapered body nosecone (+Z is front)
-        const noseGeo = new THREE.BoxGeometry(0.002, 0.001, 0.007);
+        // Floor Venturi side skirts
+        const floorGeo = new THREE.BoxGeometry(0.0068, 0.0003, 0.010);
+        const floorMesh = new THREE.Mesh(floorGeo, carbonMat);
+        floorMesh.position.set(0, 0.0003, -0.001);
+        car.add(floorMesh);
+
+        // Rear Diffuser (upswept)
+        const diffuserGeo = new THREE.BoxGeometry(0.0055, 0.0010, 0.0015);
+        const diffuser = new THREE.Mesh(diffuserGeo, carbonMat);
+        diffuser.position.set(0, 0.0006, -0.0075);
+        diffuser.rotation.x = 0.25;
+        car.add(diffuser);
+
+        // 2. Sleek tapered aerodynamic nosecone
+        const noseGeo = new THREE.CylinderGeometry(0.0004, 0.0011, 0.007, 12);
+        noseGeo.rotateX(Math.PI / 2);
         const noseMesh = new THREE.Mesh(noseGeo, bodyMat);
         noseMesh.position.set(0, 0.0012, 0.0035);
-        noseMesh.rotation.x = -0.1;
         car.add(noseMesh);
 
-        // 3. Side pods (left and right)
-        const podGeo = new THREE.BoxGeometry(0.0018, 0.0015, 0.006);
-        const leftPod = new THREE.Mesh(podGeo, bodyMat);
-        leftPod.position.set(-0.0024, 0.0012, -0.001);
-        const rightPod = new THREE.Mesh(podGeo, bodyMat);
-        rightPod.position.set(0.0024, 0.0012, -0.001);
-        car.add(leftPod, rightPod);
+        // 3. Sculpted sidepods (wider front intake with downwash ramp shape)
+        // Left Sidepod
+        const leftPodInlet = new THREE.Mesh(new THREE.BoxGeometry(0.0018, 0.0014, 0.003), bodyMat);
+        leftPodInlet.position.set(-0.0024, 0.0012, 0.0);
+        const leftPodRamp = new THREE.Mesh(new THREE.CylinderGeometry(0.0005, 0.0009, 0.0035, 8), bodyMat);
+        leftPodRamp.geometry.rotateX(Math.PI / 2);
+        leftPodRamp.position.set(-0.0022, 0.0009, -0.00325);
+        car.add(leftPodInlet, leftPodRamp);
+
+        // Right Sidepod
+        const rightPodInlet = new THREE.Mesh(new THREE.BoxGeometry(0.0018, 0.0014, 0.003), bodyMat);
+        rightPodInlet.position.set(0.0024, 0.0012, 0.0);
+        const rightPodRamp = new THREE.Mesh(new THREE.CylinderGeometry(0.0005, 0.0009, 0.0035, 8), bodyMat);
+        rightPodRamp.geometry.rotateX(Math.PI / 2);
+        rightPodRamp.position.set(0.0022, 0.0009, -0.00325);
+        car.add(rightPodInlet, rightPodRamp);
 
         // 4. Driver Cockpit & Helmet
         const cockpitGeo = new THREE.BoxGeometry(0.0018, 0.0008, 0.003);
         const cockpitMesh = new THREE.Mesh(cockpitGeo, carbonMat);
         cockpitMesh.position.set(0, 0.0018, -0.0015);
         car.add(cockpitMesh);
+
+        // Halo Safety Ring
+        const haloRingGeo = new THREE.TorusGeometry(0.0014, 0.0003, 8, 24, Math.PI);
+        const haloRing = new THREE.Mesh(haloRingGeo, carbonMat);
+        haloRing.rotation.x = Math.PI / 2;
+        haloRing.rotation.y = Math.PI; // Point forwards
+        haloRing.position.set(0, 0.0024, -0.001);
+        car.add(haloRing);
+
+        const haloStrutGeo = new THREE.CylinderGeometry(0.0002, 0.0002, 0.0014, 6);
+        const haloStrut = new THREE.Mesh(haloStrutGeo, carbonMat);
+        haloStrut.position.set(0, 0.0019, 0.0001);
+        haloStrut.rotation.x = 0.25; // Tilt back
+        car.add(haloStrut);
 
         // Helmet
         const helmetGeo = new THREE.SphereGeometry(0.0009, 16, 16);
@@ -8513,24 +8386,56 @@ export class DomainExpansionSystem extends createSystem({
         visorMesh.position.set(0, 0.0028, -0.001);
         car.add(visorMesh);
 
-        // 5. Front Wing with Endplates
-        const frontWingGeo = new THREE.BoxGeometry(0.0075, 0.0003, 0.0015);
-        const frontWing = new THREE.Mesh(frontWingGeo, carbonMat);
-        frontWing.position.set(0, 0.0008, 0.007);
-        car.add(frontWing);
+        // Sleek engine cover spine (tapered cylinder)
+        const spineGeo = new THREE.CylinderGeometry(0.0005, 0.0011, 0.0042, 8);
+        spineGeo.rotateX(Math.PI / 2);
+        const spineMesh = new THREE.Mesh(spineGeo, bodyMat);
+        spineMesh.position.set(0, 0.0020, -0.0038);
+        car.add(spineMesh);
 
-        const endplateGeo = new THREE.BoxGeometry(0.0002, 0.0015, 0.0018);
+        // Shark Fin vertical stabilizer
+        const finGeo = new THREE.BoxGeometry(0.0002, 0.0015, 0.0032);
+        const finMesh = new THREE.Mesh(finGeo, bodyMat);
+        finMesh.position.set(0, 0.0032, -0.0044);
+        car.add(finMesh);
+
+        // 5. Arrow Front Wing with Endplates (swept-back double deck)
+        const leftFrontWingGeo = new THREE.BoxGeometry(0.0038, 0.0006, 0.0015);
+        const leftFrontWing = new THREE.Mesh(leftFrontWingGeo, carbonMat);
+        leftFrontWing.position.set(-0.0018, 0.0006, 0.007);
+        leftFrontWing.rotation.y = -0.15; // swept back
+        leftFrontWing.rotation.z = -0.05;
+        car.add(leftFrontWing);
+
+        const rightFrontWingGeo = new THREE.BoxGeometry(0.0038, 0.0006, 0.0015);
+        const rightFrontWing = new THREE.Mesh(rightFrontWingGeo, carbonMat);
+        rightFrontWing.position.set(0.0018, 0.0006, 0.007);
+        rightFrontWing.rotation.y = 0.15; // swept back
+        rightFrontWing.rotation.z = 0.05;
+        car.add(rightFrontWing);
+
+        const endplateGeo = new THREE.BoxGeometry(0.0002, 0.0015, 0.002);
         const leftFrontEndplate = new THREE.Mesh(endplateGeo, bodyMat);
-        leftFrontEndplate.position.set(-0.00375, 0.0014, 0.007);
+        leftFrontEndplate.position.set(-0.00375, 0.0013, 0.007);
+        leftFrontEndplate.rotation.y = -0.15;
         const rightFrontEndplate = new THREE.Mesh(endplateGeo, bodyMat);
-        rightFrontEndplate.position.set(0.00375, 0.0014, 0.007);
+        rightFrontEndplate.position.set(0.00375, 0.0013, 0.007);
+        rightFrontEndplate.rotation.y = 0.15;
         car.add(leftFrontEndplate, rightFrontEndplate);
 
-        // 6. Rear Wing with Endplates
-        const rearWingGeo = new THREE.BoxGeometry(0.007, 0.0004, 0.002);
+        // 6. Multi-plane Rear Wing with Endplates
+        // Rear Wing Upper Plane
+        const rearWingGeo = new THREE.BoxGeometry(0.0068, 0.0003, 0.0018);
         const rearWing = new THREE.Mesh(rearWingGeo, bodyMat);
         rearWing.position.set(0, 0.0035, -0.007);
+        rearWing.rotation.x = 0.12; // angle of attack
         car.add(rearWing);
+
+        // Rear Wing Lower Beam Wing
+        const rearWingLowerGeo = new THREE.BoxGeometry(0.0068, 0.0002, 0.0012);
+        const rearWingLower = new THREE.Mesh(rearWingLowerGeo, carbonMat);
+        rearWingLower.position.set(0, 0.0026, -0.0073);
+        car.add(rearWingLower);
 
         // Struts
         const strutGeo = new THREE.BoxGeometry(0.0004, 0.0025, 0.0004);
@@ -8541,12 +8446,30 @@ export class DomainExpansionSystem extends createSystem({
         car.add(leftStrut, rightStrut);
 
         // Rear endplates
-        const rearEndplateGeo = new THREE.BoxGeometry(0.0002, 0.0032, 0.0024);
+        const rearEndplateGeo = new THREE.BoxGeometry(0.0002, 0.0034, 0.0026);
         const leftRearEndplate = new THREE.Mesh(rearEndplateGeo, carbonMat);
-        leftRearEndplate.position.set(-0.0035, 0.0031, -0.007);
+        leftRearEndplate.position.set(-0.0034, 0.0030, -0.0072);
         const rightRearEndplate = new THREE.Mesh(rearEndplateGeo, carbonMat);
-        rightRearEndplate.position.set(0.0035, 0.0031, -0.007);
+        rightRearEndplate.position.set(0.0034, 0.0030, -0.0072);
         car.add(leftRearEndplate, rightRearEndplate);
+
+        // Suspension wishbones/struts (carbon fiber rods)
+        const suspensionGeo = new THREE.BoxGeometry(0.0032, 0.0002, 0.0003);
+        const suspLeftFront = new THREE.Mesh(suspensionGeo, carbonMat);
+        suspLeftFront.position.set(-0.0018, 0.001, 0.0048);
+        suspLeftFront.rotation.z = -0.22;
+        const suspRightFront = new THREE.Mesh(suspensionGeo, carbonMat);
+        suspRightFront.position.set(0.0018, 0.001, 0.0048);
+        suspRightFront.rotation.z = 0.22;
+        car.add(suspLeftFront, suspRightFront);
+
+        const suspLeftRear = new THREE.Mesh(suspensionGeo, carbonMat);
+        suspLeftRear.position.set(-0.0018, 0.001, -0.0048);
+        suspLeftRear.rotation.z = -0.22;
+        const suspRightRear = new THREE.Mesh(suspensionGeo, carbonMat);
+        suspRightRear.position.set(0.0018, 0.001, -0.0048);
+        suspRightRear.rotation.z = 0.22;
+        car.add(suspLeftRear, suspRightRear);
 
         const wheelGeo = new THREE.CylinderGeometry(0.0016, 0.0016, 0.0012, 16);
         wheelGeo.rotateZ(Math.PI / 2);
@@ -8572,6 +8495,10 @@ export class DomainExpansionSystem extends createSystem({
             { x: 0.0037, z: -0.0048 }
         ];
 
+        // Rim cover geometry (slightly thinner outer cylinder cover)
+        const rimCoverGeo = new THREE.CylinderGeometry(0.0010, 0.0010, 0.0003, 8);
+        rimCoverGeo.rotateZ(Math.PI / 2);
+
         wheelOffsets.forEach((offset) => {
             const wMat = new THREE.MeshStandardMaterial({
                 color: 0x09090b,
@@ -8587,6 +8514,28 @@ export class DomainExpansionSystem extends createSystem({
             wheel.castShadow = true;
             car.add(wheel);
             wheels.push(wheel);
+
+            const rimMat = new THREE.MeshStandardMaterial({
+                color: bodyColor,
+                roughness: 0.3,
+                metalness: 0.7
+            });
+            const rim = new THREE.Mesh(rimCoverGeo, rimMat);
+            const rimOffsetX = offset.x > 0 ? 0.0005 : -0.0005;
+            rim.position.set(offset.x + rimOffsetX, 0.001, offset.z);
+            car.add(rim);
+
+            // Sidewall Pirelli compound stripe
+            const stripeGeo = new THREE.RingGeometry(0.0012, 0.0014, 16);
+            stripeGeo.rotateY(Math.PI / 2);
+            const stripeMat = new THREE.MeshBasicMaterial({
+                color: visorColor, // color-coded compound matching team accents
+                side: THREE.DoubleSide
+            });
+            const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+            const stripeOffsetX = offset.x > 0 ? 0.00062 : -0.00062;
+            stripe.position.set(offset.x + stripeOffsetX, 0.001, offset.z);
+            car.add(stripe);
         });
 
         // 20% smaller F1 car size scale applied to the entire group
