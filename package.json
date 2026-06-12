@@ -12,6 +12,7 @@
   "dependencies": {
     "@google/genai": "^1.50.1",
     "@iwsdk/core": "0.3.1",
+    "@webspatial/core-sdk": "^1.7.0",
     "three": "npm:super-three@0.181.0"
   },
   "devDependencies": {
