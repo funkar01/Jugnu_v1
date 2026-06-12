@@ -180,6 +180,17 @@ export class DomainExpansionSystem extends createSystem({
     // Left Wrist Button
     private wristButton!: THREE.Mesh;
     private wristButtonMat!: THREE.MeshBasicMaterial;
+    private wristBtnCanvas!: HTMLCanvasElement;
+    private wristBtnTexture!: THREE.CanvasTexture;
+    private wristWasTouching = false;
+    private wristHoldTimer = 0.0;
+    // Quit confirmation popup
+    private isQuitPopupVisible = false;
+    private quitPopup!: THREE.Mesh;
+    private quitPopupMat!: THREE.MeshBasicMaterial;
+    private quitPopupCanvas!: HTMLCanvasElement;
+    private quitPopupTexture!: THREE.CanvasTexture;
+    private quitPopupHoveredBtn = -1; // 0 = YES, 1 = NO
 
     // Video MIV position variables
     private mivVideo!: HTMLVideoElement;
@@ -1064,17 +1075,43 @@ export class DomainExpansionSystem extends createSystem({
         this.tableGroup.add(this.navPlaceholdersGroup);
         this.createNavPlaceholders();
 
-        // Initialize Left Wrist Button
-        const wristBtnGeom = new THREE.SphereGeometry(0.015, 16, 16);
+        // Initialize Left Wrist Button — flat holographic close button
+        this.wristBtnCanvas = document.createElement('canvas');
+        this.wristBtnCanvas.width = 128;
+        this.wristBtnCanvas.height = 128;
+        this.wristBtnTexture = new THREE.CanvasTexture(this.wristBtnCanvas);
+        this.wristBtnTexture.colorSpace = THREE.SRGBColorSpace;
+
         this.wristButtonMat = new THREE.MeshBasicMaterial({
-            color: 0x38bdf8, // Neon blue
+            map: this.wristBtnTexture,
             transparent: true,
             opacity: 0.0,
-            depthWrite: false
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            alphaTest: 0.01
         });
-        this.wristButton = new THREE.Mesh(wristBtnGeom, this.wristButtonMat);
+        this.drawWristButton(0, false);
+        this.wristButton = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.05), this.wristButtonMat);
         this.wristButton.visible = false;
         this.world.createTransformEntity(this.wristButton);
+
+        // Quit confirmation popup — shown on 3-second hold
+        this.quitPopupCanvas = document.createElement('canvas');
+        this.quitPopupCanvas.width = 256;
+        this.quitPopupCanvas.height = 128;
+        this.quitPopupTexture = new THREE.CanvasTexture(this.quitPopupCanvas);
+        this.quitPopupTexture.colorSpace = THREE.SRGBColorSpace;
+        this.quitPopupMat = new THREE.MeshBasicMaterial({
+            map: this.quitPopupTexture,
+            transparent: true,
+            opacity: 0.0,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+        this.quitPopup = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.06), this.quitPopupMat);
+        this.quitPopup.visible = false;
+        this.world.createTransformEntity(this.quitPopup);
+        this.drawQuitPopup(-1);
 
         // Register tableGroup with the world
         this.world.createTransformEntity(this.tableGroup);
@@ -2558,6 +2595,7 @@ export class DomainExpansionSystem extends createSystem({
         const frame = this.xrFrame;
         let leftWristFound = false;
         const wristWorldPos = new THREE.Vector3();
+        const wristWorldQuat = new THREE.Quaternion();
 
         if (leftSource && leftSource.hand && frame) {
             const wristJoint = leftSource.hand.get('wrist');
@@ -2566,23 +2604,39 @@ export class DomainExpansionSystem extends createSystem({
                 if (refSpace && typeof frame.getJointPose === 'function') {
                     const wristPose = frame.getJointPose(wristJoint, refSpace);
                     if (wristPose) {
-                        const wx = wristPose.transform.position.x;
-                        const wy = wristPose.transform.position.y;
-                        const wz = wristPose.transform.position.z;
-                        wristWorldPos.set(wx, wy, wz);
+                        wristWorldPos.set(
+                            wristPose.transform.position.x,
+                            wristPose.transform.position.y,
+                            wristPose.transform.position.z,
+                        );
                         wristWorldPos.applyMatrix4(this.player.matrixWorld);
+                        // Capture joint orientation and rotate into world space
+                        wristWorldQuat.set(
+                            wristPose.transform.orientation.x,
+                            wristPose.transform.orientation.y,
+                            wristPose.transform.orientation.z,
+                            wristPose.transform.orientation.w,
+                        );
+                        const playerQuat = new THREE.Quaternion();
+                        this.player.matrixWorld.decompose(new THREE.Vector3(), playerQuat, new THREE.Vector3());
+                        wristWorldQuat.premultiply(playerQuat);
                         leftWristFound = true;
                     }
                 }
             }
         }
 
-        // Position and update visibility of left wrist button
+        // Place button flat on the dorsal (back-of-hand) surface.
+        // Quest wrist joint: +Y = finger direction, +Z = roughly palm-facing.
+        // Rotating 90° around local X converts the plane from "standing up" to lying flat.
+        // Then offset 2.5 cm outward from the corrected normal so the button floats above the skin.
         if (leftWristFound) {
-            this.wristButton.position.copy(wristWorldPos);
-            // Positioned slightly above the wrist on the dorsal side of the hand for natural tapping
-            this.wristButton.position.y += 0.02; 
-            this.wristButtonMat.opacity = THREE.MathUtils.lerp(this.wristButtonMat.opacity, 0.85, dt * 10.0);
+            const orientFix = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+            const flatQuat = wristWorldQuat.clone().multiply(orientFix);
+            const skinNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(flatQuat);
+            this.wristButton.position.copy(wristWorldPos).addScaledVector(skinNormal, 0.025);
+            this.wristButton.quaternion.copy(flatQuat);
+            this.wristButtonMat.opacity = THREE.MathUtils.lerp(this.wristButtonMat.opacity, 0.9, dt * 10.0);
             this.wristButton.visible = true;
         } else {
             this.wristButtonMat.opacity = THREE.MathUtils.lerp(this.wristButtonMat.opacity, 0.0, dt * 10.0);
@@ -2591,20 +2645,120 @@ export class DomainExpansionSystem extends createSystem({
             }
         }
 
-        // Right index finger tip poke check on the wrist button
+        // Right index tip poke — close-stack tap vs hold-to-quit
         const rightIndexTip = new THREE.Vector3();
         const hasRightIndex = this.getIndexData('right', rightIndexTip);
-        let wristButtonTapped = false;
+        const distToWristBtn = (leftWristFound && hasRightIndex)
+            ? rightIndexTip.distanceTo(this.wristButton.position)
+            : Infinity;
+        const nowTouchingWrist = distToWristBtn < 0.03;
 
-        if (leftWristFound && hasRightIndex) {
-            const distToWrist = rightIndexTip.distanceTo(this.wristButton.position);
-            if (distToWrist < 0.03) { // 3cm tap threshold
-                wristButtonTapped = true;
+        if (nowTouchingWrist) {
+            // Rising edge: snap haptic — mimics Quest keyboard physical stop
+            if (!this.wristWasTouching) {
+                const rSnap = this.input.getPrimaryInputSource('right');
+                if (rSnap?.gamepad?.hapticActuators?.[0]) {
+                    rSnap.gamepad.hapticActuators[0].pulse(1.0, 60);
+                }
+                this.drawWristButton(0, true); // immediately go green
+            }
+
+            this.wristHoldTimer += dt;
+            const holdProgress = Math.min(this.wristHoldTimer / 3.0, 1.0);
+
+            if (!this.isQuitPopupVisible) {
+                // Escalating hold haptic (skip first frame so snap stands out)
+                if (this.wristHoldTimer > 0.08) {
+                    const rSrc = this.input.getPrimaryInputSource('right');
+                    if (rSrc?.gamepad?.hapticActuators?.[0]) {
+                        rSrc.gamepad.hapticActuators[0].pulse(0.1 + 0.8 * holdProgress, 16);
+                    }
+                }
+                this.drawWristButton(holdProgress, true);
+            }
+
+            if (this.wristHoldTimer >= 3.0 && !this.isQuitPopupVisible) {
+                this.isQuitPopupVisible = true;
+                this.quitPopup.visible = true;
+                this.quitPopupHoveredBtn = -1;
+                this.drawQuitPopup(-1);
+                this.drawWristButton(0, false); // reset to idle once popup appears
+                console.log('[WristBtn] 3 s hold — showing quit confirmation.');
+            }
+        } else {
+            if (this.wristWasTouching) {
+                this.drawWristButton(0, false); // reset to idle on release
+                if (this.wristHoldTimer < 0.5 && !this.isQuitPopupVisible && this.menuToggleCooldown <= 0.0) {
+                    this.menuToggleCooldown = 0.6;
+                    this.handleWristClose();
+                }
+            }
+            this.wristHoldTimer = 0.0;
+        }
+        this.wristWasTouching = nowTouchingWrist;
+
+        // Quit popup — position above wrist, billboard face user, handle YES/NO poke
+        if (this.isQuitPopupVisible && this.quitPopup) {
+            if (leftWristFound) {
+                const dorsalDir = new THREE.Vector3(0, 0, 1).applyQuaternion(wristWorldQuat);
+                this.quitPopup.position.copy(wristWorldPos).addScaledVector(dorsalDir, 0.12);
+            } else if (this.player && this.player.head) {
+                const hp2 = new THREE.Vector3();
+                this.player.head.getWorldPosition(hp2);
+                const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+                fwd.y = 0; fwd.normalize();
+                this.quitPopup.position.copy(hp2).addScaledVector(fwd, 0.4);
+                this.quitPopup.position.y = hp2.y - 0.1;
+            }
+            if (this.player && this.player.head) {
+                const hp3 = new THREE.Vector3();
+                this.player.head.getWorldPosition(hp3);
+                this.quitPopup.lookAt(hp3);
+            }
+            this.quitPopupMat.opacity = THREE.MathUtils.lerp(this.quitPopupMat.opacity, 0.95, dt * 15.0);
+
+            if (hasRightIndex && this.menuToggleCooldown <= 0.0) {
+                const inv = new THREE.Matrix4().copy(this.quitPopup.matrixWorld).invert();
+                const localTip = rightIndexTip.clone().applyMatrix4(inv);
+                // Popup plane is 0.12 m × 0.06 m, canvas 256 × 128
+                if (Math.abs(localTip.z) < 0.025 && Math.abs(localTip.x) < 0.06 && Math.abs(localTip.y) < 0.03) {
+                    const cx2 = (localTip.x + 0.06) / 0.12 * 256;
+                    const cy2 = (0.03 - localTip.y) / 0.06 * 128;
+                    let hovBtn = -1;
+                    if (cy2 >= 48 && cy2 <= 84) {
+                        if (cx2 >= 16 && cx2 <= 112) hovBtn = 0;      // YES
+                        else if (cx2 >= 144 && cx2 <= 240) hovBtn = 1; // NO
+                    }
+                    if (hovBtn !== this.quitPopupHoveredBtn) {
+                        this.quitPopupHoveredBtn = hovBtn;
+                        this.drawQuitPopup(hovBtn);
+                    }
+                    if (Math.abs(localTip.z) < 0.012 && hovBtn !== -1) {
+                        this.menuToggleCooldown = 0.8;
+                        if (hovBtn === 0) {
+                            console.log('[WristBtn] YES — exiting XR.');
+                            this.world.exitXR();
+                        } else {
+                            console.log('[WristBtn] NO — dismissing quit popup.');
+                            this.isQuitPopupVisible = false;
+                            this.quitPopupMat.opacity = 0.0;
+                            this.quitPopup.visible = false;
+                        }
+                    }
+                } else if (this.quitPopupHoveredBtn !== -1) {
+                    this.quitPopupHoveredBtn = -1;
+                    this.drawQuitPopup(-1);
+                }
+            }
+        } else if (this.quitPopup && !this.isQuitPopupVisible) {
+            this.quitPopupMat.opacity = THREE.MathUtils.lerp(this.quitPopupMat.opacity, 0.0, dt * 15.0);
+            if (this.quitPopupMat.opacity < 0.01 && this.quitPopup.visible) {
+                this.quitPopup.visible = false;
             }
         }
 
-        // Spawn or despawn the minimap table when wrist button is tapped or key M is pressed
-        const toggleMinimap = wristButtonTapped || this.checkMButton() || (window as any).triggerMinimapToggle;
+        // Minimap toggle via keyboard shortcut or compass MINIMAP spoke (wrist button no longer toggles minimap)
+        const toggleMinimap = this.checkMButton() || (window as any).triggerMinimapToggle;
 
         if (toggleMinimap && this.menuToggleCooldown <= 0.0) {
             if ((window as any).triggerMinimapToggle) {
@@ -8681,5 +8835,166 @@ export class DomainExpansionSystem extends createSystem({
         medicalGroup.add(medLabel);
         
         this.navPlaceholdersGroup.add(medicalGroup);
+    }
+
+    // holdProgress 0–1 only matters when isTouching = true.
+    // idle → cyan,  touch (progress 0) → green,  hold (progress → 1) → red.
+    private drawWristButton(holdProgress: number, isTouching: boolean) {
+        const ctx = this.wristBtnCanvas.getContext('2d')!;
+        const cx = 64, cy = 64;
+        ctx.clearRect(0, 0, 128, 128);
+
+        // Resolve accent colour: cyan → green → red
+        let r: number, g: number, b: number;
+        if (!isTouching) {
+            r = 34; g = 211; b = 238;  // cyan
+        } else {
+            // green (34,197,94) ──lerp──► red (239,68,68) by holdProgress
+            r = Math.round(34  + (239 - 34)  * holdProgress);
+            g = Math.round(197 + (68  - 197) * holdProgress);
+            b = Math.round(94  + (68  - 94)  * holdProgress);
+        }
+        const accentCss  = `rgb(${r},${g},${b})`;
+        const accentDim  = `rgba(${r},${g},${b},0.3)`;
+        const accentGlow = `rgba(${r},${g},${b},0.8)`;
+
+        // Dark glass background
+        const grad = ctx.createRadialGradient(cx, cy, 8, cx, cy, 56);
+        grad.addColorStop(0, 'rgba(15,25,50,0.92)');
+        grad.addColorStop(1, 'rgba(5,10,30,0.80)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 56, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Accent border ring
+        ctx.strokeStyle = accentCss;
+        ctx.lineWidth = 5;
+        ctx.shadowColor = accentGlow;
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 54, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Inner dim ring
+        ctx.strokeStyle = accentDim;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 46, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // × cross icon
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.shadowColor = accentGlow;
+        ctx.shadowBlur = 8;
+        const arm = 16;
+        ctx.beginPath();
+        ctx.moveTo(cx - arm, cy - arm); ctx.lineTo(cx + arm, cy + arm);
+        ctx.moveTo(cx + arm, cy - arm); ctx.lineTo(cx - arm, cy + arm);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Progress arc — clockwise from 12 o'clock, outside the main ring
+        if (isTouching && holdProgress > 0) {
+            const startAngle = -Math.PI / 2;
+            const endAngle   = startAngle + Math.PI * 2 * holdProgress;
+            // Dim track
+            ctx.strokeStyle = `rgba(${r},${g},${b},0.18)`;
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'butt';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 62, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2);
+            ctx.stroke();
+            // Filled arc
+            ctx.strokeStyle = accentCss;
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'round';
+            ctx.shadowColor = accentGlow;
+            ctx.shadowBlur = 14;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 62, startAngle, endAngle);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+
+        this.wristBtnTexture.needsUpdate = true;
+    }
+
+    private handleWristClose() {
+        if (this.isTableSpawned) {
+            this.isTableSpawned = false;
+            this.targetTableScale = 0.0;
+            this.isDomainActive = false;
+            console.log('[WristBtn] Closed minimap table.');
+        } else {
+            (window as any).wristCloseRequest = true;
+            console.log('[WristBtn] Signalled compass panel close.');
+        }
+    }
+
+    private drawQuitPopup(hoveredBtn: number) {
+        const ctx = this.quitPopupCanvas.getContext('2d')!;
+        const w = 256, h = 128;
+        ctx.clearRect(0, 0, w, h);
+
+        // Dark background
+        ctx.fillStyle = 'rgba(10, 5, 20, 0.96)';
+        ctx.beginPath();
+        ctx.roundRect(2, 2, w - 4, h - 4, 10);
+        ctx.fill();
+
+        // Red border glow
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 4;
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.roundRect(2, 2, w - 4, h - 4, 10);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Title
+        ctx.fillStyle = '#fef2f2';
+        ctx.font = 'bold 16px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('EXIT XR?', w / 2, 28);
+
+        // Divider
+        ctx.strokeStyle = 'rgba(239,68,68,0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(16, 38); ctx.lineTo(w - 16, 38);
+        ctx.stroke();
+
+        // YES button (left)
+        const yesH = hoveredBtn === 0;
+        ctx.fillStyle = yesH ? 'rgba(34,197,94,0.5)' : 'rgba(34,197,94,0.15)';
+        ctx.beginPath(); ctx.roundRect(16, 48, 96, 36, 8); ctx.fill();
+        ctx.strokeStyle = yesH ? '#22c55e' : 'rgba(34,197,94,0.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(16, 48, 96, 36, 8); ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 15px monospace';
+        ctx.fillText('YES', 64, 71);
+
+        // NO button (right)
+        const noH = hoveredBtn === 1;
+        ctx.fillStyle = noH ? 'rgba(239,68,68,0.5)' : 'rgba(239,68,68,0.15)';
+        ctx.beginPath(); ctx.roundRect(144, 48, 96, 36, 8); ctx.fill();
+        ctx.strokeStyle = noH ? '#ef4444' : 'rgba(239,68,68,0.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(144, 48, 96, 36, 8); ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('NO', 192, 71);
+
+        // Hint
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.font = '9px monospace';
+        ctx.fillText('poke YES or NO with right index finger', w / 2, 110);
+
+        this.quitPopupTexture.needsUpdate = true;
     }
 }
