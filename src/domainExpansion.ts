@@ -1115,8 +1115,10 @@ export class DomainExpansionSystem extends createSystem({
             this.renderer.compile(this.tableGroup, this.camera);
             this.renderer.compile(this.domainMesh, this.camera);
             console.log("[DomainExpansionSystem] Shader pre-compilation successful!");
+            (window as any).domainExpansionShadersCompiled = true;
         } catch (e) {
             console.warn("[DomainExpansionSystem] Shader pre-compilation failed/skipped:", e);
+            (window as any).domainExpansionShadersCompiled = true;
         }
 
         // Expose global minimap APIs for the Action Compass UI in JugnuSystem
@@ -2958,12 +2960,7 @@ export class DomainExpansionSystem extends createSystem({
                     this.tableGroup.rotation.set(0, Math.PI, 0);
                 }
 
-                // Advance Tutorial step 2 -> 3 if needed
-                this.queries.jugnu.entities.forEach(e => {
-                    if (e.getValue(Jugnu, "instructionStep") === 2) {
-                        e.setValue(Jugnu, "instructionStep", 3);
-                    }
-                });
+                // (Transition 2 -> 3 is now handled reactively in the zoom gesture loop)
             } else {
                 this.targetTableScale = 0.0;
                 this.isDomainActive = false; // Exit immersive environment if table closed
@@ -3241,6 +3238,13 @@ export class DomainExpansionSystem extends createSystem({
                         // strictly clamped from 1.0 (base 0.60m diameter) up to 10.0 (Player Immersive maximum)
                         this.userTableScale = THREE.MathUtils.clamp(targetUserScale, 1.0, 10.0);
                         
+                        // Advance tutorial step 2 -> 3 when two-handed scaling is actively performed
+                        this.queries.jugnu.entities.forEach(e => {
+                            if (e.getValue(Jugnu, "instructionStep") === 2) {
+                                e.setValue(Jugnu, "instructionStep", 3);
+                            }
+                        });
+                        
                         // Log only on significant scale changes to avoid spamming the debug board
                         if (Math.abs(this.userTableScale - this.lastLoggedScale) > 0.2) {
                             console.log(`[DomainExpansion] Scaling: current scale is ${this.userTableScale.toFixed(2)}`);
@@ -3298,6 +3302,13 @@ export class DomainExpansionSystem extends createSystem({
                         const angleDiff = currentAngle - this.initialHandAngle;
                         
                         this.tableGroup.rotation.y = this.initialTableRotationY + angleDiff;
+                        
+                        // Advance tutorial step 1 -> 2 when rotation is actively performed
+                        this.queries.jugnu.entities.forEach(e => {
+                            if (e.getValue(Jugnu, "instructionStep") === 1) {
+                                e.setValue(Jugnu, "instructionStep", 2);
+                            }
+                        });
                     } else {
                         // Released pinch: lock rotation
                         this.isRotatingMap = false;

@@ -1,4 +1,4 @@
-import { createComponent, createSystem, Pressed, Vector3, PhysicsBody, PhysicsState, PhysicsManipulation, PhysicsShape, PhysicsShapeType } from "@iwsdk/core";
+import { createComponent, createSystem, Pressed, Vector3, PhysicsBody, PhysicsState, PhysicsManipulation, PhysicsShape, PhysicsShapeType, Interactable } from "@iwsdk/core";
 import { MoodColors, MoodCompColors } from "./JugnuV3Model.js";
 import type { JugnuV3Model, Mood } from "./JugnuV3Model.js";
 import { JugnuTranscriptBoard } from "./JugnuTranscriptBoard.js";
@@ -11,12 +11,14 @@ import { JugnuInstructionBoard } from "./JugnuInstructionBoard.js";
 
 export const Jugnu = createComponent("Jugnu", { instructionStep: { type: "Int8", default: 0 } });
 export const TranscriptUI = createComponent("TranscriptUI", {});
+export const TutorialTabRef = createComponent("TutorialTabRef", { index: { type: "Int8", default: 0 } });
 
 export class JugnuSystem extends createSystem({
   jugnu: { required: [Jugnu] },
   jugnuClicked: { required: [Jugnu, Pressed] },
   transcriptBoard: { required: [TranscriptUI] },
   physicsShapes: { required: [PhysicsShape] },
+  tutorialTabPressed: { required: [TutorialTabRef, Pressed] },
 }) {
 
   // Audio state
@@ -175,6 +177,16 @@ export class JugnuSystem extends createSystem({
   private debugFrameCanvas: HTMLCanvasElement | null = null;
   private tutorialFrameCanvas: HTMLCanvasElement | null = null;
 
+  private tutorialVideo?: HTMLVideoElement;
+  private tutorialTabs = [
+      { label: "SUMMON COMPASS", step: 0, x: -0.35, y: 0.12, canvas: null as any, texture: null as any, mesh: null as any },
+      { label: "ROTATE MAP",     step: 1, x: -0.35, y: 0.00, canvas: null as any, texture: null as any, mesh: null as any },
+      { label: "ZOOM MAP",       step: 2, x: -0.35, y: -0.12, canvas: null as any, texture: null as any, mesh: null as any },
+      { label: "DOMAINS",        step: 3, x: 0.35,  y: 0.12, canvas: null as any, texture: null as any, mesh: null as any },
+      { label: "REPLAY EVENT",   step: 4, x: 0.35,  y: 0.00, canvas: null as any, texture: null as any, mesh: null as any },
+      { label: "WEATHER STYLES", step: 5, x: 0.35,  y: -0.12, canvas: null as any, texture: null as any, mesh: null as any }
+  ];
+
   private isStadiumMenuOpen = false;
   private compassStadiumCanvas!: HTMLCanvasElement;
   private compassStadiumCtx!: CanvasRenderingContext2D;
@@ -183,6 +195,24 @@ export class JugnuSystem extends createSystem({
   private compassStadiumCard!: THREE.Mesh;
   private selectedStadium: 'default' | 'berlin' | 'inuit' | 'butterflies' | 'nurburgring' = 'default';
   private stadiumImages: (HTMLImageElement | null)[] = [null, null, null, null, null];
+
+  private static readonly ICON_FILES: Record<string, string> = {
+      "CHAT": "speech-bubble.png",
+      "TUTORIAL": "video-lesson.png",
+      "STADIUM": "football-field.png",
+      "STADIUM_SEL": "location.png",
+      "LOCK": "lock.png",
+      "VOICE": "microphone.png",
+      "DEBUG": "debug.png",
+      "WALLS": "box.png",
+      "PLAY": "video.png",
+      "STORM": "thunder.png",
+      "NAVIG": "navigation.png",
+      "CLEAR": "bin.png"
+  };
+  private loadedIcons: Record<string, HTMLImageElement> = {};
+  private iconTintCanvas?: HTMLCanvasElement;
+  private iconTintCtx?: CanvasRenderingContext2D;
 
   // Swipe & Scroll State
   private lastOpenedTab: string | null = null;
@@ -260,6 +290,26 @@ export class JugnuSystem extends createSystem({
     this.initTutorialThread();
     this.initFireflies();
     window.addEventListener('keydown', (e) => this.handleKeyDown(e));
+
+    // Handle raycast click on Tutorial Tabs
+    this.queries.tutorialTabPressed.subscribe("qualify", (entity) => {
+        const tabIdx = entity.getValue(TutorialTabRef, "index") as number;
+        
+        // Update instructionStep on all Jugnu entities
+        this.queries.jugnu.entities.forEach(jugnuEnt => {
+            jugnuEnt.setValue(Jugnu, "instructionStep", tabIdx);
+        });
+
+        console.log(`[TutorialTab Raycast] Selected step: ${tabIdx}`);
+
+        const spatialFX = (window as any).spatialFX;
+        if (spatialFX && entity.object3D) {
+            const tabWorldPos = new THREE.Vector3();
+            entity.object3D.getWorldPosition(tabWorldPos);
+            spatialFX.playPositionalSound('click', tabWorldPos);
+            spatialFX.triggerSpark(tabWorldPos, new THREE.Color(0x00ffcc), 10);
+        }
+    });
 
     // Handle Click
     this.queries.jugnuClicked.subscribe("qualify", async (entity) => {
@@ -1105,6 +1155,13 @@ export class JugnuSystem extends createSystem({
         obj.scale.lerp(baseScale, 10.0 * safeDt);
         jugModel.pulseIntensity = 0;
       }
+      
+      const isXR = (this.renderer.xr as any).isPresenting;
+      if (!isXR) {
+          obj.position.set(0.12, 1.45 + Math.sin(this.floatTime * 2.5) * 0.015, -0.22);
+          obj.scale.setScalar(0.12);
+          obj.rotation.set(0, Math.sin(this.floatTime * 0.4) * 0.15 + Math.PI, 0);
+      }
       activeJugnuPos.copy(obj.position);
 
       // Start/Update continuous hover hum when visible
@@ -1338,6 +1395,13 @@ export class JugnuSystem extends createSystem({
                         this.isCompassOpen = true;
                         this.indexPinchTimer = 0.0;
                         this.buttonCooldown = 0.5;
+
+                        // Advance Step 0 to Step 1 on compass summon
+                        this.queries.jugnu.entities.forEach(e => {
+                            if (e.getValue(Jugnu, "instructionStep") === 0) {
+                                e.setValue(Jugnu, "instructionStep", 1);
+                            }
+                        });
 
                         console.log(`[Compass] Compass toggled! Open: ${this.isCompassOpen}`);
                         
@@ -1676,6 +1740,13 @@ export class JugnuSystem extends createSystem({
                         (window as any).selectedStadiumType = this.selectedStadium;
                         console.log(`[StadiumSelector] Selected: ${this.selectedStadium}`);
 
+                        // Advance tutorial step 3 -> 4 when a stadium domain is selected/loaded
+                        this.queries.jugnu.entities.forEach(e => {
+                            if (e.getValue(Jugnu, "instructionStep") === 3) {
+                                e.setValue(Jugnu, "instructionStep", 4);
+                            }
+                        });
+
                         // Trigger click audio & sparks
                         const spatialFX = (window as any).spatialFX;
                         if (spatialFX) {
@@ -1688,6 +1759,62 @@ export class JugnuSystem extends createSystem({
 
             if (this.isStadiumMenuOpen) {
                 this.redrawCompassStadiumMenu(hoveredStadiumOption);
+            }
+
+            let hoveredTutorialTab = -1;
+            if (this.isTutorialOpen && activeTip && this.compassTutorialCard) {
+                const cardLocalTip = this.scratchV3_1.copy(activeTip).applyMatrix4(this.scratchMatrix.copy(this.compassTutorialCard.matrixWorld).invert());
+                const isWithinCardHoverZ = Math.abs(cardLocalTip.z) < 0.025;
+                if (isWithinCardHoverZ) {
+                    for (let i = 0; i < this.tutorialTabs.length; i++) {
+                        const tab = this.tutorialTabs[i];
+                        const dx = Math.abs(cardLocalTip.x - tab.x);
+                        const dy = Math.abs(cardLocalTip.y - tab.y);
+                        if (dx < 0.07 && dy < 0.025) { // Tab size is 0.14 x 0.05
+                            hoveredTutorialTab = i;
+                            break;
+                        }
+                    }
+                }
+
+                // Query hand pinch for pointing & pinch selection gesture support
+                const leftTipTemp = new THREE.Vector3();
+                const rightTipTemp = new THREE.Vector3();
+                const isLeftPinching = this.getPinchData('left', leftTipTemp);
+                const isRightPinching = this.getPinchData('right', rightTipTemp);
+                const isPinching = (activeTip === leftIndexTip) ? isLeftPinching : isRightPinching;
+                const isPressed = (Math.abs(cardLocalTip.z) < 0.014) || (isPinching && Math.abs(cardLocalTip.z) < 0.035);
+
+                if (isPressed && hoveredTutorialTab !== -1 && this.buttonCooldown <= 0.0) {
+                    this.buttonCooldown = 0.8;
+                    const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
+                    const source = this.input.getPrimaryInputSource(activeHand);
+                    if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
+                        source.gamepad.hapticActuators[0].pulse(0.85, 50);
+                    }
+
+                    this.queries.jugnu.entities.forEach(entity => {
+                        entity.setValue(Jugnu, "instructionStep", hoveredTutorialTab);
+                    });
+                    instructionStep = hoveredTutorialTab;
+
+                    console.log(`[TutorialTab] Selected step: ${hoveredTutorialTab}`);
+
+                    const spatialFX = (window as any).spatialFX;
+                    if (spatialFX) {
+                        spatialFX.playPositionalSound('click', activeTip);
+                        spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 10);
+                    }
+                }
+            }
+
+            // Always update tab hover & selected visual states when tutorial is open
+            if (this.isTutorialOpen) {
+                this.tutorialTabs.forEach((tab, i) => {
+                    const isSelected = (instructionStep === i);
+                    const isHovered = (hoveredTutorialTab === i);
+                    this.redrawTutorialTabMesh(i, isHovered, isSelected);
+                });
             }
 
             // Play sparkle sound & micro sparks on hover change
@@ -2208,6 +2335,24 @@ export class JugnuSystem extends createSystem({
       ctx.fillText(line, x, currentY);
   }
 
+  private drawTintedIcon(destCtx: CanvasRenderingContext2D, img: HTMLImageElement, cx: number, cy: number, size: number, color: string) {
+      if (!this.iconTintCanvas) {
+          this.iconTintCanvas = document.createElement('canvas');
+          this.iconTintCanvas.width = 128;
+          this.iconTintCanvas.height = 128;
+          this.iconTintCtx = this.iconTintCanvas.getContext('2d')!;
+      }
+      const tCtx = this.iconTintCtx!;
+      tCtx.clearRect(0, 0, 128, 128);
+      const offset = (128 - size) / 2;
+      tCtx.drawImage(img, offset, offset, size, size);
+      tCtx.globalCompositeOperation = 'source-in';
+      tCtx.fillStyle = color;
+      tCtx.fillRect(0, 0, 128, 128);
+      tCtx.globalCompositeOperation = 'source-over';
+      destCtx.drawImage(this.iconTintCanvas, offset, offset, size, size, cx - size / 2, cy - size / 2, size, size);
+  }
+
   private redrawCompassGrid(hoveredIdx: number) {
       const ctx = this.compassBackingCtx;
       const w = 512;
@@ -2330,103 +2475,109 @@ export class JugnuSystem extends createSystem({
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
 
-          if (spoke.type === 'LOCK') {
-              ctx.strokeStyle = '#ffffff';
-              ctx.beginPath();
-              ctx.arc(cx, iconY - 6, 9, Math.PI, 0);
-              ctx.lineTo(cx + 9, iconY + 3);
-              ctx.moveTo(cx - 9, iconY - 6);
-              ctx.lineTo(cx - 9, iconY + 3);
-              ctx.stroke();
-              ctx.fillStyle = '#ffffff';
-              ctx.beginPath();
-              ctx.roundRect(cx - 13.5, iconY, 27, 18, 4.5);
-              ctx.fill();
-              ctx.fillStyle = compColorHex;
-              ctx.beginPath();
-              ctx.arc(cx, iconY + 7.5, 3, 0, 2 * Math.PI);
-              ctx.fill();
+          const iconImg = this.loadedIcons[spoke.type];
+          if (iconImg && iconImg.naturalWidth > 0) {
+              const iconColor = activeBorder || hoveredIdx === idx ? (spoke.type === 'LOCK' && this.isGridLocked ? '#22c55e' : moodColorHex) : '#ffffff';
+              this.drawTintedIcon(ctx, iconImg, cx, iconY, 40, iconColor);
           } else {
-              ctx.fillStyle = '#ffffff';
-              ctx.strokeStyle = '#ffffff';
-
-              if (spoke.type === 'CHAT') {
+              if (spoke.type === 'LOCK') {
+                  ctx.strokeStyle = '#ffffff';
                   ctx.beginPath();
-                  ctx.roundRect(cx - 18, iconY - 12, 36, 24, 6);
+                  ctx.arc(cx, iconY - 6, 9, Math.PI, 0);
+                  ctx.lineTo(cx + 9, iconY + 3);
+                  ctx.moveTo(cx - 9, iconY - 6);
+                  ctx.lineTo(cx - 9, iconY + 3);
                   ctx.stroke();
+                  ctx.fillStyle = '#ffffff';
                   ctx.beginPath();
-                  ctx.moveTo(cx - 6, iconY + 12);
-                  ctx.lineTo(cx - 12, iconY + 20);
-                  ctx.lineTo(cx - 12, iconY + 12);
-                  ctx.closePath();
+                  ctx.roundRect(cx - 13.5, iconY, 27, 18, 4.5);
                   ctx.fill();
-                  ctx.stroke();
-                  
                   ctx.fillStyle = compColorHex;
                   ctx.beginPath();
-                  ctx.arc(cx - 7.5, iconY, 2.25, 0, 2 * Math.PI);
-                  ctx.arc(cx, iconY, 2.25, 0, 2 * Math.PI);
-                  ctx.arc(cx + 7.5, iconY, 2.25, 0, 2 * Math.PI);
+                  ctx.arc(cx, iconY + 7.5, 3, 0, 2 * Math.PI);
                   ctx.fill();
-              } else if (spoke.type === 'STADIUM') {
-                  ctx.beginPath();
-                  ctx.ellipse(cx, iconY, 21, 10.5, 0, 0, 2 * Math.PI);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.moveTo(cx - 21, iconY); ctx.lineTo(cx - 21, iconY + 12);
-                  ctx.moveTo(cx + 21, iconY); ctx.lineTo(cx + 21, iconY + 12);
-                  ctx.stroke();
-              } else if (spoke.type === 'TUTORIAL') {
-                  ctx.beginPath();
-                  ctx.roundRect(cx - 18, iconY - 12, 36, 24, 3);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.moveTo(cx, iconY - 12);
-                  ctx.lineTo(cx, iconY + 12);
-                  ctx.stroke();
-              } else if (spoke.type === 'VOICE') {
-                  ctx.beginPath();
-                  ctx.roundRect(cx - 6, iconY - 15, 12, 24, 6);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.arc(cx, iconY - 3, 12, 0, Math.PI);
-                  ctx.moveTo(cx, iconY + 9); ctx.lineTo(cx, iconY + 15);
-                  ctx.stroke();
-              } else if (spoke.type === 'DEBUG') {
-                  ctx.beginPath();
-                  ctx.roundRect(cx - 19.5, iconY - 13.5, 39, 27, 6);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.moveTo(cx - 12, iconY - 6);
-                  ctx.lineTo(cx - 6, iconY);
-                  ctx.lineTo(cx - 12, iconY + 6);
-                  ctx.stroke();
+              } else {
                   ctx.fillStyle = '#ffffff';
-                  ctx.fillRect(cx - 1.5, iconY + 3, 9, 4.5);
-              } else if (spoke.type === 'STADIUM_SEL') {
-                  ctx.beginPath();
-                  ctx.arc(cx, iconY + 6, 18, Math.PI, 0);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.moveTo(cx - 18, iconY + 6); ctx.lineTo(cx - 18, iconY + 15);
-                  ctx.moveTo(cx + 18, iconY + 6); ctx.lineTo(cx + 18, iconY + 15);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.arc(cx, iconY + 1.5, 4.5, 0, 2 * Math.PI);
-                  ctx.fill();
-              } else if (spoke.type === 'WALLS') {
-                  ctx.beginPath();
-                  ctx.arc(cx, iconY, 15, 0.15 * Math.PI, 1.85 * Math.PI);
-                  ctx.stroke();
-                  ctx.fillStyle = ctx.strokeStyle;
-                  ctx.beginPath();
-                  ctx.moveTo(cx + 21, iconY + 4.5);
-                  ctx.lineTo(cx + 12, iconY - 4.5);
-                  ctx.lineTo(cx + 30, iconY - 4.5);
-                  ctx.closePath();
-                  ctx.fill();
-                  ctx.stroke();
-                  ctx.fillStyle = '#ffffff';
+                  ctx.strokeStyle = '#ffffff';
+
+                  if (spoke.type === 'CHAT') {
+                      ctx.beginPath();
+                      ctx.roundRect(cx - 18, iconY - 12, 36, 24, 6);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.moveTo(cx - 6, iconY + 12);
+                      ctx.lineTo(cx - 12, iconY + 20);
+                      ctx.lineTo(cx - 12, iconY + 12);
+                      ctx.closePath();
+                      ctx.fill();
+                      ctx.stroke();
+                      
+                      ctx.fillStyle = compColorHex;
+                      ctx.beginPath();
+                      ctx.arc(cx - 7.5, iconY, 2.25, 0, 2 * Math.PI);
+                      ctx.arc(cx, iconY, 2.25, 0, 2 * Math.PI);
+                      ctx.arc(cx + 7.5, iconY, 2.25, 0, 2 * Math.PI);
+                      ctx.fill();
+                  } else if (spoke.type === 'STADIUM') {
+                      ctx.beginPath();
+                      ctx.ellipse(cx, iconY, 21, 10.5, 0, 0, 2 * Math.PI);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.moveTo(cx - 21, iconY); ctx.lineTo(cx - 21, iconY + 12);
+                      ctx.moveTo(cx + 21, iconY); ctx.lineTo(cx + 21, iconY + 12);
+                      ctx.stroke();
+                  } else if (spoke.type === 'TUTORIAL') {
+                      ctx.beginPath();
+                      ctx.roundRect(cx - 18, iconY - 12, 36, 24, 3);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.moveTo(cx, iconY - 12);
+                      ctx.lineTo(cx, iconY + 12);
+                      ctx.stroke();
+                  } else if (spoke.type === 'VOICE') {
+                      ctx.beginPath();
+                      ctx.roundRect(cx - 6, iconY - 15, 12, 24, 6);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.arc(cx, iconY - 3, 12, 0, Math.PI);
+                      ctx.moveTo(cx, iconY + 9); ctx.lineTo(cx, iconY + 15);
+                      ctx.stroke();
+                  } else if (spoke.type === 'DEBUG') {
+                      ctx.beginPath();
+                      ctx.roundRect(cx - 19.5, iconY - 13.5, 39, 27, 6);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.moveTo(cx - 12, iconY - 6);
+                      ctx.lineTo(cx - 6, iconY);
+                      ctx.lineTo(cx - 12, iconY + 6);
+                      ctx.stroke();
+                      ctx.fillStyle = '#ffffff';
+                      ctx.fillRect(cx - 1.5, iconY + 3, 9, 4.5);
+                  } else if (spoke.type === 'STADIUM_SEL') {
+                      ctx.beginPath();
+                      ctx.arc(cx, iconY + 6, 18, Math.PI, 0);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.moveTo(cx - 18, iconY + 6); ctx.lineTo(cx - 18, iconY + 15);
+                      ctx.moveTo(cx + 18, iconY + 6); ctx.lineTo(cx + 18, iconY + 15);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.arc(cx, iconY + 1.5, 4.5, 0, 2 * Math.PI);
+                      ctx.fill();
+                  } else if (spoke.type === 'WALLS') {
+                      ctx.beginPath();
+                      ctx.arc(cx, iconY, 15, 0.15 * Math.PI, 1.85 * Math.PI);
+                      ctx.stroke();
+                      ctx.fillStyle = ctx.strokeStyle;
+                      ctx.beginPath();
+                      ctx.moveTo(cx + 21, iconY + 4.5);
+                      ctx.lineTo(cx + 12, iconY - 4.5);
+                      ctx.lineTo(cx + 30, iconY - 4.5);
+                      ctx.closePath();
+                      ctx.fill();
+                      ctx.stroke();
+                      ctx.fillStyle = '#ffffff';
+                  }
               }
           }
 
@@ -2536,7 +2687,18 @@ export class JugnuSystem extends createSystem({
           }
       };
 
-
+      // Preload custom PNG icons
+      Object.entries(JugnuSystem.ICON_FILES).forEach(([key, filename]) => {
+          const img = new Image();
+          img.onload = () => {
+              this.loadedIcons[key] = img;
+              this.redrawCompassGrid(this.hoveredCellIndex);
+              if (this.actionCompassGroup) {
+                  this.redrawActionCompass(this.actionHoveredSpokeIndex);
+              }
+          };
+          img.src = `./textures/icons/${filename}`;
+      });
 
       // Initialize Chat Tab UI
       this.compassChatCanvas = document.createElement('canvas');
@@ -2601,6 +2763,47 @@ export class JugnuSystem extends createSystem({
       this.compassTutorialCard.position.set(0, -0.02, -0.01);
       this.compassTutorialCard.scale.setScalar(0.001); // Shrink initially
       this.compassGroup.add(this.compassTutorialCard);
+
+      // Initialize Tutorial Tabs
+      this.tutorialTabs.forEach((tab, i) => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 256;
+          canvas.height = 96;
+          
+          const texture = new THREE.CanvasTexture(canvas);
+          texture.colorSpace = THREE.SRGBColorSpace;
+          
+          const mat = this.createHolographicMaterial(texture, 1.0);
+          const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.05), mat);
+          
+          // Position relative to parent compassTutorialCard
+          mesh.position.set(tab.x, tab.y, 0.002);
+          
+          this.compassTutorialCard.add(mesh);
+          
+          tab.canvas = canvas;
+          tab.texture = texture;
+          tab.mesh = mesh;
+
+          // Register tab mesh as an interactable entity for raycast selection from afar
+          this.world.createTransformEntity(mesh)
+              .addComponent(Interactable)
+              .addComponent(TutorialTabRef, { index: i })
+              .addComponent(PhysicsShape, {
+                  shape: PhysicsShapeType.Box,
+                  dimensions: [0.14, 0.05, 0.01],
+                  restitution: 0.0,
+                  friction: 0.0,
+                  density: 1.0
+              })
+              .addComponent(PhysicsBody, {
+                  state: PhysicsState.Kinematic,
+                  gravityFactor: 0.0
+              });
+          
+          // Initial draw
+          this.redrawTutorialTabMesh(i, false, false);
+      });
 
       // Initialize Stadium Selector Tab UI — curved venue selector concentric with compass
       this.compassStadiumCanvas = document.createElement('canvas');
@@ -2890,38 +3093,44 @@ export class JugnuSystem extends createSystem({
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
 
-          if (spoke.type === 'PLAY') {
-              ctx.beginPath();
-              ctx.moveTo(cx - 8, iconY - 12);
-              ctx.lineTo(cx + 12, iconY);
-              ctx.lineTo(cx - 8, iconY + 12);
-              ctx.closePath();
-              ctx.fill();
-              ctx.stroke();
-          } else if (spoke.type === 'STORM') {
-              ctx.beginPath();
-              ctx.arc(cx - 6, iconY + 2, 7, 0.5 * Math.PI, 1.5 * Math.PI);
-              ctx.arc(cx, iconY - 4, 9, 1.0 * Math.PI, 2.0 * Math.PI);
-              ctx.arc(cx + 6, iconY + 2, 7, 1.5 * Math.PI, 0.5 * Math.PI);
-              ctx.closePath();
-              ctx.fill();
-              ctx.stroke();
-          } else if (spoke.type === 'NAVIG') {
-              ctx.beginPath();
-              ctx.moveTo(cx, iconY - 14);
-              ctx.lineTo(cx + 11, iconY + 11);
-              ctx.lineTo(cx, iconY + 5);
-              ctx.lineTo(cx - 11, iconY + 11);
-              ctx.closePath();
-              ctx.fill();
-              ctx.stroke();
-          } else if (spoke.type === 'CLEAR') {
-              ctx.beginPath();
-              ctx.moveTo(cx - 10, iconY - 10);
-              ctx.lineTo(cx + 10, iconY + 10);
-              ctx.moveTo(cx + 10, iconY - 10);
-              ctx.lineTo(cx - 10, iconY + 10);
-              ctx.stroke();
+          const iconImg = this.loadedIcons[spoke.type];
+          if (iconImg && iconImg.naturalWidth > 0) {
+              const iconColor = hoveredIdx === idx || isActive ? themeColor : '#ffffff';
+              this.drawTintedIcon(ctx, iconImg, cx, iconY, 40, iconColor);
+          } else {
+              if (spoke.type === 'PLAY') {
+                  ctx.beginPath();
+                  ctx.moveTo(cx - 8, iconY - 12);
+                  ctx.lineTo(cx + 12, iconY);
+                  ctx.lineTo(cx - 8, iconY + 12);
+                  ctx.closePath();
+                  ctx.fill();
+                  ctx.stroke();
+              } else if (spoke.type === 'STORM') {
+                  ctx.beginPath();
+                  ctx.arc(cx - 6, iconY + 2, 7, 0.5 * Math.PI, 1.5 * Math.PI);
+                  ctx.arc(cx, iconY - 4, 9, 1.0 * Math.PI, 2.0 * Math.PI);
+                  ctx.arc(cx + 6, iconY + 2, 7, 1.5 * Math.PI, 0.5 * Math.PI);
+                  ctx.closePath();
+                  ctx.fill();
+                  ctx.stroke();
+              } else if (spoke.type === 'NAVIG') {
+                  ctx.beginPath();
+                  ctx.moveTo(cx, iconY - 14);
+                  ctx.lineTo(cx + 11, iconY + 11);
+                  ctx.lineTo(cx, iconY + 5);
+                  ctx.lineTo(cx - 11, iconY + 11);
+                  ctx.closePath();
+                  ctx.fill();
+                  ctx.stroke();
+              } else if (spoke.type === 'CLEAR') {
+                  ctx.beginPath();
+                  ctx.moveTo(cx - 10, iconY - 10);
+                  ctx.lineTo(cx + 10, iconY + 10);
+                  ctx.moveTo(cx + 10, iconY - 10);
+                  ctx.lineTo(cx - 10, iconY + 10);
+                  ctx.stroke();
+              }
           }
 
           ctx.fillStyle = hoveredIdx === idx || isActive ? themeColor : '#ffffff';
@@ -2969,8 +3178,18 @@ export class JugnuSystem extends createSystem({
 
       if (type === 'PLAY') {
           (window as any).triggerMinimapSportSequence?.();
+          this.queries.jugnu.entities.forEach(e => {
+              if (e.getValue(Jugnu, "instructionStep") === 4) {
+                  e.setValue(Jugnu, "instructionStep", 5);
+              }
+          });
       } else if (type === 'STORM') {
           (window as any).cycleMinimapWeather?.();
+          this.queries.jugnu.entities.forEach(e => {
+              if (e.getValue(Jugnu, "instructionStep") === 5) {
+                  e.setValue(Jugnu, "instructionStep", 6);
+              }
+          });
       } else if (type === 'NAVIG') {
           (window as any).toggleMinimapNavigation?.();
       } else if (type === 'CLEAR') {
@@ -3032,10 +3251,22 @@ export class JugnuSystem extends createSystem({
           this.redrawCompassGrid(this.hoveredCellIndex);
       } else if (tileType === 'VOICE') {
           title = "Gemini AI Voice";
-          detail = "Voice pipeline: ACTIVE.\n\nMicrophone bounds: Calibrating...\nSay any prompt after poking Jugnu's head.";
+          detail = this.isListening ? "Voice pipeline: STANDBY.\n\nMicrophone bounds: CLOSED.\nSpeak request completed." : "Voice pipeline: ACTIVE.\n\nMicrophone bounds: LISTENING...\nSpeak your prompt now.";
           this.centerTitle = title;
           this.centerDetail = detail;
           this.redrawCompassGrid(this.hoveredCellIndex);
+
+          // Activate/toggle recording pipeline
+          if (this.isListening) {
+             if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
+                 this.mediaRecorder.stop();
+             }
+          } else if (!this.isProcessingAudio) {
+             if (this.synth && this.synth.speaking) {
+                this.synth.cancel();
+             }
+             this.startRecording().catch(err => console.error("Voice recording start failed:", err));
+          }
       } else if (tileType === 'DEBUG') {
           this.isDebugOpen = !this.isDebugOpen;
           title = this.isDebugOpen ? "Debug Console" : "Debug Console";
@@ -3294,6 +3525,71 @@ export class JugnuSystem extends createSystem({
       this.compassStadiumTexture.needsUpdate = true;
   }
 
+  private redrawTutorialTabMesh(idx: number, isHovered: boolean, isSelected: boolean) {
+      const tab = this.tutorialTabs[idx];
+      if (!tab || !tab.canvas) return;
+      const canvas = tab.canvas;
+      const ctx = canvas.getContext('2d')!;
+      const w = 256;
+      const h = 96;
+      ctx.clearRect(0, 0, w, h);
+
+      // Draw glassmorphic background
+      ctx.fillStyle = isSelected ? 'rgba(34, 211, 238, 0.25)' : (isHovered ? 'rgba(255, 255, 255, 0.15)' : 'rgba(5, 5, 25, 0.6)');
+      ctx.beginPath();
+      ctx.roundRect(4, 4, w - 8, h - 8, 12);
+      ctx.fill();
+
+      // Border
+      ctx.strokeStyle = isSelected ? '#22d3ee' : (isHovered ? 'rgba(34, 211, 238, 0.6)' : 'rgba(255, 255, 255, 0.15)');
+      ctx.lineWidth = isSelected ? 4 : 2;
+      ctx.beginPath();
+      ctx.roundRect(4, 4, w - 8, h - 8, 12);
+      ctx.stroke();
+
+      // Label text
+      ctx.fillStyle = isSelected ? '#22d3ee' : (isHovered ? '#ffffff' : 'rgba(255, 255, 255, 0.7)');
+      
+      // Split text on spaces to wrap neatly on two lines inside the small tab canvas
+      const words = tab.label.split(' ');
+      ctx.font = 'bold 20px "Space Grotesk", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      if (words.length > 1) {
+          ctx.fillText(words.slice(0, Math.ceil(words.length / 2)).join(' '), w / 2, h / 2 - 16);
+          ctx.fillText(words.slice(Math.ceil(words.length / 2)).join(' '), w / 2, h / 2 + 16);
+      } else {
+          ctx.fillText(tab.label, w / 2, h / 2);
+      }
+
+      tab.texture.needsUpdate = true;
+  }
+
+  private setTutorialVideo(step: number) {
+      if (!this.tutorialVideo) {
+          this.tutorialVideo = document.createElement('video');
+          this.tutorialVideo.crossOrigin = 'anonymous';
+          this.tutorialVideo.loop = true;
+          this.tutorialVideo.muted = true;
+          this.tutorialVideo.playsInline = true;
+          this.tutorialVideo.autoplay = true;
+          this.tutorialVideo.play().catch(() => {});
+      }
+      
+      let src = "./JugnuV4/JugnuPinched.mp4";
+      if (step === 1) src = "./JugnuV4/JugnuRotate.mp4";
+      else if (step === 2) src = "./JugnuV4/JugnuPinched.mp4";
+      else if (step === 3) src = "./JugnuV4/JugnuRotate.mp4";
+      else if (step === 4 || step === 5) src = "./360Videos/view1.mp4";
+      
+      const absSrc = new URL(src, window.location.href).href;
+      if (this.tutorialVideo.src !== absSrc) {
+          this.tutorialVideo.src = src;
+          this.tutorialVideo.load();
+          this.tutorialVideo.play().catch(() => {});
+      }
+  }
+
   private redrawCompassTutorial(step: number) {
       const ctx = this.compassTutorialCtx;
       const w = 768;
@@ -3342,84 +3638,65 @@ export class JugnuSystem extends createSystem({
       // Current Active Instruction
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 15px monospace';
-      ctx.fillText(`STEP ${step + 1} OF 3`, w / 2, 85 + dy);
+      ctx.fillText(`STEP ${step + 1} OF 6`, w / 2, 72 + dy);
 
-      // Draw tutorial illustration/diagram representing the steps
+      // Ensure video is set
+      this.setTutorialVideo(step);
+
+      // Video Frame Box
+      const videoW = 240;
+      const videoH = 135;
+      const videoX = (w - videoW) / 2;
+      const videoY = 90 + dy;
+
+      if (this.tutorialVideo && this.tutorialVideo.readyState >= 2) {
+          ctx.drawImage(this.tutorialVideo, videoX, videoY, videoW, videoH);
+      } else {
+          // Loading fallback
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+          ctx.fillRect(videoX, videoY, videoW, videoH);
+          ctx.fillStyle = '#00ffff';
+          ctx.font = '14px monospace';
+          ctx.fillText("LOADING VIDEO...", w / 2, videoY + videoH / 2);
+      }
+
+      // Cyan neon border
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(videoX, videoY, videoW, videoH);
+
       let title = "";
       let desc = "";
       if (step === 0) {
-          title = "Pinch & Summon";
-          desc = "Pinch Jugnu with your index finger and thumb to grab or interact. Hold index pinch near Jugnu for 2 seconds to summon/dismiss the compass UI.";
-          
-          // Draw a stylized grab/hand illustration
-          ctx.strokeStyle = 'rgba(255, 215, 0, 0.6)';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(w / 2, 170 + dy, 25, 0, 2 * Math.PI); // Jugnu body
-          ctx.stroke();
-          ctx.fillStyle = '#f97316';
-          ctx.beginPath();
-          ctx.arc(w / 2, 170 + dy, 10, 0, 2 * Math.PI); // Jugnu core
-          ctx.fill();
-          
-          // Pinching fingers lines
-          ctx.strokeStyle = '#00ffff';
-          ctx.beginPath();
-          ctx.moveTo(w / 2 - 45, 170 + dy); ctx.lineTo(w / 2 - 25, 170 + dy); // Pinching left
-          ctx.moveTo(w / 2 + 45, 170 + dy); ctx.lineTo(w / 2 + 25, 170 + dy); // Pinching right
-          ctx.stroke();
+          title = "SUMMON COMPASS";
+          desc = "Pinch and hold your left index finger and thumb near Jugnu for 2 seconds to summon or dismiss the main holographic Compass UI.";
       } else if (step === 1) {
-          title = "Two-Handed Pinch";
-          desc = "Touch your two index fingers together to perform two-handed scaling gestures on the tactical minimap, or rotate using the middle finger pinch.";
-          
-          // Draw fingers touching illustration
-          ctx.strokeStyle = '#00ffff';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(w / 2 - 50, 170 + dy); ctx.lineTo(w / 2 - 10, 170 + dy); // Finger 1
-          ctx.moveTo(w / 2 + 50, 170 + dy); ctx.lineTo(w / 2 + 10, 170 + dy); // Finger 2
-          ctx.stroke();
-          ctx.fillStyle = '#ff007f';
-          ctx.beginPath();
-          ctx.arc(w / 2 - 10, 170 + dy, 5, 0, 2 * Math.PI); // Tip 1
-          ctx.arc(w / 2 + 10, 170 + dy, 5, 0, 2 * Math.PI); // Tip 2
-          ctx.fill();
+          title = "ROTATE MINIMAP";
+          desc = "Pinch with your middle finger and thumb, then rotate your hand to orient the tactical 3D stadium minimap table.";
       } else if (step === 2) {
-          title = "Wrist Control Button";
-          desc = "Look at your left wrist joint to reveal a glowing holographic minimap button. Tap it with your right index finger to spawn/dismiss the tactical stadium.";
-          
-          // Draw wrist button illustration
-          ctx.strokeStyle = '#ffd700';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.roundRect(w / 2 - 40, 155 + dy, 80, 30, 6); // Button
-          ctx.stroke();
-          ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
-          ctx.fill();
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 12px monospace';
-          ctx.fillText("MAP TOGGLE", w / 2, 174 + dy);
+          title = "ZOOM MINIMAP";
+          desc = "Pinch with the middle fingers of both hands and spread them apart to zoom in, or bring them together to zoom out.";
+      } else if (step === 3) {
+          title = "ACCESS STADIUMS";
+          desc = "Point and pinch the VENUE spoke on the main Compass UI to open the stadium selector, then select a stadium to load it.";
+      } else if (step === 4) {
+          title = "REPLAY EVENT";
+          desc = "Point and pinch the PLAY SEQ spoke on the Action Deck to run high-fidelity replay animations of the sports events.";
+      } else if (step === 5) {
+          title = "WEATHER UPDATES";
+          desc = "Point and pinch the STORM spoke on the Action Deck to cycle through atmospheric and weather styles for the stadium.";
       } else {
-          title = "Tutorial Complete";
+          title = "TUTORIAL COMPLETE";
           desc = "All core gestures learned successfully! You are fully configured to operate Jugnu XR Core features. Use the Compass UI for stadium controls at any time.";
-          
-          // Draw checkmark
-          ctx.strokeStyle = '#22c55e';
-          ctx.lineWidth = 5;
-          ctx.beginPath();
-          ctx.moveTo(w / 2 - 20, 170 + dy);
-          ctx.lineTo(w / 2 - 5, 185 + dy);
-          ctx.lineTo(w / 2 + 20, 150 + dy);
-          ctx.stroke();
       }
 
       ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 16px monospace';
-      ctx.fillText(title, w / 2, 230 + dy);
+      ctx.font = 'bold 18px monospace';
+      ctx.fillText(title, w / 2, 252 + dy);
 
       ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-      ctx.font = '13px monospace';
-      this.wrapText(desc, w / 2, 260 + dy, 440, 18);
+      ctx.font = '14px monospace';
+      this.wrapText(desc, w / 2, 280 + dy, 440, 18);
 
       this.compassTutorialTexture.needsUpdate = true;
   }

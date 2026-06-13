@@ -270,8 +270,10 @@ export class CityMapSystem extends createSystem() {
         try {
             this.renderer.compile(this.mapRoot, this.camera);
             console.log("[CityMapSystem] Shader pre-compilation successful!");
+            (window as any).cityMapSystemShadersCompiled = true;
         } catch (e) {
             console.warn("[CityMapSystem] Shader pre-compilation failed/skipped:", e);
+            (window as any).cityMapSystemShadersCompiled = true;
         }
     }
 

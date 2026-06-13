@@ -1086,3 +1086,20 @@
   - `[x]` Added F1 car enhancements (Airbox intake scoop, T-camera pod, sidepod cooling inlets, DRS actuator pod, exhaust pipe, and diffuser rain LED).
   - `[x]` Increased maximum gesture zoom scale limit from `6.0` to `10.0` and adjusted structural fading transitions.
   - `[x]` Verified compilation safety (`npx tsc --noEmit`) and client builds (`npm run build`).
+
+- `[x]` Holographic Tutorial Subsystem & 6-Tab Interactive Point-and-Pinch (Current Run)
+  - `[x]` Extended `redrawCompassTutorial(step)` to load and loop dynamic tutorial videos (`view1.mp4`, `JugnuRotate.mp4`, `JugnuPinched.mp4`) in the center panel window of the tutorial card.
+  - `[x]` Added point-and-pinch input hover and press selection for the 6 side tabs next to the tutorial card inside `JugnuSystem.update`.
+  - `[x]` Implemented dynamic visual state rendering for the 6 tabs (SUMMON COMPASS, ROTATE MAP, ZOOM MAP, DOMAINS, REPLAY EVENT, WEATHER STYLES) via `redrawTutorialTabMesh`.
+  - `[x]` Wired automatic tutorial step transitions: Step 0 -> 1 on compass summon, Step 1 -> 2 on minimap rotation, Step 2 -> 3 on two-handed zoom, Step 3 -> 4 on stadium selection, Step 4 -> 5 on PLAY spoke click, and Step 5 -> 6 on STORM spoke click.
+  - `[x]` Updated floating `JugnuInstructionBoard` texts to support the 6 upgraded tutorial descriptions.
+  - `[x]` Verified TypeScript type safety check (`npx tsc --noEmit`) and production build compilation (`npm run build`).
+
+- `[x]` Raycast Point-and-Pinch Side Tabs & Landing Page Refinements (Current Run)
+  - `[x]` Registered tutorial tab meshes as ECS entities with `Interactable`, `TutorialTabRef`, `PhysicsShape` (Box), and kinematic `PhysicsBody` components to enable pointing and raycast pinch selection from a distance.
+  - `[x]` Subscribed to the `tutorialTabPressed` ECS query in `src/jugnu.ts` to capture raycast presses and dynamically set the tutorial steps/videos from afar.
+  - `[x]` Removed pointer `Interactable` from the Jugnu companion model in `src/index.ts` to prevent raycast collision clashes.
+  - `[x]` Moved Gemini AI voice recording trigger directly to the Compass UI `VOICE` spoke button inside `handleCompassTileClick()`.
+  - `[x]` Overrode the Jugnu companion position (`0.12, 1.45, -0.22`), scale (`0.12`), and yaw rotation on the 2D landing page when `!isXR` (not presenting) to keep it floating next to the glassmorphic card.
+  - `[x]` Removed the floor grid (`GridHelper`) helper lines from `src/index.ts`.
+  - `[x]` Verified compilation safety (`npx tsc --noEmit`) and client builds (`npm run build`).

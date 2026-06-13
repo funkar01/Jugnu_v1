@@ -84,11 +84,19 @@ export class JugnuInstructionBoard extends THREE.Group {
         // Instruction Text
         let instructionText = "";
         if (step === 0) {
-            instructionText = "Pinch me with your index & thumb!";
+            instructionText = "Pinch & hold near me for 2s to open the Compass!";
         } else if (step === 1) {
-            instructionText = "Touch your index fingers together!";
+            instructionText = "Middle finger pinch and rotate to turn the minimap!";
         } else if (step === 2) {
-            instructionText = "Tap the glowing button on your left wrist!";
+            instructionText = "Middle finger pinch both hands & spread to zoom!";
+        } else if (step === 3) {
+            instructionText = "Use the VENUE spoke on the Compass to load stadiums!";
+        } else if (step === 4) {
+            instructionText = "Use the PLAY SEQ spoke on the Action Deck to run replays!";
+        } else if (step === 5) {
+            instructionText = "Use the STORM spoke on the Action Deck for weather updates!";
+        } else {
+            instructionText = "Tutorial Complete!";
         }
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';

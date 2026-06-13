@@ -15,6 +15,7 @@ import {
   AmbientLight,
   DirectionalLight,
   HemisphereLight,
+  VisibilityState,
 } from "@iwsdk/core";
 
 // Configure hand stencil material to act as a holdout (occlusion) mask showing passthrough
@@ -244,14 +245,7 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   // Set premium B2B dark slate-navy scene background
   world.scene.background = new Color(0x020617);
 
-  // Overhaul desktop fallback environment: Create a premium Holographic Holodeck Grid
-  const holodeckGrid = new GridHelper(30, 60, 0x00ffff, 0x0f172a);
-  holodeckGrid.position.y = 0.01;
-  if (holodeckGrid.material instanceof Material) {
-      holodeckGrid.material.transparent = true;
-      holodeckGrid.material.opacity = 0.22;
-  }
-  world.scene.add(holodeckGrid);
+  // floor grid helper removed
 
   // Premium High-Fidelity Spatial Lighting Setup
   const ambientLight = new AmbientLight(0x0f172a, 0.5); // Cool blue-slate shadow fill
@@ -264,8 +258,9 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   dirLight.position.set(4, 10, 3);
   world.createTransformEntity(dirLight);
 
-  camera.position.set(-4, 1.5, -6);
-  camera.rotateY(-Math.PI * 0.75);
+  // Position camera directly in front of the Jugnu companion in 2D mode
+  camera.position.set(0, 1.45, 0.4);
+  camera.lookAt(new Vector3(0, 1.45, -0.8));
 
   /*
   const { scene: envMesh } = AssetManager.getGLTF("environmentDesk")!;
@@ -320,10 +315,9 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   juguModel.position.set(0, deskTopY + 0.4, -0.8);
   juguModel.updateMatrixWorld(true);
 
-  // Render JugnuV2 and make it interactable for the voice system.
+  // Render JugnuV2. Raycast/interactable removed for voice activation.
   // Using Box instead of ConvexHull to prevent complex procedural geometry merge errors.
   world.createTransformEntity(juguModel)
-    .addComponent(Interactable)
     .addComponent(Jugnu)
     .addComponent(PhysicsShape, {
       shape: PhysicsShapeType.Sphere,
@@ -380,6 +374,68 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   logoBanner.position.set(0, 1, 1.8);
   logoBanner.rotateY(Math.PI);
   */
+
+  // Wire landing page interactive controls
+  const enterXrBtn = document.getElementById("enter-xr-btn");
+  const landingPage = document.getElementById("landing-page");
+  const shaderStatus = document.getElementById("shader-status-val");
+  const beaconText = document.querySelector(".status-beacon span");
+
+  if (enterXrBtn) {
+    enterXrBtn.addEventListener("click", () => {
+      world.launchXR();
+    });
+  }
+
+  // Poll for shader pre-compilation status across all spatial systems
+  const checkShaderCompilation = () => {
+    const cityCompiled = (window as any).cityMapSystemShadersCompiled;
+    const domainCompiled = (window as any).domainExpansionShadersCompiled;
+
+    if (cityCompiled && domainCompiled) {
+      if (enterXrBtn) {
+        (enterXrBtn as HTMLButtonElement).disabled = false;
+        enterXrBtn.innerHTML = `
+          <svg style="width: 20px; height: 20px; fill: currentColor; margin-right: 8px;" viewBox="0 0 24 24">
+            <path d="M21 5c-1.11-.01-2 .89-2 2v2.5l-2-2V5c0-1.11-.89-2-2-2H9c-1.11 0-2 .89-2 2v2.5l-2-2V5c0-1.11-.89-2-2-2s-2 .89-2 2v14c0 1.11.89 2 2 2s2-.89 2-2v-2.5l2 2V19c0 1.11.89 2 2 2h6c1.11 0 2-.89 2-2v-2.5l2 2V19c0 1.11.89 2 2 2s2-.89 2-2V5c0-1.11-.89-2-2-2zM9 19H5v-4.5l2 2V19zm10 0h-4v-2.5l2-2V19zM7 7.5L5 5.5V5h4v2.5zM19 5v2.5h-4V5h4z"/>
+          </svg>
+          <span>Enter XR</span>
+        `;
+      }
+      if (shaderStatus) {
+        shaderStatus.textContent = "COMPILED";
+        shaderStatus.style.color = "#00f2fe";
+      }
+      if (beaconText) {
+        beaconText.textContent = "System Ready";
+      }
+    } else {
+      requestAnimationFrame(checkShaderCompilation);
+    }
+  };
+
+  // Start polling compilation states
+  requestAnimationFrame(checkShaderCompilation);
+
+  // Handle visibility transitions to dynamically hide/show landing page
+  world.visibilityState.subscribe((state) => {
+    if (landingPage) {
+      if (state === VisibilityState.NonImmersive) {
+        landingPage.style.display = "flex";
+        // Let display apply before opacity transition
+        requestAnimationFrame(() => {
+          landingPage.style.opacity = "1";
+        });
+      } else {
+        landingPage.style.opacity = "0";
+        setTimeout(() => {
+          if (world.visibilityState.value !== VisibilityState.NonImmersive) {
+            landingPage.style.display = "none";
+          }
+        }, 500);
+      }
+    }
+  });
 
   world.registerSystem(PanelSystem).registerSystem(JugnuSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem).registerSystem(SpatialFXSystem);
 });
