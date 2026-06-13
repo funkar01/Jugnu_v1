@@ -814,6 +814,11 @@
   - `[x]` Implemented a 1.0-second hold requirement for physical controller triggers with a single-shot release guard.
   - `[x]` Reduced the viewfinder finger-touch threshold from 5.5 cm to 3.5 cm for precise proximity gating.
   - `[x]` Enhanced the L-shape extension heuristic with relative finger curl limits and index-thumb pinch protection.
+  - `[x]` Updated duplicate console hooks in both `JugnuDebugBoard.ts` and `src/jugnu.ts` to properly format and unpack `Error` objects, resolving the empty `"{}"` debug message issue.
+  - `[x]` Upgraded client-side backend response checks in `src/jugnu.ts` to support both string and object-based serverless error payloads, preventing the masking of server configuration warnings.
+  - `[x]` Implemented a **Zero-Cost Local Web Speech Fallback Pipeline** using the browser's native `webkitSpeechRecognition` API running concurrently with the recorder.
+  - `[x]` Programmed a local Regex intent parser (`executeLocalFallback`) to automatically process transcribed text and execute stadium changes, weather, pyrotechnics, and grids locally.
+  - `[x]` Linked the Gemini query failure block to trigger the local fallback instantly upon network/API gateway errors (CORS, 429 rate limits, Vercel offline).
   - `[x]` Verified static type checking compiles cleanly (`npx tsc --noEmit`).
   - `[x]` Built production client assets successfully (`npm run build`).
 

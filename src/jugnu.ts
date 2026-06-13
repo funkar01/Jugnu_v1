@@ -203,6 +203,8 @@ export class JugnuSystem extends createSystem({
   private lockEscapeTimer = 0.0;
   private controllerScreenshotTimer = 0.0;
   private controllerScreenshotFired = false;
+  private localRecognition: any = null;
+  private localTranscript: string = "";
 
   // Optimized Fireflies instanced particle system
   private firefliesMesh!: THREE.InstancedMesh;
@@ -388,6 +390,30 @@ export class JugnuSystem extends createSystem({
         this.silenceTimer = 0;
         this.listenTimer = 0;
 
+        // Initialize local speech recognition fallback
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            this.localRecognition = new SpeechRecognition();
+            this.localRecognition.continuous = false;
+            this.localRecognition.interimResults = false;
+            this.localRecognition.lang = 'en-US';
+            this.localTranscript = "";
+
+            this.localRecognition.onresult = (event: any) => {
+                const result = event.results[0]?.[0]?.transcript;
+                if (result) {
+                    this.localTranscript = result;
+                    console.log("[LocalSpeech] Transcribed text:", result);
+                }
+            };
+
+            this.localRecognition.onerror = (err: any) => {
+                console.warn("[LocalSpeech] Recognition error:", err);
+            };
+
+            this.localRecognition.start();
+        }
+
         this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
         this.mediaRecorder.ondataavailable = (e) => {
            if (e.data.size > 0) {
@@ -405,6 +431,13 @@ export class JugnuSystem extends createSystem({
                await this.audioContext.close();
                this.audioContext = null;
                this.analyser = null;
+           }
+
+           // Stop local speech recognition
+           if (this.localRecognition) {
+               try {
+                   this.localRecognition.stop();
+               } catch (e) {}
            }
 
            const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
@@ -484,7 +517,8 @@ PARAMETER: [parameter value or "none"]` },
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.error?.message || "Unknown Gemini API Error");
+        const errMsg = (data && data.error) ? (typeof data.error === 'object' ? data.error.message : data.error) : null;
+        throw new Error(errMsg || data.message || "Unknown Gemini API Error");
       }
       
       let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -558,152 +592,304 @@ PARAMETER: [parameter value or "none"]` },
           this.speak(reply);
 
           // Voice Action Router Execution
-          const domainSystem = this.world.getSystem(DomainExpansionSystem);
-
-          if (action === 'change_venue') {
-              if (['default', 'berlin', 'inuit', 'butterflies', 'nurburgring'].includes(parameter)) {
-                  this.selectedStadium = parameter as any;
-                  (window as any).selectedStadiumType = this.selectedStadium;
-                  console.log(`[VoiceAction] Changed stadium to ${this.selectedStadium}`);
-                  const spatialFX = (window as any).spatialFX;
-                  if (spatialFX) {
-                      spatialFX.playPositionalSound('click', this.headPos || new THREE.Vector3(0, 1.4, -0.5));
-                  }
-              }
-          } else if (action === 'toggle_minimap') {
-              const tableVisible = !!(window as any).minimapTableVisible;
-              if (parameter === 'open' && !tableVisible) {
-                  (window as any).triggerMinimapToggle = true;
-              } else if (parameter === 'close' && tableVisible) {
-                  (window as any).triggerMinimapToggle = true;
-              } else if (parameter === 'none' || !parameter) {
-                  (window as any).triggerMinimapToggle = true;
-              }
-          } else if (action === 'toggle_weather') {
-              if (domainSystem) {
-                  let mode: 'off' | 'rain' | 'neon_dust' = 'off';
-                  if (parameter === 'rain') mode = 'rain';
-                  else if (parameter === 'snow' || parameter === 'dust' || parameter === 'neon_dust') mode = 'neon_dust';
-                  else if (parameter === 'clear' || parameter === 'off') mode = 'off';
-                  domainSystem.setWeatherMode(mode);
-              }
-          } else if (action === 'play_sports') {
-              if (domainSystem) {
-                  domainSystem.triggerSportSequence();
-              }
-          } else if (action === 'trigger_fireworks') {
-              if (domainSystem) {
-                  domainSystem.triggerManualFireworks();
-              }
-          } else if (action === 'capture_moment') {
-              if (this.momentCooldown <= 0.0) {
-                  this.momentCooldown = 4.0;
-                  this.captureScreenshot();
-              } else {
-                  console.log("[VoiceAction] Skipping capture_moment due to active screenshot cooldown.");
-              }
-          } else if (action === 'toggle_walls') {
-              const val = parameter === 'show' ? true : (parameter === 'hide' ? false : !((window as any).showRoomWalls ?? false));
-              (window as any).showRoomWalls = val;
-              this.redrawCompassGrid(this.hoveredCellIndex);
-          } else if (action === 'toggle_lock') {
-              const targetLock = parameter === 'lock' ? true : (parameter === 'unlock' ? false : !this.isGridLocked);
-              if (this.isGridLocked !== targetLock) {
-                  this.isGridLocked = targetLock;
-                  const title = this.isGridLocked ? "Grid Locked" : "Grid Unlocked";
-                  let detail = "";
-                  
-                  if (this.isGridLocked) {
-                      this.interactionState = 'Anchored';
-                      const isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
-                      this.lockPinchAllowed = !isPinchingLeft;
-                      this.queries.jugnu.entities.forEach(entity => {
-                          if (entity.object3D) {
-                              this.centerPos.copy(entity.object3D.position);
-                              entity.object3D.position.copy(this.centerPos);
-                              this.velocity.set(0, 0, 0);
-                              this.setExpression(6);
-                          }
-                      });
-                      this.chatHistory.push({ sender: 'System', text: 'Rigid Spatial Anchor: LOCKED.' });
-                      this.redrawCompassChat();
-                      detail = "Compass Grid & Companion locked.\n\nStatus: RIGIDLY ANCHORED.\nJugnu will stay at this exact point.\nRelease pinch to let companion stay here.";
-                  } else {
-                      this.interactionState = 'Following';
-                      this.lockedCompassPos = null;
-                      this.lockedCompassQuat = null;
-                      this.chatHistory.push({ sender: 'System', text: 'Rigid Spatial Anchor: RELEASED.' });
-                      this.redrawCompassChat();
-                      this.setExpression(2);
-                      detail = "Compass Grid Unlocked.\n\nStatus: FREE FLOATING.\nClosing delay of 2.0s restored upon pinch release.";
-                  }
-
-                  const spatialFX = (window as any).spatialFX;
-                  if (spatialFX) {
-                      spatialFX.playPositionalSound(this.isGridLocked ? 'lockBreak' : 'click', this.centerPos);
-                      spatialFX.triggerSpark(this.centerPos, this.isGridLocked ? new THREE.Color(0x22c55e) : new THREE.Color(0x00ffcc), 15);
-                  }
-                  
-                  this.centerTitle = title;
-                  this.centerDetail = detail;
-                  this.redrawCompassGrid(this.hoveredCellIndex);
-              }
-          } else if (action === 'change_mood') {
-              const moodMap: Record<string, number> = {
-                  bored: 0,
-                  calm: 1,
-                  happy: 2,
-                  sad: 3,
-                  bright: 4,
-                  blushing: 5,
-                  winking: 6
-              };
-              const targetIdx = moodMap[parameter];
-              if (targetIdx !== undefined) {
-                  this.setExpression(targetIdx);
-                  console.log(`[VoiceAction] Changed expression to index ${targetIdx}`);
-              }
-          } else if (action === 'help_guide') {
-              // 1. Close other tabs and open Chat logs tab
-              this.isTutorialOpen = false;
-              this.isDebugOpen = false;
-              this.isStadiumMenuOpen = false;
-              this.isChatOpen = true;
-              this.lastOpenedTab = 'CHAT';
-
-              // 2. Push structured guide lines into chatHistory
-              this.chatHistory.push({ sender: 'System', text: '=== JUGNU VOICE GUIDE ===' });
-              this.chatHistory.push({ sender: 'System', text: '- "Go to [Venue]" (Berlin | Inuit | Butterflies | Default)' });
-              this.chatHistory.push({ sender: 'System', text: '- "Make it rain" | "Snow" | "Clear weather"' });
-              this.chatHistory.push({ sender: 'System', text: '- "Open minimap" | "Close minimap"' });
-              this.chatHistory.push({ sender: 'System', text: '- "Play sports" | "Trigger fireworks"' });
-              this.chatHistory.push({ sender: 'System', text: '- "Capture photo" | "Lock companion" | "Unlock"' });
-              this.chatHistory.push({ sender: 'System', text: '- "Show walls" | "Hide walls"' });
-              this.chatHistory.push({ sender: 'System', text: '- "Happy" | "Winking" | "Bored" (Change mood)' });
-              this.redrawCompassChat();
-          }
-
-          // If a voice command is successfully parsed (action !== 'none'), advance tutorial step 3 -> 4
-          if (action !== 'none') {
-              this.queries.jugnu.entities.forEach(entity => {
-                  const currentStep = entity.getValue(Jugnu, "instructionStep") as number;
-                  if (currentStep === 3) {
-                      entity.setValue(Jugnu, "instructionStep", 4);
-                      console.log(`[JugnuSystem] Step 3 complete: voice command '${action}' triggered! Advancing to Step 4.`);
-                  }
-              });
-          }
+          this.executeVoiceAction(action, parameter);
       }
     } catch (e) {
       console.error("Gemini Error:", e);
-      this.queries.jugnu.entities.forEach(entity => {
-          const jugModel = entity.object3D as JugnuV3Model;
-          if (jugModel && typeof jugModel.setMood === 'function') {
-              jugModel.setMood('sad');
-          }
-      });
-      this.speak("Sorry, I am having trouble connecting to my brain right now.");
+      
+      // Fallback: If local speech recognition captured text during this session, parse locally
+      if (this.localTranscript) {
+          console.log("[LocalSpeech] Gemini failed. Falling back to local keyword parsing for:", this.localTranscript);
+          this.executeLocalFallback(this.localTranscript);
+      } else {
+          this.queries.jugnu.entities.forEach(entity => {
+              const jugModel = entity.object3D as JugnuV3Model;
+              if (jugModel && typeof jugModel.setMood === 'function') {
+                  jugModel.setMood('sad');
+              }
+          });
+          this.speak("Sorry, I am having trouble connecting to my brain right now.");
+      }
     }
+  }
+
+  executeVoiceAction(action: string, parameter: string) {
+      const domainSystem = this.world.getSystem(DomainExpansionSystem);
+
+      if (action === 'change_venue') {
+          if (['default', 'berlin', 'inuit', 'butterflies', 'nurburgring'].includes(parameter)) {
+              this.selectedStadium = parameter as any;
+              (window as any).selectedStadiumType = this.selectedStadium;
+              console.log(`[VoiceAction] Changed stadium to ${this.selectedStadium}`);
+              const spatialFX = (window as any).spatialFX;
+              if (spatialFX) {
+                  spatialFX.playPositionalSound('click', this.headPos || new THREE.Vector3(0, 1.4, -0.5));
+              }
+          }
+      } else if (action === 'toggle_minimap') {
+          const tableVisible = !!(window as any).minimapTableVisible;
+          if (parameter === 'open' && !tableVisible) {
+              (window as any).triggerMinimapToggle = true;
+          } else if (parameter === 'close' && tableVisible) {
+              (window as any).triggerMinimapToggle = true;
+          } else if (parameter === 'none' || !parameter) {
+              (window as any).triggerMinimapToggle = true;
+          }
+      } else if (action === 'toggle_weather') {
+          if (domainSystem) {
+              let mode: 'off' | 'rain' | 'neon_dust' = 'off';
+              if (parameter === 'rain') mode = 'rain';
+              else if (parameter === 'snow' || parameter === 'dust' || parameter === 'neon_dust') mode = 'neon_dust';
+              else if (parameter === 'clear' || parameter === 'off') mode = 'off';
+              domainSystem.setWeatherMode(mode);
+          }
+      } else if (action === 'play_sports') {
+          if (domainSystem) {
+              domainSystem.triggerSportSequence();
+          }
+      } else if (action === 'trigger_fireworks') {
+          if (domainSystem) {
+              domainSystem.triggerManualFireworks();
+          }
+      } else if (action === 'capture_moment') {
+          if (this.momentCooldown <= 0.0) {
+              this.momentCooldown = 4.0;
+              this.captureScreenshot();
+          } else {
+              console.log("[VoiceAction] Skipping capture_moment due to active screenshot cooldown.");
+          }
+      } else if (action === 'toggle_walls') {
+          const val = parameter === 'show' ? true : (parameter === 'hide' ? false : !((window as any).showRoomWalls ?? false));
+          (window as any).showRoomWalls = val;
+          this.redrawCompassGrid(this.hoveredCellIndex);
+      } else if (action === 'toggle_lock') {
+          const targetLock = parameter === 'lock' ? true : (parameter === 'unlock' ? false : !this.isGridLocked);
+          if (this.isGridLocked !== targetLock) {
+              this.isGridLocked = targetLock;
+              const title = this.isGridLocked ? "Grid Locked" : "Grid Unlocked";
+              let detail = "";
+              
+              if (this.isGridLocked) {
+                  this.interactionState = 'Anchored';
+                  const isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
+                  this.lockPinchAllowed = !isPinchingLeft;
+                  this.queries.jugnu.entities.forEach(entity => {
+                      if (entity.object3D) {
+                          this.centerPos.copy(entity.object3D.position);
+                          entity.object3D.position.copy(this.centerPos);
+                          this.velocity.set(0, 0, 0);
+                          this.setExpression(6);
+                      }
+                  });
+                  this.chatHistory.push({ sender: 'System', text: 'Rigid Spatial Anchor: LOCKED.' });
+                  this.redrawCompassChat();
+                  detail = "Compass Grid & Companion locked.\n\nStatus: RIGIDLY ANCHORED.\nJugnu will stay at this exact point.\nRelease pinch to let companion stay here.";
+              } else {
+                  this.interactionState = 'Following';
+                  this.lockedCompassPos = null;
+                  this.lockedCompassQuat = null;
+                  this.chatHistory.push({ sender: 'System', text: 'Rigid Spatial Anchor: RELEASED.' });
+                  this.redrawCompassChat();
+                  this.setExpression(2);
+                  detail = "Compass Grid Unlocked.\n\nStatus: FREE FLOATING.\nClosing delay of 2.0s restored upon pinch release.";
+              }
+
+              const spatialFX = (window as any).spatialFX;
+              if (spatialFX) {
+                  spatialFX.playPositionalSound(this.isGridLocked ? 'lockBreak' : 'click', this.centerPos);
+                  spatialFX.triggerSpark(this.centerPos, this.isGridLocked ? new THREE.Color(0x22c55e) : new THREE.Color(0x00ffcc), 15);
+              }
+              
+              this.centerTitle = title;
+              this.centerDetail = detail;
+              this.redrawCompassGrid(this.hoveredCellIndex);
+          }
+      } else if (action === 'change_mood') {
+          const moodMap: Record<string, number> = {
+              bored: 0,
+              calm: 1,
+              happy: 2,
+              sad: 3,
+              bright: 4,
+              blushing: 5,
+              winking: 6
+          };
+          const targetIdx = moodMap[parameter];
+          if (targetIdx !== undefined) {
+              this.setExpression(targetIdx);
+              console.log(`[VoiceAction] Changed expression to index ${targetIdx}`);
+          }
+      } else if (action === 'help_guide') {
+          // 1. Close other tabs and open Chat logs tab
+          this.isTutorialOpen = false;
+          this.isDebugOpen = false;
+          this.isStadiumMenuOpen = false;
+          this.isChatOpen = true;
+          this.lastOpenedTab = 'CHAT';
+
+          // 2. Push structured guide lines into chatHistory
+          this.chatHistory.push({ sender: 'System', text: '=== JUGNU VOICE GUIDE ===' });
+          this.chatHistory.push({ sender: 'System', text: '- "Go to [Venue]" (Berlin | Inuit | Butterflies | Default)' });
+          this.chatHistory.push({ sender: 'System', text: '- "Make it rain" | "Snow" | "Clear weather"' });
+          this.chatHistory.push({ sender: 'System', text: '- "Open minimap" | "Close minimap"' });
+          this.chatHistory.push({ sender: 'System', text: '- "Play sports" | "Trigger fireworks"' });
+          this.chatHistory.push({ sender: 'System', text: '- "Capture photo" | "Lock companion" | "Unlock"' });
+          this.chatHistory.push({ sender: 'System', text: '- "Show walls" | "Hide walls"' });
+          this.chatHistory.push({ sender: 'System', text: '- "Happy" | "Winking" | "Bored" (Change mood)' });
+          this.redrawCompassChat();
+      }
+
+      // If a voice command is successfully parsed (action !== 'none'), advance tutorial step 3 -> 4
+      if (action !== 'none') {
+          this.queries.jugnu.entities.forEach(entity => {
+              const currentStep = entity.getValue(Jugnu, "instructionStep") as number;
+              if (currentStep === 3) {
+                  entity.setValue(Jugnu, "instructionStep", 4);
+                  console.log(`[JugnuSystem] Step 3 complete: voice command '${action}' triggered! Advancing to Step 4.`);
+              }
+          });
+      }
+  }
+
+  private executeLocalFallback(transcript: string) {
+      const lower = transcript.toLowerCase();
+      let action = "none";
+      let parameter = "none";
+      let reply = "Executing local command.";
+      let mood: Mood = 'happy';
+
+      // 1. Weather
+      if (lower.includes("rain")) {
+          action = "toggle_weather";
+          parameter = "rain";
+          reply = "Making it rain!";
+      } else if (lower.includes("snow") || lower.includes("neon dust") || lower.includes("dust")) {
+          action = "toggle_weather";
+          parameter = "neon_dust";
+          reply = "Activating snow and dust cycles.";
+      } else if (lower.includes("clear") || lower.includes("off") || lower.includes("sunny")) {
+          action = "toggle_weather";
+          parameter = "off";
+          reply = "Clearing the weather.";
+      }
+      
+      // 2. Minimap
+      else if (lower.includes("minimap") || lower.includes("map")) {
+          action = "toggle_minimap";
+          if (lower.includes("close") || lower.includes("hide") || lower.includes("shut")) {
+              parameter = "close";
+              reply = "Closing minimap table.";
+          } else {
+              parameter = "open";
+              reply = "Opening minimap table.";
+          }
+      }
+
+      // 3. Venue
+      else if (lower.includes("venue") || lower.includes("go to") || lower.includes("change to") || lower.includes("stadium")) {
+          action = "change_venue";
+          if (lower.includes("berlin") || lower.includes("football") || lower.includes("soccer")) {
+              parameter = "berlin";
+              reply = "Switching venue to Berlin Olympiastadion!";
+          } else if (lower.includes("inuit") || lower.includes("basketball") || lower.includes("court")) {
+              parameter = "inuit";
+              reply = "Switching venue to the Inuit basketball arena!";
+          } else if (lower.includes("butterfly") || lower.includes("park") || lower.includes("garden")) {
+              parameter = "butterflies";
+              reply = "Switching venue to the Butterfly Park!";
+          } else if (lower.includes("nurburgring") || lower.includes("track") || lower.includes("f1") || lower.includes("race")) {
+              parameter = "nurburgring";
+              reply = "Switching venue to the Nürburgring F1 track!";
+          } else {
+              parameter = "default";
+              reply = "Returning to the default cricket stadium!";
+          }
+      }
+
+      // 4. Pyrotechnics
+      else if (lower.includes("firework") || lower.includes("spark") || lower.includes("pyro")) {
+          action = "trigger_fireworks";
+          reply = "Launching holographic fireworks show!";
+      }
+
+      // 5. Sports Replay
+      else if (lower.includes("play sport") || lower.includes("sport") || lower.includes("replay") || lower.includes("sequence")) {
+          action = "play_sports";
+          reply = "Triggering sports replay sequence.";
+      }
+
+      // 6. Screenshot
+      else if (lower.includes("screenshot") || lower.includes("photo") || lower.includes("moment") || lower.includes("camera") || lower.includes("picture")) {
+          action = "capture_moment";
+          reply = "Capturing 3D screenshot!";
+      }
+
+      // 7. Walls
+      else if (lower.includes("wall") || lower.includes("room")) {
+          action = "toggle_walls";
+          if (lower.includes("hide") || lower.includes("off") || lower.includes("remove")) {
+              parameter = "hide";
+              reply = "Hiding wall boundaries.";
+          } else {
+              parameter = "show";
+              reply = "Showing wall boundaries.";
+          }
+      }
+
+      // 8. Anchor Lock
+      else if (lower.includes("lock") || lower.includes("anchor")) {
+          action = "toggle_lock";
+          if (lower.includes("unlock") || lower.includes("release")) {
+              parameter = "unlock";
+              reply = "Unlocking companion.";
+          } else {
+              parameter = "lock";
+              reply = "Locking companion in place.";
+          }
+      }
+
+      // 9. Mood
+      else if (lower.includes("mood") || lower.includes("feel") || lower.includes("expression") || lower.includes("be ")) {
+          action = "change_mood";
+          if (lower.includes("bored")) { parameter = "bored"; mood = "bored"; }
+          else if (lower.includes("calm")) { parameter = "calm"; mood = "calm"; }
+          else if (lower.includes("sad")) { parameter = "sad"; mood = "sad"; }
+          else if (lower.includes("bright")) { parameter = "bright"; mood = "bright"; }
+          else if (lower.includes("blush")) { parameter = "blushing"; mood = "blushing"; }
+          else if (lower.includes("wink")) { parameter = "winking"; mood = "winking"; }
+          else { parameter = "happy"; mood = "happy"; }
+          reply = `Setting expression to ${parameter}.`;
+      }
+
+      // 10. Help Guide
+      else if (lower.includes("help") || lower.includes("command") || lower.includes("what can you do") || lower.includes("guide")) {
+          action = "help_guide";
+          reply = "I have printed the active voice shortcuts directory on the Chat Logs card in front of you.";
+      }
+
+      // Execute Action
+      if (action !== "none") {
+          this.executeVoiceAction(action, parameter);
+          this.updateTranscriptUI(transcript, reply);
+          
+          this.queries.jugnu.entities.forEach(entity => {
+              const jugModel = entity.object3D as JugnuV3Model;
+              if (jugModel && typeof jugModel.setMood === 'function') {
+                  jugModel.setMood(mood);
+              }
+          });
+          
+          this.speak(reply);
+      } else {
+          this.queries.jugnu.entities.forEach(entity => {
+              const jugModel = entity.object3D as JugnuV3Model;
+              if (jugModel && typeof jugModel.setMood === 'function') {
+                  jugModel.setMood('sad');
+              }
+          });
+          this.updateTranscriptUI(transcript, "I heard you, but I couldn't match a command. Say 'Help' to see shortcuts.");
+          this.speak("I heard you, but I couldn't match a command.");
+      }
   }
 
   speak(text: string) {
@@ -3488,21 +3674,35 @@ PARAMETER: [parameter value or "none"]` },
 
   private hookConsole() {
       const self = this;
+      const formatArg = (arg: any) => {
+          if (arg instanceof Error) {
+              return arg.message || arg.toString();
+          }
+          if (arg && typeof arg === 'object') {
+              try {
+                  return JSON.stringify(arg);
+              } catch (e) {
+                  return '[Unserializable Object]';
+              }
+          }
+          return String(arg);
+      };
+
       console.log = function(...args: any[]) {
           self.originalLog.apply(console, args);
-          const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          const msg = args.map(formatArg).join(' ');
           self.addDebugLog('info', msg);
       };
 
       console.warn = function(...args: any[]) {
           self.originalWarn.apply(console, args);
-          const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          const msg = args.map(formatArg).join(' ');
           self.addDebugLog('warn', msg);
       };
 
       console.error = function(...args: any[]) {
           self.originalError.apply(console, args);
-          const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          const msg = args.map(formatArg).join(' ');
           self.addDebugLog('error', msg);
       };
   }
