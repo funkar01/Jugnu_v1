@@ -3305,7 +3305,7 @@ export class JugnuSystem extends createSystem({
       // Draw semi-transparent backing board that fits inside the frame
       ctx.fillStyle = 'rgba(5, 5, 25, 0.75)';
       ctx.beginPath();
-      ctx.roundRect(12, 12, w - 24, h - 24, 16);
+      ctx.roundRect(dx + 12, dy + 12, w - 2 * dx - 24, h - 2 * dy - 24, 16);
       ctx.fill();
 
       // Draw preprocessed frame
@@ -3459,7 +3459,7 @@ export class JugnuSystem extends createSystem({
       // Draw semi-transparent backing board that fits inside the frame
       ctx.fillStyle = 'rgba(5, 5, 25, 0.75)';
       ctx.beginPath();
-      ctx.roundRect(12, 12, w - 24, h - 24, 16);
+      ctx.roundRect(dx + 12, dy + 12, w - 2 * dx - 24, h - 2 * dy - 24, 16);
       ctx.fill();
 
       // Draw preprocessed frame
@@ -3584,7 +3584,7 @@ export class JugnuSystem extends createSystem({
       // Draw semi-transparent backing board that fits inside the frame
       ctx.fillStyle = 'rgba(5, 5, 25, 0.75)';
       ctx.beginPath();
-      ctx.roundRect(12, 12, w - 24, h - 24, 16);
+      ctx.roundRect(dx + 12, dy + 12, w - 2 * dx - 24, h - 2 * dy - 24, 16);
       ctx.fill();
 
       // Draw preprocessed frame

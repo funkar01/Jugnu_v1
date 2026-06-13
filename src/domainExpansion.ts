@@ -3238,8 +3238,8 @@ export class DomainExpansionSystem extends createSystem({
                         const ratio = currentHandDist / this.initialHandDist;
                         const targetUserScale = this.initialUserScale * ratio;
                         
-                        // strictly clamped from 1.0 (base 0.60m diameter) up to 6.0 (Player Immersive maximum)
-                        this.userTableScale = THREE.MathUtils.clamp(targetUserScale, 1.0, 6.0);
+                        // strictly clamped from 1.0 (base 0.60m diameter) up to 10.0 (Player Immersive maximum)
+                        this.userTableScale = THREE.MathUtils.clamp(targetUserScale, 1.0, 10.0);
                         
                         // Log only on significant scale changes to avoid spamming the debug board
                         if (Math.abs(this.userTableScale - this.lastLoggedScale) > 0.2) {
@@ -3754,12 +3754,12 @@ export class DomainExpansionSystem extends createSystem({
 
                 // - Small Version (Minimized): [1.0, 2.0) -> fully visible (stFadeFactor = 1.0)
                 // - Medium Version: [2.0, 2.5) -> if isNavLayerActive, fade to 0.70 (30% transparency), else 0.90 (90% solid)
-                // - Player Immersive View: [2.5, 6.0] -> structural meshes smoothly fade to 0.0 from their starting opacity
+                // - Player Immersive View: [2.5, 10.0] -> structural meshes smoothly fade to 0.0 from their starting opacity
                 let stFadeFactor = 1.0;
                 if (this.currentTableScale >= 2.5) {
                     const startVal = this.isNavLayerActive ? 0.70 : 0.90;
                     stFadeFactor = THREE.MathUtils.clamp(
-                        THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 6.0, startVal, 0.0),
+                        THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 10.0, startVal, 0.0),
                         0.0,
                         startVal
                     );
@@ -3839,12 +3839,12 @@ export class DomainExpansionSystem extends createSystem({
                 this.holoCylinderWire.visible = true;
                 
                 const cylinderAlpha = THREE.MathUtils.clamp(
-                    THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 6.0, 0.0, 0.15),
+                    THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 10.0, 0.0, 0.15),
                     0.0,
                     0.15
                 );
                 const wireframeAlpha = THREE.MathUtils.clamp(
-                    THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 6.0, 0.0, 0.5),
+                    THREE.MathUtils.mapLinear(this.currentTableScale, 2.5, 10.0, 0.0, 0.5),
                     0.0,
                     0.5
                 );
@@ -8415,6 +8415,28 @@ export class DomainExpansionSystem extends createSystem({
         visorMesh.position.set(0, 0.0028, -0.001);
         car.add(visorMesh);
 
+        // Airbox intake scoop above driver helmet
+        const airboxGeo = new THREE.CylinderGeometry(0.0006, 0.0008, 0.0016, 8);
+        airboxGeo.rotateX(Math.PI / 2);
+        const airbox = new THREE.Mesh(airboxGeo, carbonMat);
+        airbox.position.set(0, 0.0034, -0.0028);
+        car.add(airbox);
+
+        // Yellow T-Camera pod on top of the airbox
+        const tCamGeo = new THREE.BoxGeometry(0.0004, 0.0003, 0.001);
+        const tCamMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.5 });
+        const tCam = new THREE.Mesh(tCamGeo, tCamMat);
+        tCam.position.set(0, 0.0043, -0.0028);
+        car.add(tCam);
+
+        // Dark intakes on front face of sidepods (creates hollow depth illusion)
+        const leftIntakeGeo = new THREE.BoxGeometry(0.0014, 0.001, 0.0002);
+        const leftIntake = new THREE.Mesh(leftIntakeGeo, carbonMat);
+        leftIntake.position.set(-0.0024, 0.0012, 0.0016);
+        const rightIntake = new THREE.Mesh(leftIntakeGeo, carbonMat);
+        rightIntake.position.set(0.0024, 0.0012, 0.0016);
+        car.add(leftIntake, rightIntake);
+
         // Sleek engine cover spine (tapered cylinder)
         const spineGeo = new THREE.CylinderGeometry(0.0005, 0.0011, 0.0042, 8);
         spineGeo.rotateX(Math.PI / 2);
@@ -8481,6 +8503,26 @@ export class DomainExpansionSystem extends createSystem({
         const rightRearEndplate = new THREE.Mesh(rearEndplateGeo, carbonMat);
         rightRearEndplate.position.set(0.0034, 0.0030, -0.0072);
         car.add(leftRearEndplate, rightRearEndplate);
+
+        // DRS actuator pod in the center of the rear wing upper plane
+        const drsPodGeo = new THREE.BoxGeometry(0.0005, 0.0006, 0.0010);
+        const drsPod = new THREE.Mesh(drsPodGeo, carbonMat);
+        drsPod.position.set(0, 0.0039, -0.007);
+        car.add(drsPod);
+
+        // Exhaust pipe (exits out of the rear engine cover)
+        const exhaustGeo = new THREE.CylinderGeometry(0.0003, 0.0003, 0.0018, 6);
+        exhaustGeo.rotateX(Math.PI / 2);
+        const exhaust = new THREE.Mesh(exhaustGeo, axleMat);
+        exhaust.position.set(0, 0.0015, -0.0062);
+        car.add(exhaust);
+
+        // Blinking rain safety light in the diffuser center
+        const rainLightGeo = new THREE.BoxGeometry(0.0006, 0.0006, 0.0003);
+        const rainLightMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const rainLight = new THREE.Mesh(rainLightGeo, rainLightMat);
+        rainLight.position.set(0, 0.0006, -0.0083);
+        car.add(rainLight);
 
         // Suspension wishbones/struts (carbon fiber rods)
         const suspensionGeo = new THREE.BoxGeometry(0.0032, 0.0002, 0.0003);
