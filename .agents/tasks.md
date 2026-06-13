@@ -759,6 +759,7 @@
   - `[x]` Formulate integration architecture (Multi-Page App vs Single-Page DOM routing)
   - `[x]` Deliver comparative analysis and feasibility report
 
+<<<<<<< Updated upstream
 - `[x]` PICO OS 6 & WebSpatial SDK Porting (Current Run)
   - `[x]` Fixed the User-Agent redirect regex in [index.html](file:///c:/Users/SSD/Documents/GitHub/Jugnu_v1/index.html) to prevent Pico headsets from being redirected to `sticker.html`.
   - `[x]` Installed `@webspatial/core-sdk` package dependency.
@@ -1016,3 +1017,63 @@
 - `[x]` Dev Server Execution & Headset Connection Link (Current Run)
   - `[x]` Execute `npm run dev` in background
   - `[x]` Retrieve host local network IP addresses (`https://192.168.1.2:8081/` and `https://172.16.0.2:8081/`) for VR headset WebXR debugging
+
+- `[x]` Venue UI Radial Arc Rehaul & Tab Mutual Focus System (Current Run)
+  - `[x]` Overhauled `compassStadiumCanvas` to `600x600` pixels and `compassStadiumCard` to `0.30m x 0.30m` plane centered at Y = 0.0 concentric with the compass.
+  - `[x]` Rewrote `redrawCompassStadiumMenu()` using radial canvas drawing, circular center-cropped venue icons, checkmark badges, and radially centered rotated texts.
+  - `[x]` Updated fingertip collision checks to use polar coordinate math checking radial distance `[0.08, 0.13]` meters and top semi-circle coordinates matching targeted angles `[160°, 125°, 90°, 55°, 20°]`.
+  - `[x]` Implemented mutual tab exclusion in `handleCompassTileClick` to close all other open tabs when any new tab is opened.
+  - `[x]` Shifted info tabs coordinates to `x = 0.71, y = 0.0` when open to resolve layout conflicts with the Action UI.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful client production build (`npm run build`).
+
+- `[x]` Venue Selector Fix & Tab Proximity Refinements (Current Run)
+  - `[x]` Modified `src/jugnu.ts` tab proximity targets: shifted targets from X=0.71 to X=0.28 to bring Chat, Tutorial, and Debug panels closer to the user.
+  - `[x]` Modified `src/jugnu.ts` stadium menu hover/press coordinates: changed Z bounds check to be asymmetrical (`cardLocalTip.z > -0.04 && cardLocalTip.z < 0.025` / `0.014`), allowing physical index finger push-through up to 4cm past the plane.
+  - `[x]` Verified typecheck safety via `npx tsc --noEmit`.
+  - `[x]` Verified production client build success via `npm run build`.
+
+- `[x]` Action UI Layout & Text Upscaling (Current Run)
+  - `[x]` Updated `initActionCompassUI()` default position in `src/jugnu.ts` to `(0.11, -0.06, 0.0)`.
+  - `[x]` Added smooth position lerp animation for `actionCompassGroup` in `src/jugnu.ts` update loop to slide down to `Y = -0.16` when `isStadiumMenuOpen` is active.
+  - `[x]` Upscaled Venue UI text sizes in `redrawCompassStadiumMenu()`: checkmark (10px -> 12px), name (11px -> 16px/15px), and sub-label (8px -> 11px) with adjusted vertical offsets.
+  - `[x]` Upscaled Action UI text sizes in `redrawActionCompass()`: spoke label (12px -> 16px), title (20px -> 28px), and details (12px -> 16px) with adjusted layout parameters.
+  - `[x]` Verified typecheck safety via `npx tsc --noEmit`.
+  - `[x]` Verified production client build success via `npm run build`.
+
+- `[x]` Soccer Replay Glitch, Roster Optimization & Ball Overlay (Current Run)
+  - `[x]` Cached original local scale inside `child.userData.originalScale` for both goals and hoops/nets during GLTF loading traversals.
+  - `[x]` Rewrote `updateNetsWiggling()` and `restoreHoopScales()` in `src/domainExpansion.ts` to multiply wiggling dimensions relatively to `originalScale` and copy original scales back upon completion, eliminating the football goal warp glitch.
+  - `[x]` Optimized `rosterFootball` by removing 5 unused static players (`d1`, `d4`, `m1`, `fw2`, and linesman `ar1`), reducing the roster to 8 active actors to clean up pitch layout.
+  - `[x]` Set `depthTest: false` and `renderOrder = 9999` on `sequenceBall` and `hawkeyeBall` materials/meshes so they are overlayed over all geometry and visible at all times.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful client build (`npm run build`).
+
+- `[x]` Compass UI Face-User Orientation Refinements (Current Run)
+  - `[x]` Modified `src/jugnu.ts` updates loop to unconditionally execute `this.compassGroup.lookAt(this.headPos)` every frame.
+  - `[x]` Removed static locked orientation caching (`lockedCompassQuat`) when the panel is locked in space, allowing the backing board, tabs, venue panels, and action deck to rotate and face the user continuously.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Compass UI Top-Spawning Tilted Tabs Refinements (Current Run)
+  - `[x]` Shifted Tutorial and Debug open position coordinates in `src/jugnu.ts` to `(X = 0.0, Y = 0.28)`, spawning them clear of the concentric Venue UI selector card Y boundary.
+  - `[x]` Interpolated the local rotation around X-axis for Tutorial and Debug panels inside `src/jugnu.ts` to tilt them forward/downwards by 0.3 radians when open and restore them flat (0.0 radians) when closed.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Compass UI Tab Upscaling & Y Position Refinements (Current Run)
+  - `[x]` Increased PlaneGeometry dimensions for Chat, Tutorial, and Debug tab panels by 50% (from 0.24x0.18 to 0.36x0.27 meters) inside `src/jugnu.ts`.
+  - `[x]` Lowered the target open Y position coordinate for Tutorial and Debug panels from Y = 0.28 to Y = 0.23 to sit comfortably above the selector ring without clipping.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Compass UI Chat Tab Positioning & Tilting Refinements (Current Run)
+  - `[x]` Shifted the open target coordinates of the Chat tab card in `src/jugnu.ts` to `(X = 0.0, Y = 0.23)` to align perfectly with the Tutorial and Debug tab panels.
+  - `[x]` Interpolated the local X-axis rotation of the Chat tab card in `src/jugnu.ts` to tilt it forward/downwards by 0.3 radians when open and restore it flat (0.0 radians) when closed, matching the behavior of the other top-spawning tabs.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Venue UI Image Brightness & Ribbon Transparency Refinements (Current Run)
+  - `[x]` Set `blending = THREE.NormalBlending` for `compassStadiumMat` to render center-cropped venue photos fully bright, opaque, and visible.
+  - `[x]` Adjusted the strokeStyle transparency of the background semicircular glass ribbon in `redrawCompassStadiumMenu()` to `rgba(5, 5, 26, 0.40)` to match the opacity of the main compass backing board.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Wrist Button Toggle & Icon Swap Refinements (Current Run)
+  - `[x]` Modified `handleWristClose()` in `src/domainExpansion.ts` to toggle between closing and opening the minimap in front of the user.
+  - `[x]` Updated `drawWristButton()` in `src/domainExpansion.ts` to draw a 3-fold accordion map icon when the minimap is closed, and a cross (×) icon when open.
+  - `[x]` Triggered `drawWristButton(0, false)` on all table spawn toggles in `src/domainExpansion.ts` to instantly refresh and synchronize the icon state.
+  - `[x]` Verified typecheck safety via `npx tsc --noEmit` and production build compilation via `npm run build`.

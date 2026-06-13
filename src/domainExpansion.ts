@@ -1488,6 +1488,7 @@ export class DomainExpansionSystem extends createSystem({
 
                         // Link built-in goalposts
                         if (name.includes('olympiagoalpost')) {
+                            child.userData.originalScale = child.scale.clone();
                             if (child.position.z > 0) {
                                 this.berlinGoal1 = child;
                                 this.goal1NetMesh = child;
@@ -1567,6 +1568,7 @@ export class DomainExpansionSystem extends createSystem({
 
                         // Link built-in hoops and nets
                         if (name.includes('inuit basket') || name.includes('inuitbasket')) {
+                            child.userData.originalScale = child.scale.clone();
                             if (child.position.z > 0) {
                                 this.basketballHoop1 = child;
                             } else {
@@ -1575,6 +1577,7 @@ export class DomainExpansionSystem extends createSystem({
                             console.log(`[InuitStadium] Linked built-in basket "${child.name}" (Z: ${child.position.z.toFixed(4)})`);
                         }
                         if (name.includes('inuitnet')) {
+                            child.userData.originalScale = child.scale.clone();
                             if (child.position.z > 0) {
                                 this.hoop1NetMesh = child;
                             } else {
@@ -2914,6 +2917,7 @@ export class DomainExpansionSystem extends createSystem({
             }
             this.menuToggleCooldown = 0.8;
             this.isTableSpawned = !this.isTableSpawned;
+            this.drawWristButton(0, false); // Update wrist button icon
             console.log(`[DomainExpansion] Minimap table toggled! isTableSpawned: ${this.isTableSpawned}`);
 
             if (this.isTableSpawned) {
@@ -5032,10 +5036,12 @@ export class DomainExpansionSystem extends createSystem({
             color: 0xffff00,
             transparent: true,
             opacity: 0.0,
-            depthWrite: false
+            depthWrite: false,
+            depthTest: false
         });
         this.hawkeyeBall = new THREE.Mesh(ballGeom, ballMat);
         this.hawkeyeBall.userData = { defaultOpacity: 0.95 };
+        this.hawkeyeBall.renderOrder = 9999;
         this.tableGroup.add(this.hawkeyeBall);
 
         // Flat bounce ripple ring on the wicket pitch
@@ -5198,22 +5204,17 @@ export class DomainExpansionSystem extends createSystem({
             // Goalkeeper (re-positioned so he stands right in front of the goal line at z = -0.055 table space)
             { id: "gk", name: "M. Neuer",      role: "fielder", jersey: "1",  team: "blue",   x:  0.000, z: -0.055, primary: "Saves: 3 / 5",        secondary: "GK — Penalty Box",  rcbCardKey: "" },
             // Defenders
-            { id: "d1", name: "T. Alexander",  role: "fielder", jersey: "5",  team: "blue",   x: -0.040, z: -0.045, primary: "Tackles: 4",           secondary: "CB — Left",         rcbCardKey: "" },
             { id: "d2", name: "R. Rüdiger",    role: "fielder", jersey: "22", team: "blue",   x:  0.040, z: -0.045, primary: "Interceptions: 3",     secondary: "CB — Right",        rcbCardKey: "" },
             { id: "d3", name: "J. Kimmich",    role: "fielder", jersey: "6",  team: "blue",   x: -0.070, z: -0.035, primary: "Crosses: 5",           secondary: "RB — Wing",         rcbCardKey: "" },
-            { id: "d4", name: "A. Davies",     role: "fielder", jersey: "19", team: "blue",   x:  0.070, z: -0.035, primary: "Tackles: 2",           secondary: "LB — Wing",         rcbCardKey: "" },
             // Midfielders
-            { id: "m1", name: "T. Müller",     role: "fielder", jersey: "25", team: "blue",   x: -0.025, z: -0.030, primary: "Key Passes: 3",        secondary: "CM — Box-to-Box",   rcbCardKey: "" },
             { id: "m2", name: "L. Goretzka",   role: "fielder", jersey: "8",  team: "blue",   x:  0.025, z: -0.030, primary: "Passes: 42 / 48",      secondary: "CM — Defensive",    rcbCardKey: "" },
             // Forwards
             { id: "fw1", name: "L. Sané",      role: "fielder", jersey: "10", team: "blue",   x: -0.055, z:  0.015, primary: "Shots: 2 / 4",        secondary: "LW — Forward",      rcbCardKey: "" },
-            { id: "fw2", name: "S. Gnabry",    role: "fielder", jersey: "7",  team: "blue",   x:  0.055, z:  0.015, primary: "Dribbles: 3",          secondary: "RW — Forward",      rcbCardKey: "" },
             { id: "fw3", name: "H. Kane",      role: "batsman", jersey: "9",  team: "blue",   x:  0.000, z:  0.020, primary: "Goals: 1  Shots: 4",   secondary: "ST — Striker",      rcbCardKey: "" },
             // Away team
             { id: "a1",  name: "J. Bellingham",role: "batsman", jersey: "22", team: "yellow", x:  0.013, z:  0.040, primary: "Goals: 1  Assists: 1", secondary: "AM — Attacking",    rcbCardKey: "" },
             // Referee
             { id: "ref", name: "S. Marciniak", role: "umpire",  jersey: "R",  team: "neutral", x:  0.000, z:  0.000, primary: "Referee",             secondary: "UEFA Pro",          rcbCardKey: "" },
-            { id: "ar1", name: "C. Kwiatkowski",role:"umpire", jersey: "A1", team: "neutral", x: -0.095, z:  0.000, primary: "Asst. Referee",        secondary: "Touchline — Left",  rcbCardKey: "" },
         ];
 
         const rosterBasketball: PlayerEntry[] = [
@@ -6107,10 +6108,12 @@ export class DomainExpansionSystem extends createSystem({
             color: 0xffffff,
             transparent: true,
             opacity: 0.0,
-            depthWrite: false
+            depthWrite: false,
+            depthTest: false
         });
         this.sequenceBall = new THREE.Mesh(ballGeom, ballMat);
         this.sequenceBall.visible = false;
+        this.sequenceBall.renderOrder = 9999;
         this.tableGroup.add(this.sequenceBall);
 
         const trailGeom = new THREE.BufferGeometry();
@@ -6657,17 +6660,41 @@ export class DomainExpansionSystem extends createSystem({
         if (this.basketballHoop2 && this.basketballHoop2.userData.originalScale) {
             this.basketballHoop2.scale.copy(this.basketballHoop2.userData.originalScale);
         }
+        if (this.hoop1NetMesh && this.hoop1NetMesh.userData.originalScale) {
+            this.hoop1NetMesh.scale.copy(this.hoop1NetMesh.userData.originalScale);
+        }
+        if (this.hoop2NetMesh && this.hoop2NetMesh.userData.originalScale) {
+            this.hoop2NetMesh.scale.copy(this.hoop2NetMesh.userData.originalScale);
+        }
+        if (this.goal1NetMesh && this.goal1NetMesh.userData.originalScale) {
+            this.goal1NetMesh.scale.copy(this.goal1NetMesh.userData.originalScale);
+        }
+        if (this.goal2NetMesh && this.goal2NetMesh.userData.originalScale) {
+            this.goal2NetMesh.scale.copy(this.goal2NetMesh.userData.originalScale);
+        }
     }
 
     private triggerSportSequence() {
         if (this.isSportSequenceActive) return;
 
-        // Store original local scale of the hoops if not already stored
+        // Store original local scale of the hoops/nets/goals if not already stored
         if (this.basketballHoop1 && !this.basketballHoop1.userData.originalScale) {
             this.basketballHoop1.userData.originalScale = this.basketballHoop1.scale.clone();
         }
         if (this.basketballHoop2 && !this.basketballHoop2.userData.originalScale) {
             this.basketballHoop2.userData.originalScale = this.basketballHoop2.scale.clone();
+        }
+        if (this.hoop1NetMesh && !this.hoop1NetMesh.userData.originalScale) {
+            this.hoop1NetMesh.userData.originalScale = this.hoop1NetMesh.scale.clone();
+        }
+        if (this.hoop2NetMesh && !this.hoop2NetMesh.userData.originalScale) {
+            this.hoop2NetMesh.userData.originalScale = this.hoop2NetMesh.scale.clone();
+        }
+        if (this.goal1NetMesh && !this.goal1NetMesh.userData.originalScale) {
+            this.goal1NetMesh.userData.originalScale = this.goal1NetMesh.scale.clone();
+        }
+        if (this.goal2NetMesh && !this.goal2NetMesh.userData.originalScale) {
+            this.goal2NetMesh.userData.originalScale = this.goal2NetMesh.scale.clone();
         }
 
         console.log(`[SportSequence] Triggered sequence for: ${this.currentStadiumType}`);
@@ -7999,9 +8026,10 @@ export class DomainExpansionSystem extends createSystem({
         if (this.isGoalWiggling && this.wigglingGoalNet) {
             this.goalWiggleTime += dt;
             const t = this.goalWiggleTime;
+            const origScale = this.wigglingGoalNet.userData.originalScale || new THREE.Vector3(1, 1, 1);
             if (t >= 1.0) {
                 this.isGoalWiggling = false;
-                this.wigglingGoalNet.scale.set(1.0, 1.0, 1.0);
+                this.wigglingGoalNet.scale.copy(origScale);
                 const mat = this.wigglingGoalNet.material;
                 if (mat instanceof THREE.Material) {
                     mat.opacity = 0.45;
@@ -8014,7 +8042,7 @@ export class DomainExpansionSystem extends createSystem({
                 const decay = Math.exp(-t * 3.5);
                 const scaleY = 1.0 + Math.sin(t * 40.0) * 0.08 * decay;
                 const scaleZ = 1.0 + Math.cos(t * 40.0) * 0.08 * decay;
-                this.wigglingGoalNet.scale.set(1.0, scaleY, scaleZ);
+                this.wigglingGoalNet.scale.set(origScale.x, origScale.y * scaleY, origScale.z * scaleZ);
 
                 // Flash net color rapidly between cyan and neon gold
                 const flash = Math.sin(t * 50.0) > 0.0;
@@ -8028,9 +8056,10 @@ export class DomainExpansionSystem extends createSystem({
         if (this.isHoopWiggling && this.wigglingHoopNet) {
             this.hoopWiggleTime += dt;
             const t = this.hoopWiggleTime;
+            const origScale = this.wigglingHoopNet.userData.originalScale || new THREE.Vector3(1, 1, 1);
             if (t >= 1.0) {
                 this.isHoopWiggling = false;
-                this.wigglingHoopNet.scale.set(1.0, 1.0, 1.0);
+                this.wigglingHoopNet.scale.copy(origScale);
                 if (this.wigglingHoopNet.material instanceof THREE.LineBasicMaterial) {
                     (this.wigglingHoopNet.material as THREE.LineBasicMaterial).color.setHex(0x00ffff);
                 }
@@ -8040,7 +8069,7 @@ export class DomainExpansionSystem extends createSystem({
                 const compressX = 1.0 - 0.2 * Math.exp(-t * 8.0) + Math.sin(t * 35.0) * 0.06 * decay;
                 const compressZ = 1.0 - 0.2 * Math.exp(-t * 8.0) + Math.cos(t * 35.0) * 0.06 * decay;
                 const stretchY = 1.0 + 0.15 * Math.exp(-t * 8.0);
-                this.wigglingHoopNet.scale.set(compressX, stretchY, compressZ);
+                this.wigglingHoopNet.scale.set(origScale.x * compressX, origScale.y * stretchY, origScale.z * compressZ);
 
                 // Flash net color between cyan and orange
                 const flash = Math.sin(t * 45.0) > 0.0;
@@ -8833,17 +8862,46 @@ export class DomainExpansionSystem extends createSystem({
         ctx.arc(cx, cy, 46, 0, Math.PI * 2);
         ctx.stroke();
 
-        // × cross icon
+        // Icon: × (cross) when open, Map when closed
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 6;
         ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         ctx.shadowColor = accentGlow;
         ctx.shadowBlur = 8;
-        const arm = 16;
-        ctx.beginPath();
-        ctx.moveTo(cx - arm, cy - arm); ctx.lineTo(cx + arm, cy + arm);
-        ctx.moveTo(cx + arm, cy - arm); ctx.lineTo(cx - arm, cy + arm);
-        ctx.stroke();
+        if (this.isTableSpawned) {
+            // × cross icon
+            const arm = 16;
+            ctx.beginPath();
+            ctx.moveTo(cx - arm, cy - arm); ctx.lineTo(cx + arm, cy + arm);
+            ctx.moveTo(cx + arm, cy - arm); ctx.lineTo(cx - arm, cy + arm);
+            ctx.stroke();
+        } else {
+            // 3-fold map icon
+            ctx.beginPath();
+            // Left fold
+            ctx.moveTo(cx - 16, cy - 12);
+            ctx.lineTo(cx - 6, cy - 18);
+            ctx.lineTo(cx - 6, cy + 10);
+            ctx.lineTo(cx - 16, cy + 16);
+            ctx.closePath();
+            
+            // Middle fold
+            ctx.moveTo(cx - 6, cy - 18);
+            ctx.lineTo(cx + 6, cy - 12);
+            ctx.lineTo(cx + 6, cy + 16);
+            ctx.lineTo(cx - 6, cy + 10);
+            ctx.closePath();
+            
+            // Right fold
+            ctx.moveTo(cx + 6, cy - 12);
+            ctx.lineTo(cx + 16, cy - 18);
+            ctx.lineTo(cx + 16, cy + 10);
+            ctx.lineTo(cx + 6, cy + 16);
+            ctx.closePath();
+            
+            ctx.stroke();
+        }
         ctx.shadowBlur = 0;
 
         // Progress arc — clockwise from 12 o'clock, outside the main ring
@@ -8874,14 +8932,56 @@ export class DomainExpansionSystem extends createSystem({
 
     private handleWristClose() {
         if (this.isTableSpawned) {
+            // Close minimap
             this.isTableSpawned = false;
             this.targetTableScale = 0.0;
             this.isDomainActive = false;
             console.log('[WristBtn] Closed minimap table.');
         } else {
-            (window as any).wristCloseRequest = true;
-            console.log('[WristBtn] Signalled compass panel close.');
+            // Open minimap in front of the user
+            this.isTableSpawned = true;
+            this.userTableScale = 1.0;
+            this.lastLoggedScale = 1.0;
+            this.isTwoHandScaling = false;
+            this.targetTableScale = 1.0;
+            this.tableGroup.visible = true;
+            this.isRotatingMap = false;
+
+            // Determine spawning position adaptive to user height, but fixed in space once spawned
+            let spawnPos = new THREE.Vector3(0, 1.15, -0.55);
+            let headHeight = 1.6;
+
+            if (this.player && this.player.head) {
+                const headPos = new THREE.Vector3();
+                this.player.head.getWorldPosition(headPos);
+                headHeight = headPos.y;
+
+                const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
+                // Spawn 55cm in front of user's head
+                spawnPos.copy(headPos).addScaledVector(dir, 0.55);
+            }
+            
+            // Adaptive desk height (headHeight - 0.45 meters)
+            const finalSpawnPos = new THREE.Vector3(spawnPos.x, Math.max(0.4, headHeight - 0.45), spawnPos.z);
+            this.tableGroup.position.copy(finalSpawnPos);
+            
+            // Singularity-Free Analytical Rotation (faces head's XZ direction)
+            if (this.player && this.player.head) {
+                const headPos = new THREE.Vector3();
+                this.player.head.getWorldPosition(headPos);
+                const dx = headPos.x - finalSpawnPos.x;
+                const dz = headPos.z - finalSpawnPos.z;
+                const yaw = Math.atan2(dx, dz);
+                this.tableGroup.rotation.set(0, yaw + Math.PI, 0); // Face player
+            } else {
+                this.tableGroup.rotation.set(0, Math.PI, 0);
+            }
+
+            console.log('[WristBtn] Opened minimap table.');
         }
+
+        // Re-draw the wrist button to reflect the new state immediately
+        this.drawWristButton(0, false);
     }
 
     private drawQuitPopup(hoveredBtn: number) {

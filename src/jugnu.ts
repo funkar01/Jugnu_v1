@@ -182,14 +182,8 @@ export class JugnuSystem extends createSystem({
   private stadiumImages: (HTMLImageElement | null)[] = [null, null, null, null, null];
 
   // Swipe & Scroll State
-  private isSwiping = false;
-  private lastSwipeY = 0.0;
-  private scrollY = 0.0;
-  private targetScrollY = 0.0;
-  private lastSnapIndex = 0;
-  private swipeAccumulatedY = 0.0;
-  private swipeLocked = false;
   private lastOpenedTab: string | null = null;
+
 
   // Left Hand Pinch Tutorial Thread UI
   private tutorialThreadMesh!: THREE.Mesh;
@@ -1268,6 +1262,7 @@ export class JugnuSystem extends createSystem({
 
     if (activeJugnuModel) {
         const isSportSeqActive = !!(window as any).isSportSequenceActive;
+        const isMinimapSpawned = !!(window as any).isMinimapSpawned;
         const shouldHideUI = isMapScaledMax || isSportSeqActive;
 
         if (shouldHideUI) {
@@ -1434,23 +1429,16 @@ export class JugnuSystem extends createSystem({
                     this.lockedCompassPos = new THREE.Vector3().copy(activeJugnuPos);
                     this.lockedCompassPos.addScaledVector(userRight, 0.12);
                     this.lockedCompassPos.y += 0.5 * activeJugnuModel!.scale.y; // Vertically center with Jugnu's body
-                    
-                    const tempObj = new THREE.Object3D();
-                    tempObj.position.copy(this.lockedCompassPos);
-                    tempObj.lookAt(this.headPos);
-                    this.lockedCompassQuat = new THREE.Quaternion().copy(tempObj.quaternion);
                 }
                 this.compassGroup.position.copy(this.lockedCompassPos);
-                this.compassGroup.quaternion.copy(this.lockedCompassQuat!);
             } else {
                 this.lockedCompassPos = null;
                 this.lockedCompassQuat = null;
                 this.compassGroup.position.copy(activeJugnuPos);
                 this.compassGroup.position.addScaledVector(userRight, 0.12);
                 this.compassGroup.position.y += 0.5 * activeJugnuModel!.scale.y; // Vertically center with Jugnu's body
-
-                this.compassGroup.lookAt(this.headPos);
             }
+            this.compassGroup.lookAt(this.headPos);
 
             if (this.compassNeedle) {
                 const worldNorth = this.scratchV3_1.set(0, 0, -1);
@@ -1470,97 +1458,7 @@ export class JugnuSystem extends createSystem({
             const hasLeft = this.getIndexData('left', leftIndexTip);
             const hasRight = this.getIndexData('right', rightIndexTip);
 
-            let openCards: string[] = [];
-            if (this.isChatOpen) openCards.push('CHAT');
-            if (this.isTutorialOpen) openCards.push('TUTORIAL');
-            if (this.isDebugOpen) openCards.push('DEBUG');
-
-            const numOpen = openCards.length;
-
-            // Swipe-to-scroll: only active when finger is fully inside an open card's bounds
-            if (hasRight && numOpen > 0) {
-                const localRightTip = this.scratchV3_1.copy(rightIndexTip).applyMatrix4(this.scratchMatrix.copy(this.compassGroup.matrixWorld).invert());
-                const hw = 0.12, hh = 0.09, swipeZThresh = 0.05;
-                let isOverOpenCard = false;
-                if (Math.abs(localRightTip.z) < swipeZThresh) {
-                    if (this.isChatOpen && this.compassChatCard) {
-                        const p = this.compassChatCard.position;
-                        if (localRightTip.x > p.x - hw && localRightTip.x < p.x + hw &&
-                            localRightTip.y > p.y - hh && localRightTip.y < p.y + hh) isOverOpenCard = true;
-                    }
-                    if (!isOverOpenCard && this.isTutorialOpen && this.compassTutorialCard) {
-                        const p = this.compassTutorialCard.position;
-                        if (localRightTip.x > p.x - hw && localRightTip.x < p.x + hw &&
-                            localRightTip.y > p.y - hh && localRightTip.y < p.y + hh) isOverOpenCard = true;
-                    }
-                    if (!isOverOpenCard && this.isDebugOpen && this.compassDebugCard) {
-                        const p = this.compassDebugCard.position;
-                        if (localRightTip.x > p.x - hw && localRightTip.x < p.x + hw &&
-                            localRightTip.y > p.y - hh && localRightTip.y < p.y + hh) isOverOpenCard = true;
-                    }
-                }
-
-                if (isOverOpenCard) {
-                    if (!this.isSwiping) {
-                        this.isSwiping = true;
-                        this.lastSwipeY = localRightTip.y;
-                        this.swipeAccumulatedY = 0.0;
-                        this.swipeLocked = false;
-                    } else {
-                        const deltaY = localRightTip.y - this.lastSwipeY;
-                        this.lastSwipeY = localRightTip.y;
-
-                        this.swipeAccumulatedY += Math.abs(deltaY);
-                        if (this.swipeAccumulatedY > 0.015) {
-                            this.swipeLocked = true;
-                        }
-
-                        if (this.swipeLocked) {
-                            this.scrollY += deltaY * 3.0;
-                        }
-                    }
-                } else {
-                    this.isSwiping = false;
-                    this.swipeLocked = false;
-                }
-            } else {
-                this.isSwiping = false;
-                this.swipeLocked = false;
-            }
-
-            // Continuous scroll boundaries clamp and snapping behavior
-            const minScroll = numOpen > 0 ? -(numOpen - 1) * 0.20 : 0.0;
-            const maxScroll = 0.0;
-            if (!this.isSwiping) {
-                if (this.lastOpenedTab && openCards.includes(this.lastOpenedTab)) {
-                    // Auto-focus and smoothly slide the newly opened/selected tab card directly into focus
-                    const focusIdx = openCards.indexOf(this.lastOpenedTab);
-                    this.targetScrollY = -focusIdx * 0.20;
-                    this.scrollY = THREE.MathUtils.lerp(this.scrollY, this.targetScrollY, safeDt * 22.0);
-                    if (Math.abs(this.scrollY - this.targetScrollY) < 0.002) {
-                        this.scrollY = this.targetScrollY;
-                        this.lastOpenedTab = null; // Yield back control to free scrolling
-                    }
-                } else {
-                    const snapIndex = Math.round(-this.scrollY / 0.20);
-                    const clampedSnapIndex = Math.max(0, Math.min(numOpen - 1, snapIndex));
-                    this.targetScrollY = -clampedSnapIndex * 0.20;
-                    this.scrollY = THREE.MathUtils.lerp(this.scrollY, this.targetScrollY, safeDt * 15.0);
-
-                    if (clampedSnapIndex !== this.lastSnapIndex) {
-                        this.lastSnapIndex = clampedSnapIndex;
-                        // Provide subtle snap haptic feedback on the right hand controller
-                        const source = this.input.getPrimaryInputSource('right');
-                        if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
-                            source.gamepad.hapticActuators[0].pulse(0.4, 15);
-                        }
-                    }
-                }
-            } else {
-                // Apply slight elastic stretch/bounce room during swipe
-                this.scrollY = Math.max(minScroll - 0.05, Math.min(maxScroll + 0.05, this.scrollY));
-            }
-
+            // Position targets for open tabs (shifted 50cm to the right: X = 0.71, centered vertically: Y = 0.0)
             let targetTranscriptX = 0.0;
             let targetTranscriptY = -0.02;
             let targetTutorialX = 0.0;
@@ -1570,30 +1468,22 @@ export class JugnuSystem extends createSystem({
             let targetDebugX = 0.0;
             let targetDebugY = -0.02;
 
+            if (this.isChatOpen) {
+                targetTranscriptX = 0.0;
+                targetTranscriptY = 0.23;
+            }
+            if (this.isTutorialOpen) {
+                targetTutorialX = 0.0;
+                targetTutorialY = 0.23;
+            }
+            if (this.isDebugOpen) {
+                targetDebugX = 0.0;
+                targetDebugY = 0.23;
+            }
             if (this.isStadiumMenuOpen) {
                 targetStadiumMenuX = 0.0;
-                targetStadiumMenuY = 0.14;
+                targetStadiumMenuY = 0.0; // Curved Venue selector concentric with compass at center
             }
-
-            const tabSpacing = 0.20; // Vertical stack spacing
-
-            openCards.forEach((card, idx) => {
-                const cardTargetY = 0.05 + idx * tabSpacing + this.scrollY;
-                const cardTargetX = 0.21; // Stacked vertically on the right side of compass board
-                
-                if (card === 'CHAT') {
-                    targetTranscriptX = cardTargetX;
-                    targetTranscriptY = cardTargetY;
-                }
-                if (card === 'TUTORIAL') {
-                    targetTutorialX = cardTargetX;
-                    targetTutorialY = cardTargetY;
-                }
-                if (card === 'DEBUG') {
-                    targetDebugX = cardTargetX;
-                    targetDebugY = cardTargetY;
-                }
-            });
 
             // Smooth scaling & sliding transition for the Transcript card (slides vertically on the right side of the board)
             if (this.compassChatCard) {
@@ -1603,12 +1493,14 @@ export class JugnuSystem extends createSystem({
                     this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, targetTranscriptX, safeDt * 30.0);
                     this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, targetTranscriptY, safeDt * 30.0);
                     this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassChatCard.rotation.x = THREE.MathUtils.lerp(this.compassChatCard.rotation.x, 0.3, safeDt * 30.0);
                 } else {
                     this.compassChatMat.opacity = THREE.MathUtils.lerp(this.compassChatMat.opacity, 0.0, safeDt * 30.0);
                     this.compassChatCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
                     this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, 0.0, safeDt * 30.0);
                     this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, -0.02, safeDt * 30.0);
                     this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassChatCard.rotation.x = THREE.MathUtils.lerp(this.compassChatCard.rotation.x, 0.0, safeDt * 30.0);
                 }
             }
 
@@ -1620,6 +1512,7 @@ export class JugnuSystem extends createSystem({
                     this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, targetTutorialX, safeDt * 30.0);
                     this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, targetTutorialY, safeDt * 30.0);
                     this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassTutorialCard.rotation.x = THREE.MathUtils.lerp(this.compassTutorialCard.rotation.x, 0.3, safeDt * 30.0);
                     
                     // Reactive dynamic update matching user instructionStep
                     this.redrawCompassTutorial(instructionStep);
@@ -1629,6 +1522,7 @@ export class JugnuSystem extends createSystem({
                     this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, 0.0, safeDt * 30.0);
                     this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, -0.02, safeDt * 30.0);
                     this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassTutorialCard.rotation.x = THREE.MathUtils.lerp(this.compassTutorialCard.rotation.x, 0.0, safeDt * 30.0);
                 }
             }
 
@@ -1640,12 +1534,14 @@ export class JugnuSystem extends createSystem({
                     this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, targetDebugX, safeDt * 30.0);
                     this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, targetDebugY, safeDt * 30.0);
                     this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassDebugCard.rotation.x = THREE.MathUtils.lerp(this.compassDebugCard.rotation.x, 0.3, safeDt * 30.0);
                 } else {
                     this.compassDebugMat.opacity = THREE.MathUtils.lerp(this.compassDebugMat.opacity, 0.0, safeDt * 30.0);
                     this.compassDebugCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
                     this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, 0.0, safeDt * 30.0);
                     this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, -0.02, safeDt * 30.0);
                     this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassDebugCard.rotation.x = THREE.MathUtils.lerp(this.compassDebugCard.rotation.x, 0.0, safeDt * 30.0);
                 }
             }
 
@@ -1661,7 +1557,7 @@ export class JugnuSystem extends createSystem({
                     this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.0, safeDt * 30.0);
                     this.compassStadiumCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
                     this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, 0.0, safeDt * 30.0);
-                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, 0.02, safeDt * 30.0);
+                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, 0.0, safeDt * 30.0);
                     this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 30.0);
                 }
             }
@@ -1711,7 +1607,7 @@ export class JugnuSystem extends createSystem({
                     
                     const isPressed = Math.abs(localTip.z) < 0.014;
 
-                    if (isPressed && currentHoverIdx !== -1 && this.buttonCooldown <= 0.0 && !this.swipeLocked) {
+                    if (isPressed && currentHoverIdx !== -1 && this.buttonCooldown <= 0.0) {
                         this.buttonCooldown = 0.8;
                         const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
                         const source = this.input.getPrimaryInputSource(activeHand);
@@ -1734,28 +1630,37 @@ export class JugnuSystem extends createSystem({
             let hoveredStadiumOption = -1;
             if (this.isStadiumMenuOpen && activeTip && this.compassStadiumCard) {
                 const cardLocalTip = this.scratchV3_1.copy(activeTip).applyMatrix4(this.scratchMatrix.copy(this.compassStadiumCard.matrixWorld).invert());
-                // Card is now PlaneGeometry(0.28, 0.10) — half-extents: x±0.14, y±0.05
-                const isWithinCardHoverZ = Math.abs(cardLocalTip.z) < 0.025;
-                const isWithinCardBoundsX = cardLocalTip.x > -0.14 && cardLocalTip.x < 0.14;
-                const isWithinCardBoundsY = cardLocalTip.y > -0.05 && cardLocalTip.y < 0.05;
+                
+                // Concentric PlaneGeometry(0.30, 0.30): x±0.15, y±0.15
+                const isWithinCardHoverZ = cardLocalTip.z > -0.04 && cardLocalTip.z < 0.025;
+                const d = Math.sqrt(cardLocalTip.x * cardLocalTip.x + cardLocalTip.y * cardLocalTip.y);
+                const angle = Math.atan2(cardLocalTip.y, cardLocalTip.x); // Cartesian: top semi-circle has y > 0 -> angle in [0, Math.PI]
 
-                if (isWithinCardHoverZ && isWithinCardBoundsX && isWithinCardBoundsY) {
-                    // Canvas 560×200: map local coords to pixel coords
-                    const canvasX = (cardLocalTip.x + 0.14) / 0.28 * 560;
-                    const canvasY = (0.05 - cardLocalTip.y) / 0.10 * 200;
-
-                    // Tile images sit at canvasY [42, 142]; tiles are X-indexed
-                    // startX=14, tileSize=100, gap=8 → tile starts: 14, 122, 230, 338, 446
-                    if (canvasY >= 42 && canvasY <= 155) {
-                        if      (canvasX >= 14  && canvasX < 114)  hoveredStadiumOption = 0;
-                        else if (canvasX >= 122 && canvasX < 222)  hoveredStadiumOption = 1;
-                        else if (canvasX >= 230 && canvasX < 330)  hoveredStadiumOption = 2;
-                        else if (canvasX >= 338 && canvasX < 438)  hoveredStadiumOption = 3;
-                        else if (canvasX >= 446 && canvasX < 546)  hoveredStadiumOption = 4;
+                // Hover check: radial distance [0.08, 0.13] and top semi-circle
+                if (isWithinCardHoverZ && d >= 0.08 && d <= 0.13 && cardLocalTip.y > 0.0) {
+                    // Match closest venue angle (160°, 125°, 90°, 55°, 20°)
+                    const targetAngles = [
+                        160 * Math.PI / 180,
+                        125 * Math.PI / 180,
+                        Math.PI / 2,
+                        55 * Math.PI / 180,
+                        20 * Math.PI / 180
+                    ];
+                    let bestIdx = -1;
+                    let minDiff = Infinity;
+                    for (let i = 0; i < 5; i++) {
+                        const diff = Math.abs(angle - targetAngles[i]);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            bestIdx = i;
+                        }
+                    }
+                    if (minDiff < 0.26) { // ~15 degrees tolerance
+                        hoveredStadiumOption = bestIdx;
                     }
 
-                    const isPressed = Math.abs(cardLocalTip.z) < 0.014;
-                    if (isPressed && hoveredStadiumOption !== -1 && this.buttonCooldown <= 0.0 && !this.swipeLocked) {
+                    const isPressed = cardLocalTip.z > -0.04 && cardLocalTip.z < 0.014;
+                    if (isPressed && hoveredStadiumOption !== -1 && this.buttonCooldown <= 0.0) {
                         this.buttonCooldown = 0.8;
                         const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
                         const source = this.input.getPrimaryInputSource(activeHand);
@@ -1818,6 +1723,11 @@ export class JugnuSystem extends createSystem({
                         this.actionCompassGroup.scale.setScalar(0.001);
                     }
                     this.actionCompassGroup.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 10.0);
+                    
+                    const targetActionX = 0.11;
+                    const targetActionY = this.isStadiumMenuOpen ? -0.16 : -0.06;
+                    this.actionCompassGroup.position.x = THREE.MathUtils.lerp(this.actionCompassGroup.position.x, targetActionX, safeDt * 15.0);
+                    this.actionCompassGroup.position.y = THREE.MathUtils.lerp(this.actionCompassGroup.position.y, targetActionY, safeDt * 15.0);
                     
                     let activeActionTip: THREE.Vector3 | null = null;
                     if (hasLeft && hasRight) {
@@ -2637,7 +2547,7 @@ export class JugnuSystem extends createSystem({
       this.compassChatMat = this.createHolographicMaterial(this.compassChatTexture, 0.0);
 
       this.compassChatCard = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.24, 0.18),
+          new THREE.PlaneGeometry(0.36, 0.27),
           this.compassChatMat
       );
       // Sits behind Jugnu and the compass layer on a medium sized screen
@@ -2660,7 +2570,7 @@ export class JugnuSystem extends createSystem({
       this.compassDebugMat = this.createHolographicMaterial(this.compassDebugTexture, 0.0);
 
       this.compassDebugCard = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.24, 0.18),
+          new THREE.PlaneGeometry(0.36, 0.27),
           this.compassDebugMat
       );
       this.compassDebugCard.position.set(0, -0.02, 0.0); // Z slides to -0.04 when open
@@ -2682,30 +2592,31 @@ export class JugnuSystem extends createSystem({
       this.compassTutorialMat = this.createHolographicMaterial(this.compassTutorialTexture, 0.0);
 
       this.compassTutorialCard = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.24, 0.18),
+          new THREE.PlaneGeometry(0.36, 0.27),
           this.compassTutorialMat
       );
       this.compassTutorialCard.position.set(0, -0.02, -0.01);
       this.compassTutorialCard.scale.setScalar(0.001); // Shrink initially
       this.compassGroup.add(this.compassTutorialCard);
 
-      // Initialize Stadium Selector Tab UI — horizontal tile gallery
+      // Initialize Stadium Selector Tab UI — curved venue selector concentric with compass
       this.compassStadiumCanvas = document.createElement('canvas');
-      this.compassStadiumCanvas.width = 560;
-      this.compassStadiumCanvas.height = 200;
+      this.compassStadiumCanvas.width = 600;
+      this.compassStadiumCanvas.height = 600;
       this.compassStadiumCtx = this.compassStadiumCanvas.getContext('2d')!;
 
       this.compassStadiumTexture = new THREE.CanvasTexture(this.compassStadiumCanvas);
       this.compassStadiumTexture.colorSpace = THREE.SRGBColorSpace;
 
       this.compassStadiumMat = this.createHolographicMaterial(this.compassStadiumTexture, 0.0);
+      this.compassStadiumMat.blending = THREE.NormalBlending;
 
-      // Wider, shorter card to match horizontal gallery layout
+      // Concentric PlaneGeometry(0.30, 0.30)
       this.compassStadiumCard = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.28, 0.10),
+          new THREE.PlaneGeometry(0.30, 0.30),
           this.compassStadiumMat
       );
-      this.compassStadiumCard.position.set(0, 0.02, -0.01);
+      this.compassStadiumCard.position.set(0, 0.0, -0.01);
       this.compassStadiumCard.scale.setScalar(0.001);
       this.compassGroup.add(this.compassStadiumCard);
 
@@ -2802,7 +2713,7 @@ export class JugnuSystem extends createSystem({
 
   private initActionCompassUI() {
       this.actionCompassGroup = new THREE.Group();
-      this.actionCompassGroup.position.set(0.11, 0.03, 0.0);
+      this.actionCompassGroup.position.set(0.11, -0.06, 0.0);
       this.actionCompassGroup.scale.setScalar(0.001); // starts shrunk
       this.actionCompassGroup.visible = false;
       this.compassGroup.add(this.actionCompassGroup);
@@ -2985,8 +2896,8 @@ export class JugnuSystem extends createSystem({
           }
 
           ctx.fillStyle = hoveredIdx === idx || isActive ? themeColor : '#ffffff';
-          ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
-          ctx.fillText(spoke.label, cx, cy + 52);
+          ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
+          ctx.fillText(spoke.label, cx, cy + 55);
       });
 
       let activeSpokeType = "";
@@ -3003,14 +2914,14 @@ export class JugnuSystem extends createSystem({
           activeSpokeType === 'STORM' ? '#6366f1' :
           activeSpokeType === 'NAVIG' ? '#ff5500' : '#ff3333'
       ) : '#00ffff';
-      ctx.font = 'bold 20px "Segoe UI", system-ui, -apple-system, sans-serif';
+      ctx.font = 'bold 28px "Segoe UI", system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(displayTitle, 256, 215);
+      ctx.fillText(displayTitle, 256, 210);
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 12px "Segoe UI", system-ui, -apple-system, sans-serif';
-      this.wrapCanvasText(ctx, displayDetail, 256, 242, 180, 16);
+      ctx.font = 'bold 16px "Segoe UI", system-ui, -apple-system, sans-serif';
+      this.wrapCanvasText(ctx, displayDetail, 256, 248, 180, 20);
 
       this.actionBackingTexture.needsUpdate = true;
   }
@@ -3050,6 +2961,9 @@ export class JugnuSystem extends createSystem({
           this.isChatOpen = !this.isChatOpen;
           title = this.isChatOpen ? "Transcript & Chat" : "Transcript & Chat";
           if (this.isChatOpen) {
+              this.isTutorialOpen = false;
+              this.isDebugOpen = false;
+              this.isStadiumMenuOpen = false;
               this.lastOpenedTab = 'CHAT';
               this.redrawCompassChat();
               detail = "Dynamic Chat Panel slides behind Jugnu.\n\nStatus: ACTIVE VIEW.\nDisplays recent conversational transcripts and active debug telemetry log lines.";
@@ -3070,6 +2984,9 @@ export class JugnuSystem extends createSystem({
           this.isTutorialOpen = !this.isTutorialOpen;
           title = this.isTutorialOpen ? "Holographic Tutorial" : "Holographic Tutorial";
           if (this.isTutorialOpen) {
+              this.isChatOpen = false;
+              this.isDebugOpen = false;
+              this.isStadiumMenuOpen = false;
               this.lastOpenedTab = 'TUTORIAL';
               let currentStep = 0;
               for (const entity of this.queries.jugnu.entities) {
@@ -3094,6 +3011,9 @@ export class JugnuSystem extends createSystem({
           this.isDebugOpen = !this.isDebugOpen;
           title = this.isDebugOpen ? "Debug Console" : "Debug Console";
           if (this.isDebugOpen) {
+              this.isChatOpen = false;
+              this.isTutorialOpen = false;
+              this.isStadiumMenuOpen = false;
               this.lastOpenedTab = 'DEBUG';
               this.redrawCompassDebug();
               detail = "Blue Cyberpunk Debug Console active behind Jugnu.\n\nStatus: ACTIVE VIEW.\nHooks to console log streams and shows realtime engine diagnostics.";
@@ -3107,6 +3027,9 @@ export class JugnuSystem extends createSystem({
           this.isStadiumMenuOpen = !this.isStadiumMenuOpen;
           title = this.isStadiumMenuOpen ? "Stadium Selector" : "Stadium Selector";
           if (this.isStadiumMenuOpen) {
+              this.isChatOpen = false;
+              this.isTutorialOpen = false;
+              this.isDebugOpen = false;
               this.lastOpenedTab = 'STADIUM_SEL';
               this.redrawCompassStadiumMenu();
               detail = "Stadium Geometry Selector active.\n\nStatus: ACTIVE VIEW.\nSelect between Default, Berlin (Hollow Cylinder), and Inuit (Oval) geometries.";
@@ -3171,51 +3094,48 @@ export class JugnuSystem extends createSystem({
 
   private redrawCompassStadiumMenu(hoveredIdx: number = -1) {
       const ctx = this.compassStadiumCtx;
-      const w = 560, h = 200;
+      const w = 600, h = 600;
       ctx.clearRect(0, 0, w, h);
 
-      // Dark glass panel
-      ctx.fillStyle = 'rgba(5,5,26,0.97)';
-      ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 14);
-      ctx.fill();
+      const startAngle = -165 * Math.PI / 180;
+      const endAngle = -15 * Math.PI / 180;
 
-      // Cyan neon border
+      // 1. Dark glass ribbon/arc background
+      ctx.strokeStyle = 'rgba(5, 5, 26, 0.40)';
+      ctx.lineWidth = 90;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(300, 300, 210, startAngle, endAngle);
+      ctx.stroke();
+
+      // 2. Cyan neon borders
       ctx.strokeStyle = '#22d3ee';
-      ctx.lineWidth = 5;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
       ctx.shadowColor = '#22d3ee';
       ctx.shadowBlur = 8;
+      
+      // Outer neon border at R=255
       ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 14);
+      ctx.arc(300, 300, 255, startAngle, endAngle);
       ctx.stroke();
-      ctx.shadowBlur = 0;
 
-      // Inner subtle border
+      // Inner neon border at R=165
+      ctx.beginPath();
+      ctx.arc(300, 300, 165, startAngle, endAngle);
+      ctx.stroke();
+      ctx.shadowBlur = 0; // reset glow
+
+      // 3. Inner subtle border
       ctx.strokeStyle = 'rgba(255,255,255,0.07)';
       ctx.lineWidth = 1.5;
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.roundRect(6, 6, w - 12, h - 12, 10);
+      ctx.arc(300, 300, 251, startAngle, endAngle);
       ctx.stroke();
-
-      // Header
-      ctx.fillStyle = '#22d3ee';
-      ctx.font = 'bold 13px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('VENUE SELECTOR', w / 2, 22);
-
-      // Divider
-      ctx.strokeStyle = 'rgba(34,211,238,0.3)';
-      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(20, 33); ctx.lineTo(w - 20, 33);
+      ctx.arc(300, 300, 169, startAngle, endAngle);
       ctx.stroke();
-
-      // Tile layout: 5 tiles × 100 px + 4 gaps × 8 px = 532; side margin = (560-532)/2 = 14
-      const tileSize = 100;
-      const gap = 8;
-      const startX = (w - (5 * tileSize + 4 * gap)) / 2; // = 14
-      const tileY = 42;
-      const nameY = tileY + tileSize + 13;
 
       const venues: { key: string; name: string; sub: string; img: HTMLImageElement | null }[] = [
           { key: 'default',     name: 'WANKHEDE',   sub: 'Mumbai, India',        img: this.stadiumImages[0] },
@@ -3225,29 +3145,41 @@ export class JugnuSystem extends createSystem({
           { key: 'nurburgring', name: 'NÜRBURGRING',sub: 'Nürburg, Germany',     img: this.stadiumImages[4] },
       ];
 
+      const targetAngles = [
+          -160 * Math.PI / 180,
+          -125 * Math.PI / 180,
+          -90 * Math.PI / 180,
+          -55 * Math.PI / 180,
+          -20 * Math.PI / 180
+      ];
+
       venues.forEach((venue, i) => {
-          const tx = startX + i * (tileSize + gap);
+          const angleRad = targetAngles[i];
+          const cx = 300 + 210 * Math.cos(angleRad);
+          const cy = 300 + 210 * Math.sin(angleRad);
+
           const isSelected = this.selectedStadium === venue.key;
           const isHovered  = hoveredIdx === i;
+          const iconRadius = 32;
 
-          // Tile background (placeholder colour while image loads)
+          // Tile background (placeholder color while image loads)
           ctx.fillStyle = 'rgba(34,211,238,0.06)';
           ctx.beginPath();
-          ctx.roundRect(tx, tileY, tileSize, tileSize, 8);
+          ctx.arc(cx, cy, iconRadius, 0, 2 * Math.PI);
           ctx.fill();
 
-          // Draw image — center-cropped to square
+          // Draw image — center-cropped to circle
           const img = venue.img;
           if (img && img.naturalWidth > 0) {
               ctx.save();
               ctx.beginPath();
-              ctx.roundRect(tx, tileY, tileSize, tileSize, 8);
+              ctx.arc(cx, cy, iconRadius, 0, 2 * Math.PI);
               ctx.clip();
               const iw = img.naturalWidth, ih = img.naturalHeight;
               let sx = 0, sy = 0, sw = iw, sh = ih;
               if (iw > ih) { sw = ih; sx = (iw - ih) / 2; }
               else         { sh = iw; sy = (ih - iw) / 2; }
-              ctx.drawImage(img, sx, sy, sw, sh, tx, tileY, tileSize, tileSize);
+              ctx.drawImage(img, sx, sy, sw, sh, cx - iconRadius, cy - iconRadius, iconRadius * 2, iconRadius * 2);
               ctx.restore();
           }
 
@@ -3255,47 +3187,57 @@ export class JugnuSystem extends createSystem({
           if (isSelected) {
               ctx.fillStyle = 'rgba(34,211,238,0.28)';
               ctx.beginPath();
-              ctx.roundRect(tx, tileY, tileSize, tileSize, 8);
+              ctx.arc(cx, cy, iconRadius, 0, 2 * Math.PI);
               ctx.fill();
           } else if (isHovered) {
               ctx.fillStyle = 'rgba(255,255,255,0.14)';
               ctx.beginPath();
-              ctx.roundRect(tx, tileY, tileSize, tileSize, 8);
+              ctx.arc(cx, cy, iconRadius, 0, 2 * Math.PI);
               ctx.fill();
           }
 
-          // Tile border
+          // Circle border
           ctx.strokeStyle = isSelected ? '#22d3ee' : (isHovered ? 'rgba(34,211,238,0.75)' : 'rgba(34,211,238,0.25)');
           ctx.lineWidth = isSelected ? 3 : 1.5;
           ctx.shadowColor = isSelected ? '#22d3ee' : 'transparent';
           ctx.shadowBlur  = isSelected ? 10 : 0;
           ctx.beginPath();
-          ctx.roundRect(tx, tileY, tileSize, tileSize, 8);
+          ctx.arc(cx, cy, iconRadius, 0, 2 * Math.PI);
           ctx.stroke();
           ctx.shadowBlur = 0;
 
-          // Selected tick badge (top-right corner)
+          // Selected checkmark badge (top-right relative to icon center)
           if (isSelected) {
+              const bx = cx + iconRadius * 0.7;
+              const by = cy - iconRadius * 0.7;
               ctx.fillStyle = '#22d3ee';
               ctx.beginPath();
-              ctx.roundRect(tx + tileSize - 20, tileY, 20, 18, [0, 8, 0, 8]);
+              ctx.arc(bx, by, 9, 0, 2 * Math.PI);
               ctx.fill();
+
               ctx.fillStyle = '#05050f';
-              ctx.font = 'bold 11px monospace';
+              ctx.font = 'bold 12px monospace';
               ctx.textAlign = 'center';
-              ctx.fillText('✓', tx + tileSize - 10, tileY + 13);
+              ctx.fillText('✓', bx, by + 4);
           }
+
+          // Render name and sub-label text radially centered and rotated
+          ctx.save();
+          ctx.translate(300, 300);
+          ctx.rotate(angleRad + Math.PI / 2);
 
           // Venue name
           ctx.fillStyle = isSelected ? '#22d3ee' : (isHovered ? '#a5f3fc' : '#67e8f9');
-          ctx.font = isSelected ? 'bold 9px monospace' : '9px monospace';
+          ctx.font = isSelected ? 'bold 16px monospace' : '15px monospace';
           ctx.textAlign = 'center';
-          ctx.fillText(venue.name, tx + tileSize / 2, nameY);
+          ctx.fillText(venue.name, 0, -258);
 
           // Sub-label (city)
-          ctx.fillStyle = isSelected ? 'rgba(34,211,238,0.7)' : 'rgba(255,255,255,0.3)';
-          ctx.font = '7px monospace';
-          ctx.fillText(venue.sub, tx + tileSize / 2, nameY + 11);
+          ctx.fillStyle = isSelected ? 'rgba(34,211,238,0.7)' : 'rgba(255,255,255,0.4)';
+          ctx.font = '11px monospace';
+          ctx.fillText(venue.sub, 0, -276);
+
+          ctx.restore();
       });
 
       this.compassStadiumTexture.needsUpdate = true;
