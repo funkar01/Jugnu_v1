@@ -8207,8 +8207,8 @@ export class DomainExpansionSystem extends createSystem({
 
         // 4. Closed winding 3D Spline representing Nürburgring with topography elevations
         const points = [
-            new THREE.Vector3( 0.00,  0.003, -0.09), // Start/GP Straight
-            new THREE.Vector3( 0.04,  0.003, -0.09), // Hatzenbach (straightened)
+            new THREE.Vector3( 0.00,  0.003, -0.090), // Start/GP Straight
+            new THREE.Vector3( 0.04,  0.003, -0.089), // Hatzenbach (straightened with Z-offset)
             new THREE.Vector3( 0.08,  0.012, -0.05), // Flugplatz (elevation!)
             new THREE.Vector3( 0.06,  0.002, -0.01), // Fuchsroehre (dip!)
             new THREE.Vector3( 0.09,  0.008,  0.03), // Adenauer Forst
@@ -8217,7 +8217,7 @@ export class DomainExpansionSystem extends createSystem({
             new THREE.Vector3(-0.08,  0.010,  0.05), // Hohe Acht (highest point!)
             new THREE.Vector3(-0.07,  0.005, -0.01), // Pflanzgarten
             new THREE.Vector3(-0.05,  0.002, -0.06), // Schwalbenschwanz
-            new THREE.Vector3(-0.04,  0.003, -0.09)  // Döttinger Höhe (straightened)
+            new THREE.Vector3(-0.04,  0.003, -0.091)  // Döttinger Höhe (straightened with Z-offset)
         ];
         this.nurburgringCurve = new THREE.CatmullRomCurve3(points, true);
         this.nurburgringFrenetFrames = this.nurburgringCurve.computeFrenetFrames(1000, true);
