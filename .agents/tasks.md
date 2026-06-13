@@ -1085,4 +1085,12 @@
   - `[x]` Shifted the semi-transparent backing board to cover only the inner text box region (`x = dx + 12`, `y = dy + 12`, `width = 488`, `height = 360`), allowing the outer frame borders to float transparently in space.
   - `[x]` Added F1 car enhancements (Airbox intake scoop, T-camera pod, sidepod cooling inlets, DRS actuator pod, exhaust pipe, and diffuser rain LED).
   - `[x]` Increased maximum gesture zoom scale limit from `6.0` to `10.0` and adjusted structural fading transitions.
-  - `[x]` Verified compilation safety (`npx tsc --noEmit`) and client builds (`npm run build`).
+- `[x]` WebXR UI Icon Assets Migration & Zero-GC Canvas Tinting (Current Run)
+  - `[x]` Initialized pre-allocated offscreen scratch canvas (`iconTintCanvas`, `iconTintCtx`) to eliminate frame-time memory allocation overhead and GC pressure.
+  - `[x]` Preloaded high-resolution PNG icon assets from `public/ui/Icons/` asynchronously inside `initCompassUI()`.
+  - `[x]` Programmed high-fidelity `drawIconImage()` helper utilising `source-in` composite blending to scale and tint icon shapes to pure white on the fly.
+  - `[x]` Updated `redrawCompassGrid()` to draw PNG icons for CHAT, TUTORIAL, MINIMAP, VENUE, VOICE, and WALLS, maintaining the vector LOCK and terminal DEBUG console.
+  - `[x]` Updated `redrawActionCompass()` to draw PNG icons for PLAY SEQ, STORM, NAVIG, and CLEAR.
+  - `[x]` Restored compiler resolution for external dependency `@webspatial/core-sdk` by performing a clean `npm install`.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and compiled client production bundle successfully (`npm run build`).
+

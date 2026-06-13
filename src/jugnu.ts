@@ -174,6 +174,9 @@ export class JugnuSystem extends createSystem({
   private chatFrameCanvas: HTMLCanvasElement | null = null;
   private debugFrameCanvas: HTMLCanvasElement | null = null;
   private tutorialFrameCanvas: HTMLCanvasElement | null = null;
+  private iconImages: Record<string, HTMLImageElement> = {};
+  private iconTintCanvas!: HTMLCanvasElement;
+  private iconTintCtx!: CanvasRenderingContext2D;
 
   private isStadiumMenuOpen = false;
   private compassStadiumCanvas!: HTMLCanvasElement;
@@ -2208,6 +2211,21 @@ export class JugnuSystem extends createSystem({
       ctx.fillText(line, x, currentY);
   }
 
+  private drawIconImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cx: number, cy: number, size: number, color: string) {
+      if (!this.iconTintCtx) return;
+      const tc = this.iconTintCanvas;
+      const tCtx = this.iconTintCtx;
+      
+      tCtx.clearRect(0, 0, tc.width, tc.height);
+      tCtx.drawImage(img, 0, 0, size, size);
+      tCtx.globalCompositeOperation = 'source-in';
+      tCtx.fillStyle = color;
+      tCtx.fillRect(0, 0, size, size);
+      tCtx.globalCompositeOperation = 'source-over';
+      
+      ctx.drawImage(tc, 0, 0, size, size, cx - size / 2, cy - size / 2, size, size);
+  }
+
   private redrawCompassGrid(hoveredIdx: number) {
       const ctx = this.compassBackingCtx;
       const w = 512;
@@ -2346,87 +2364,94 @@ export class JugnuSystem extends createSystem({
               ctx.beginPath();
               ctx.arc(cx, iconY + 7.5, 3, 0, 2 * Math.PI);
               ctx.fill();
-          } else {
+          } else if (spoke.type === 'DEBUG') {
               ctx.fillStyle = '#ffffff';
               ctx.strokeStyle = '#ffffff';
+              ctx.beginPath();
+              ctx.roundRect(cx - 19.5, iconY - 13.5, 39, 27, 6);
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(cx - 12, iconY - 6);
+              ctx.lineTo(cx - 6, iconY);
+              ctx.lineTo(cx - 12, iconY + 6);
+              ctx.stroke();
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(cx - 1.5, iconY + 3, 9, 4.5);
+          } else {
+              const iconImg = this.iconImages[spoke.type];
+              if (iconImg) {
+                  this.drawIconImage(ctx, iconImg, cx, iconY, 32, '#ffffff');
+              } else {
+                  ctx.fillStyle = '#ffffff';
+                  ctx.strokeStyle = '#ffffff';
 
-              if (spoke.type === 'CHAT') {
-                  ctx.beginPath();
-                  ctx.roundRect(cx - 18, iconY - 12, 36, 24, 6);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.moveTo(cx - 6, iconY + 12);
-                  ctx.lineTo(cx - 12, iconY + 20);
-                  ctx.lineTo(cx - 12, iconY + 12);
-                  ctx.closePath();
-                  ctx.fill();
-                  ctx.stroke();
-                  
-                  ctx.fillStyle = compColorHex;
-                  ctx.beginPath();
-                  ctx.arc(cx - 7.5, iconY, 2.25, 0, 2 * Math.PI);
-                  ctx.arc(cx, iconY, 2.25, 0, 2 * Math.PI);
-                  ctx.arc(cx + 7.5, iconY, 2.25, 0, 2 * Math.PI);
-                  ctx.fill();
-              } else if (spoke.type === 'STADIUM') {
-                  ctx.beginPath();
-                  ctx.ellipse(cx, iconY, 21, 10.5, 0, 0, 2 * Math.PI);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.moveTo(cx - 21, iconY); ctx.lineTo(cx - 21, iconY + 12);
-                  ctx.moveTo(cx + 21, iconY); ctx.lineTo(cx + 21, iconY + 12);
-                  ctx.stroke();
-              } else if (spoke.type === 'TUTORIAL') {
-                  ctx.beginPath();
-                  ctx.roundRect(cx - 18, iconY - 12, 36, 24, 3);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.moveTo(cx, iconY - 12);
-                  ctx.lineTo(cx, iconY + 12);
-                  ctx.stroke();
-              } else if (spoke.type === 'VOICE') {
-                  ctx.beginPath();
-                  ctx.roundRect(cx - 6, iconY - 15, 12, 24, 6);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.arc(cx, iconY - 3, 12, 0, Math.PI);
-                  ctx.moveTo(cx, iconY + 9); ctx.lineTo(cx, iconY + 15);
-                  ctx.stroke();
-              } else if (spoke.type === 'DEBUG') {
-                  ctx.beginPath();
-                  ctx.roundRect(cx - 19.5, iconY - 13.5, 39, 27, 6);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.moveTo(cx - 12, iconY - 6);
-                  ctx.lineTo(cx - 6, iconY);
-                  ctx.lineTo(cx - 12, iconY + 6);
-                  ctx.stroke();
-                  ctx.fillStyle = '#ffffff';
-                  ctx.fillRect(cx - 1.5, iconY + 3, 9, 4.5);
-              } else if (spoke.type === 'STADIUM_SEL') {
-                  ctx.beginPath();
-                  ctx.arc(cx, iconY + 6, 18, Math.PI, 0);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.moveTo(cx - 18, iconY + 6); ctx.lineTo(cx - 18, iconY + 15);
-                  ctx.moveTo(cx + 18, iconY + 6); ctx.lineTo(cx + 18, iconY + 15);
-                  ctx.stroke();
-                  ctx.beginPath();
-                  ctx.arc(cx, iconY + 1.5, 4.5, 0, 2 * Math.PI);
-                  ctx.fill();
-              } else if (spoke.type === 'WALLS') {
-                  ctx.beginPath();
-                  ctx.arc(cx, iconY, 15, 0.15 * Math.PI, 1.85 * Math.PI);
-                  ctx.stroke();
-                  ctx.fillStyle = ctx.strokeStyle;
-                  ctx.beginPath();
-                  ctx.moveTo(cx + 21, iconY + 4.5);
-                  ctx.lineTo(cx + 12, iconY - 4.5);
-                  ctx.lineTo(cx + 30, iconY - 4.5);
-                  ctx.closePath();
-                  ctx.fill();
-                  ctx.stroke();
-                  ctx.fillStyle = '#ffffff';
+                  if (spoke.type === 'CHAT') {
+                      ctx.beginPath();
+                      ctx.roundRect(cx - 18, iconY - 12, 36, 24, 6);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.moveTo(cx - 6, iconY + 12);
+                      ctx.lineTo(cx - 12, iconY + 20);
+                      ctx.lineTo(cx - 12, iconY + 12);
+                      ctx.closePath();
+                      ctx.fill();
+                      ctx.stroke();
+                      
+                      ctx.fillStyle = compColorHex;
+                      ctx.beginPath();
+                      ctx.arc(cx - 7.5, iconY, 2.25, 0, 2 * Math.PI);
+                      ctx.arc(cx, iconY, 2.25, 0, 2 * Math.PI);
+                      ctx.arc(cx + 7.5, iconY, 2.25, 0, 2 * Math.PI);
+                      ctx.fill();
+                  } else if (spoke.type === 'STADIUM') {
+                      ctx.beginPath();
+                      ctx.ellipse(cx, iconY, 21, 10.5, 0, 0, 2 * Math.PI);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.moveTo(cx - 21, iconY); ctx.lineTo(cx - 21, iconY + 12);
+                      ctx.moveTo(cx + 21, iconY); ctx.lineTo(cx + 21, iconY + 12);
+                      ctx.stroke();
+                  } else if (spoke.type === 'TUTORIAL') {
+                      ctx.beginPath();
+                      ctx.roundRect(cx - 18, iconY - 12, 36, 24, 3);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.moveTo(cx, iconY - 12);
+                      ctx.lineTo(cx, iconY + 12);
+                      ctx.stroke();
+                  } else if (spoke.type === 'VOICE') {
+                      ctx.beginPath();
+                      ctx.roundRect(cx - 6, iconY - 15, 12, 24, 6);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.arc(cx, iconY - 3, 12, 0, Math.PI);
+                      ctx.moveTo(cx, iconY + 9); ctx.lineTo(cx, iconY + 15);
+                      ctx.stroke();
+                  } else if (spoke.type === 'STADIUM_SEL') {
+                      ctx.beginPath();
+                      ctx.arc(cx, iconY + 6, 18, Math.PI, 0);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.moveTo(cx - 18, iconY + 6); ctx.lineTo(cx - 18, iconY + 15);
+                      ctx.moveTo(cx + 18, iconY + 6); ctx.lineTo(cx + 18, iconY + 15);
+                      ctx.stroke();
+                      ctx.beginPath();
+                      ctx.arc(cx, iconY + 1.5, 4.5, 0, 2 * Math.PI);
+                      ctx.fill();
+                  } else if (spoke.type === 'WALLS') {
+                      ctx.beginPath();
+                      ctx.arc(cx, iconY, 15, 0.15 * Math.PI, 1.85 * Math.PI);
+                      ctx.stroke();
+                      ctx.fillStyle = ctx.strokeStyle;
+                      ctx.beginPath();
+                      ctx.moveTo(cx + 21, iconY + 4.5);
+                      ctx.lineTo(cx + 12, iconY - 4.5);
+                      ctx.lineTo(cx + 30, iconY - 4.5);
+                      ctx.closePath();
+                      ctx.fill();
+                      ctx.stroke();
+                      ctx.fillStyle = '#ffffff';
+                  }
               }
           }
 
@@ -2485,6 +2510,39 @@ export class JugnuSystem extends createSystem({
   }
 
   private initCompassUI() {
+      // Pre-allocate scratch canvas for zero-GC icon tinting
+      this.iconTintCanvas = document.createElement('canvas');
+      this.iconTintCanvas.width = 64;
+      this.iconTintCanvas.height = 64;
+      this.iconTintCtx = this.iconTintCanvas.getContext('2d')!;
+
+      // Preload high-fidelity PNG icons from public/ui/Icons/
+      const iconsToLoad = {
+          CHAT: './ui/Icons/chat (1).png',
+          TUTORIAL: './ui/Icons/tutorial (1).png',
+          STADIUM: './ui/Icons/MINIMAP.png',
+          STADIUM_SEL: './ui/Icons/venue (1).png',
+          VOICE: './ui/Icons/voice (1).png',
+          WALLS: './ui/Icons/walls.png',
+          PLAY: './ui/Icons/play seq (1).png',
+          STORM: './ui/Icons/storm (1).png',
+          NAVIG: './ui/Icons/navigation (1).png',
+          CLEAR: './ui/Icons/clear (1).png'
+      };
+
+      for (const [key, path] of Object.entries(iconsToLoad)) {
+          const img = new Image();
+          img.src = path;
+          img.onload = () => {
+              this.iconImages[key] = img;
+              // Redraw the active compass UI components once loaded
+              this.redrawCompassGrid(this.hoveredCellIndex);
+              if (this.actionCompassGroup) {
+                  this.redrawActionCompass(this.actionHoveredSpokeIndex);
+              }
+          };
+      }
+
       this.compassGroup = new THREE.Group();
       this.compassGroup.position.set(0, 0.07, 0); 
       this.compassGroup.scale.setScalar(0.001);
@@ -2890,38 +2948,43 @@ export class JugnuSystem extends createSystem({
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
 
-          if (spoke.type === 'PLAY') {
-              ctx.beginPath();
-              ctx.moveTo(cx - 8, iconY - 12);
-              ctx.lineTo(cx + 12, iconY);
-              ctx.lineTo(cx - 8, iconY + 12);
-              ctx.closePath();
-              ctx.fill();
-              ctx.stroke();
-          } else if (spoke.type === 'STORM') {
-              ctx.beginPath();
-              ctx.arc(cx - 6, iconY + 2, 7, 0.5 * Math.PI, 1.5 * Math.PI);
-              ctx.arc(cx, iconY - 4, 9, 1.0 * Math.PI, 2.0 * Math.PI);
-              ctx.arc(cx + 6, iconY + 2, 7, 1.5 * Math.PI, 0.5 * Math.PI);
-              ctx.closePath();
-              ctx.fill();
-              ctx.stroke();
-          } else if (spoke.type === 'NAVIG') {
-              ctx.beginPath();
-              ctx.moveTo(cx, iconY - 14);
-              ctx.lineTo(cx + 11, iconY + 11);
-              ctx.lineTo(cx, iconY + 5);
-              ctx.lineTo(cx - 11, iconY + 11);
-              ctx.closePath();
-              ctx.fill();
-              ctx.stroke();
-          } else if (spoke.type === 'CLEAR') {
-              ctx.beginPath();
-              ctx.moveTo(cx - 10, iconY - 10);
-              ctx.lineTo(cx + 10, iconY + 10);
-              ctx.moveTo(cx + 10, iconY - 10);
-              ctx.lineTo(cx - 10, iconY + 10);
-              ctx.stroke();
+          const iconImg = this.iconImages[spoke.type];
+          if (iconImg) {
+              this.drawIconImage(ctx, iconImg, cx, iconY, 32, '#ffffff');
+          } else {
+              if (spoke.type === 'PLAY') {
+                  ctx.beginPath();
+                  ctx.moveTo(cx - 8, iconY - 12);
+                  ctx.lineTo(cx + 12, iconY);
+                  ctx.lineTo(cx - 8, iconY + 12);
+                  ctx.closePath();
+                  ctx.fill();
+                  ctx.stroke();
+              } else if (spoke.type === 'STORM') {
+                  ctx.beginPath();
+                  ctx.arc(cx - 6, iconY + 2, 7, 0.5 * Math.PI, 1.5 * Math.PI);
+                  ctx.arc(cx, iconY - 4, 9, 1.0 * Math.PI, 2.0 * Math.PI);
+                  ctx.arc(cx + 6, iconY + 2, 7, 1.5 * Math.PI, 0.5 * Math.PI);
+                  ctx.closePath();
+                  ctx.fill();
+                  ctx.stroke();
+              } else if (spoke.type === 'NAVIG') {
+                  ctx.beginPath();
+                  ctx.moveTo(cx, iconY - 14);
+                  ctx.lineTo(cx + 11, iconY + 11);
+                  ctx.lineTo(cx, iconY + 5);
+                  ctx.lineTo(cx - 11, iconY + 11);
+                  ctx.closePath();
+                  ctx.fill();
+                  ctx.stroke();
+              } else if (spoke.type === 'CLEAR') {
+                  ctx.beginPath();
+                  ctx.moveTo(cx - 10, iconY - 10);
+                  ctx.lineTo(cx + 10, iconY + 10);
+                  ctx.moveTo(cx + 10, iconY - 10);
+                  ctx.lineTo(cx - 10, iconY + 10);
+                  ctx.stroke();
+              }
           }
 
           ctx.fillStyle = hoveredIdx === idx || isActive ? themeColor : '#ffffff';
