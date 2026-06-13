@@ -2653,6 +2653,8 @@ export class JugnuSystem extends createSystem({
       this.compassGroup.scale.setScalar(0.001);
       this.compassGroup.visible = false;
 
+      const compassGroupEntity = this.world.createTransformEntity(this.compassGroup);
+
       const backingGeom = new THREE.PlaneGeometry(0.15, 0.15); 
 
       this.compassBackingCanvas = document.createElement('canvas');
@@ -2763,6 +2765,8 @@ export class JugnuSystem extends createSystem({
       this.compassTutorialCard.scale.setScalar(0.001); // Shrink initially
       this.compassGroup.add(this.compassTutorialCard);
 
+      const tutorialCardEntity = this.world.createTransformEntity(this.compassTutorialCard, compassGroupEntity);
+
       // Initialize Tutorial Tabs
       this.tutorialTabs.forEach((tab, i) => {
           const canvas = document.createElement('canvas');
@@ -2784,8 +2788,8 @@ export class JugnuSystem extends createSystem({
           tab.texture = texture;
           tab.mesh = mesh;
 
-          // Register tab mesh as an interactable entity for raycast selection from afar
-          this.world.createTransformEntity(mesh)
+          // Register tab mesh as an interactable entity for raycast selection from afar with parent entity linkage
+          this.world.createTransformEntity(mesh, tutorialCardEntity)
               .addComponent(Interactable)
               .addComponent(TutorialTabRef, { index: i })
               .addComponent(PhysicsShape, {
@@ -2876,7 +2880,6 @@ export class JugnuSystem extends createSystem({
       // Initialize Action Compass UI subsystem
       this.initActionCompassUI();
 
-      this.world.createTransformEntity(this.compassGroup);
       this.initLockIcon();
   }
 
