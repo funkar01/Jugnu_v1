@@ -171,6 +171,9 @@ export class JugnuSystem extends createSystem({
   private compassTutorialCanvas!: HTMLCanvasElement;
   private compassTutorialCtx!: CanvasRenderingContext2D;
   private compassTutorialTexture!: THREE.CanvasTexture;
+  private chatFrameCanvas: HTMLCanvasElement | null = null;
+  private debugFrameCanvas: HTMLCanvasElement | null = null;
+  private tutorialFrameCanvas: HTMLCanvasElement | null = null;
 
   private isStadiumMenuOpen = false;
   private compassStadiumCanvas!: HTMLCanvasElement;
@@ -2639,6 +2642,32 @@ export class JugnuSystem extends createSystem({
 
       this.redrawCompassStadiumMenu();
 
+      // Preload tab frame images
+      const chatImg = new Image();
+      chatImg.onload = () => {
+          this.chatFrameCanvas = this.preprocessFrameImage(chatImg);
+          this.redrawCompassChat();
+      };
+      chatImg.src = '/textures/ChatTab.png';
+
+      const debugImg = new Image();
+      debugImg.onload = () => {
+          this.debugFrameCanvas = this.preprocessFrameImage(debugImg);
+          this.redrawCompassDebug();
+      };
+      debugImg.src = '/textures/DebugTab.png';
+
+      const tutorialImg = new Image();
+      tutorialImg.onload = () => {
+          this.tutorialFrameCanvas = this.preprocessFrameImage(tutorialImg);
+          let currentStep = 0;
+          this.queries.jugnu.entities.forEach(entity => {
+              currentStep = entity.getValue(Jugnu, "instructionStep") as number;
+          });
+          this.redrawCompassTutorial(currentStep);
+      };
+      tutorialImg.src = '/textures/TutorialTab.png';
+
       // Draw initial grid
       this.redrawCompassGrid(-1);
 
@@ -3092,6 +3121,28 @@ export class JugnuSystem extends createSystem({
       }
   }
 
+  private preprocessFrameImage(img: HTMLImageElement): HTMLCanvasElement {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 384;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, 512, 384);
+      
+      const imgData = ctx.getImageData(0, 0, 512, 384);
+      const data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i+1];
+          const b = data[i+2];
+          const maxVal = Math.max(r, g, b);
+          if (maxVal < 45) {
+              data[i+3] = Math.round(data[i+3] * (maxVal / 45.0));
+          }
+      }
+      ctx.putImageData(imgData, 0, 0);
+      return canvas;
+  }
+
   private redrawCompassStadiumMenu(hoveredIdx: number = -1) {
       const ctx = this.compassStadiumCtx;
       const w = 600, h = 600;
@@ -3249,24 +3300,29 @@ export class JugnuSystem extends createSystem({
       const h = 384;
       ctx.clearRect(0, 0, w, h);
 
-      // Dark glassmorphic background
-      ctx.fillStyle = 'rgba(5, 5, 26, 0.95)';
+      // Draw semi-transparent backing board that fits inside the frame
+      ctx.fillStyle = 'rgba(5, 5, 25, 0.75)';
       ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 16);
+      ctx.roundRect(12, 12, w - 24, h - 24, 16);
       ctx.fill();
 
-      // Cyberpunk style neon border (Yellow tutorial accent border)
-      ctx.strokeStyle = '#ffd700';
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 16);
-      ctx.stroke();
+      // Draw preprocessed frame
+      if (this.tutorialFrameCanvas) {
+          ctx.drawImage(this.tutorialFrameCanvas, 0, 0);
+      } else {
+          // Fallback borders while loading
+          ctx.strokeStyle = '#ffd700';
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.roundRect(0, 0, w, h, 16);
+          ctx.stroke();
 
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(10, 10, w - 20, h - 20, 12);
-      ctx.stroke();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.roundRect(10, 10, w - 20, h - 20, 12);
+          ctx.stroke();
+      }
 
       // Console Header text
       ctx.fillStyle = '#ffd700';
@@ -3396,18 +3452,23 @@ export class JugnuSystem extends createSystem({
       const h = 384;
       ctx.clearRect(0, 0, w, h);
 
-      // Backing board
-      ctx.fillStyle = '#05050f';
+      // Draw semi-transparent backing board that fits inside the frame
+      ctx.fillStyle = 'rgba(5, 5, 25, 0.75)';
       ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 16);
+      ctx.roundRect(12, 12, w - 24, h - 24, 16);
       ctx.fill();
 
-      // Border
-      ctx.strokeStyle = '#f97316';
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 16);
-      ctx.stroke();
+      // Draw preprocessed frame
+      if (this.chatFrameCanvas) {
+          ctx.drawImage(this.chatFrameCanvas, 0, 0);
+      } else {
+          // Fallback solid border while loading
+          ctx.strokeStyle = '#f97316';
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.roundRect(0, 0, w, h, 16);
+          ctx.stroke();
+      }
 
       // Header Text
       ctx.fillStyle = '#f97316';
@@ -3514,41 +3575,46 @@ export class JugnuSystem extends createSystem({
       const h = 384;
       ctx.clearRect(0, 0, w, h);
 
-      // Dark blue backing
-      ctx.fillStyle = 'rgba(5, 5, 20, 0.95)';
+      // Draw semi-transparent backing board that fits inside the frame
+      ctx.fillStyle = 'rgba(5, 5, 25, 0.75)';
       ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 16);
+      ctx.roundRect(12, 12, w - 24, h - 24, 16);
       ctx.fill();
 
-      // Cyberpunk style neon border (Electric Cyan)
-      ctx.strokeStyle = '#00ffff';
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.roundRect(0, 0, w, h, 16);
-      ctx.stroke();
+      // Draw preprocessed frame
+      if (this.debugFrameCanvas) {
+          ctx.drawImage(this.debugFrameCanvas, 0, 0);
+      } else {
+          // Fallback borders and corner accents while loading
+          ctx.strokeStyle = '#00ffff';
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.roundRect(0, 0, w, h, 16);
+          ctx.stroke();
 
-      // Secondary border (Magenta)
-      ctx.strokeStyle = 'rgba(255, 0, 128, 0.4)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(10, 10, w - 20, h - 20, 12);
-      ctx.stroke();
+          // Secondary border (Magenta)
+          ctx.strokeStyle = 'rgba(255, 0, 128, 0.4)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.roundRect(10, 10, w - 20, h - 20, 12);
+          ctx.stroke();
 
-      // Corner accents
-      ctx.fillStyle = '#00ffff';
-      const accentSize = 16;
-      // Top Left
-      ctx.fillRect(0, 0, accentSize, 4);
-      ctx.fillRect(0, 0, 4, accentSize);
-      // Top Right
-      ctx.fillRect(w - accentSize, 0, accentSize, 4);
-      ctx.fillRect(w - 4, 0, 4, accentSize);
-      // Bottom Left
-      ctx.fillRect(0, h - 4, accentSize, 4);
-      ctx.fillRect(0, h - accentSize, 4, accentSize);
-      // Bottom Right
-      ctx.fillRect(w - accentSize, h - 4, accentSize, 4);
-      ctx.fillRect(w - 4, h - accentSize, 4, accentSize);
+          // Corner accents
+          ctx.fillStyle = '#00ffff';
+          const accentSize = 16;
+          // Top Left
+          ctx.fillRect(0, 0, accentSize, 4);
+          ctx.fillRect(0, 0, 4, accentSize);
+          // Top Right
+          ctx.fillRect(w - accentSize, 0, accentSize, 4);
+          ctx.fillRect(w - 4, 0, 4, accentSize);
+          // Bottom Left
+          ctx.fillRect(0, h - 4, accentSize, 4);
+          ctx.fillRect(0, h - accentSize, 4, accentSize);
+          // Bottom Right
+          ctx.fillRect(w - accentSize, h - 4, accentSize, 4);
+          ctx.fillRect(w - 4, h - accentSize, 4, accentSize);
+      }
 
       // Console Header text
       ctx.fillStyle = '#00ffff';
