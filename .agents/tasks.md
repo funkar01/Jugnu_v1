@@ -1077,3 +1077,12 @@
   - `[x]` Updated `drawWristButton()` in `src/domainExpansion.ts` to draw a 3-fold accordion map icon when the minimap is closed, and a cross (×) icon when open.
   - `[x]` Triggered `drawWristButton(0, false)` on all table spawn toggles in `src/domainExpansion.ts` to instantly refresh and synchronize the icon state.
   - `[x]` Verified typecheck safety via `npx tsc --noEmit` and production build compilation via `npm run build`.
+
+- `[x]` Custom Image Tab Frames & Floating Transparency (Current Run)
+  - `[x]` Copied updated `TutorialTab.png` from pictures folder into `public/textures/`.
+  - `[x]` Preloaded and preprocessed all three frame PNGs to strip black backgrounds smoothly with feathered alpha scaling.
+  - `[x]` Upscaled canvas resolution of all three tabs by 50% to `768x576` and mesh sizes to `0.54m x 0.405m`.
+  - `[x]` Shifted the semi-transparent backing board to cover only the inner text box region (`x = dx + 12`, `y = dy + 12`, `width = 488`, `height = 360`), allowing the outer frame borders to float transparently in space.
+  - `[x]` Added F1 car enhancements (Airbox intake scoop, T-camera pod, sidepod cooling inlets, DRS actuator pod, exhaust pipe, and diffuser rain LED).
+  - `[x]` Increased maximum gesture zoom scale limit from `6.0` to `10.0` and adjusted structural fading transitions.
+  - `[x]` Verified compilation safety (`npx tsc --noEmit`) and client builds (`npm run build`).
