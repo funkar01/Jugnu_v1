@@ -211,6 +211,13 @@ const assets: AssetManifest = {
   nbaJalenWilliams:      { url: "./NBACards/Oklahoma City Thunder_Jalen Williams (SG-SF).png",       type: AssetType.Texture, priority: "background" },
   nbaLuguentzDort:       { url: "./NBACards/Oklahoma City Thunder_Luguentz Dort (SF-SG).png",        type: AssetType.Texture, priority: "background" },
   nbaShaiSGA:            { url: "./NBACards/Oklahoma City Thunder_Shai Gilgeous-Alexander (PG  SG).png", type: AssetType.Texture, priority: "background" },
+  // F1 Player Cards
+  f1CharlesLeclerc:      { url: "./F1Cards/Charles Leclerc.png",      type: AssetType.Texture, priority: "background" },
+  f1GeorgeRussell:       { url: "./F1Cards/George Russell.png",       type: AssetType.Texture, priority: "background" },
+  f1KimiAntonelli:       { url: "./F1Cards/Kimi Antonelli.png",       type: AssetType.Texture, priority: "background" },
+  f1LandoNorris:         { url: "./F1Cards/Lando Norris.png",         type: AssetType.Texture, priority: "background" },
+  f1LewisHamilton:       { url: "./F1Cards/Lewis Hamilton.png",       type: AssetType.Texture, priority: "background" },
+  f1OscarPiastri:        { url: "./F1Cards/Oscar Piastri.png",        type: AssetType.Texture, priority: "background" },
 };
 
 World.create(document.getElementById("scene-container") as HTMLDivElement, {

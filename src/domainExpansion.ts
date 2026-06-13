@@ -313,7 +313,8 @@ export class DomainExpansionSystem extends createSystem({
         progress: number,
         speed: number,
         wheels: THREE.Mesh[],
-        colorType: 'merc' | 'redbull' | 'ferrari'
+        colorType: 'merc' | 'ferrari' | 'mclaren',
+        driverId: string
     }[] = [];
     private holoCylinder!: THREE.Mesh;
     private holoCylinderWire!: THREE.LineSegments;
@@ -351,10 +352,8 @@ export class DomainExpansionSystem extends createSystem({
 
     // F1 Wet Spray Particles
     private f1SprayMesh!: THREE.InstancedMesh;
-    private f1SprayData!: Float32Array; // 180 particles: x, y, z, vx, vy, vz, age, active (8 values per particle)
-    private f1SprayEmitSlot = 0;
-    private f1SprayEmitSlot_RB = 0;
-    private f1SprayEmitSlot_FE = 0;
+    private f1SprayData!: Float32Array; // 360 particles: x, y, z, vx, vy, vz, age, active (8 values per particle)
+    private f1SprayEmitSlots = [0, 0, 0, 0, 0, 0];
     private f1SprayDummy = new THREE.Object3D();
     private isNavLayerActive = false;
     private navPlaceholdersGroup!: THREE.Group;
@@ -2059,7 +2058,7 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
 
-            // Update all three detailed F1 cars
+            // Update all six detailed F1 cars
             this.nurburgringCars.forEach((car) => {
                 car.group.visible = true;
 
@@ -2067,21 +2066,32 @@ export class DomainExpansionSystem extends createSystem({
                 let carProgress = 0.0;
                 let lateralOffset = 0.0;
 
-                if (car.colorType === 'merc') {
-                    // Mercedes F1 car
-                    const progressDiff = Math.cos(this.nurburgringOvertakePhase) * 0.014; // total 0.028 diff for safe nose-to-tail clearance
-                    carProgress = (this.nurburgringF1Progress + progressDiff + 1.0) % 1.0;
-                    lateralOffset = Math.sin(this.nurburgringOvertakePhase) * 0.005; // 5mm offset for wide side-by-side clearance in corners
-                } else if (car.colorType === 'redbull') {
-                    // Red Bull F1 car
-                    const progressDiff = -Math.cos(this.nurburgringOvertakePhase) * 0.014; // opposite sign
-                    carProgress = (this.nurburgringF1Progress + progressDiff + 1.0) % 1.0;
-                    lateralOffset = -Math.sin(this.nurburgringOvertakePhase) * 0.005; // 5mm offset for wide side-by-side clearance in corners
-                } else {
-                    // Ferrari F1 car (trailing in 3rd)
-                    carProgress = (this.nurburgringF1Progress - 0.052 + 1.0) % 1.0; // 0.052 lag for 7.9mm clearance behind battle
-                    lateralOffset = 0.001; // slightly off-center
+                let phaseOffset = 0.0;
+                let sign = 1.0;
+                if (car.driverId === 'f1_gr') {
+                    phaseOffset = 0.0;
+                    sign = 1.0;
+                } else if (car.driverId === 'f1_ka') {
+                    phaseOffset = 0.0;
+                    sign = -1.0;
+                } else if (car.driverId === 'f1_cl') {
+                    phaseOffset = 1.2;
+                    sign = 1.0;
+                } else if (car.driverId === 'f1_lh') {
+                    phaseOffset = 1.2;
+                    sign = -1.0;
+                } else if (car.driverId === 'f1_ln') {
+                    phaseOffset = 2.4;
+                    sign = 1.0;
+                } else if (car.driverId === 'f1_op') {
+                    phaseOffset = 2.4;
+                    sign = -1.0;
                 }
+
+                const baseLag = (car.driverId === 'f1_cl' || car.driverId === 'f1_lh') ? -0.05 : ((car.driverId === 'f1_ln' || car.driverId === 'f1_op') ? -0.10 : 0.0);
+                const progressDiff = sign * Math.cos(this.nurburgringOvertakePhase + phaseOffset) * 0.014;
+                carProgress = (this.nurburgringF1Progress + baseLag + progressDiff + 1.0) % 1.0;
+                lateralOffset = sign * Math.sin(this.nurburgringOvertakePhase + phaseOffset) * 0.005;
 
                 // Query positions and tangents from Nurburgring spline curve
                 this.nurburgringCurve.getPointAt(carProgress, this.f1Pos);
@@ -2095,9 +2105,9 @@ export class DomainExpansionSystem extends createSystem({
                 // Apply lateral lane offsets to positions
                 this.f1Pos.addScaledVector(this.f1xAxis, lateralOffset);
 
-                // Set car position and scale-adjusted height
+                // Set car position and scale-adjusted height (using 0.64 scale factor)
                 car.group.position.copy(this.f1Pos);
-                car.group.position.y += 0.0011 * 0.8; // 20% smaller height offset
+                car.group.position.y += 0.0011 * 0.64;
 
                 // Apply spatial rotation matrix to match curves and track elevations
                 this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
@@ -2105,14 +2115,21 @@ export class DomainExpansionSystem extends createSystem({
 
                 // Apply a realistic steering slip angle based on lateral offset rate of change
                 const phaseSpeed = isCorner ? 1.5 : (targetPhase - this.nurburgringOvertakePhase) * 5.0;
-                const lateralVelocity = Math.cos(this.nurburgringOvertakePhase) * phaseSpeed;
-                const steerAngle = lateralVelocity * (car.colorType === 'redbull' ? -0.055 : car.colorType === 'merc' ? 0.055 : 0.0);
+                const lateralVelocity = Math.cos(this.nurburgringOvertakePhase + phaseOffset) * phaseSpeed;
+                const steerAngle = lateralVelocity * sign * 0.055;
                 car.group.rotateY(steerAngle);
 
                 // Spin wheels locally
                 car.wheels.forEach((wheel) => {
                     wheel.rotation.x -= dt * 35.0;
                 });
+
+                // Sync position with corresponding driver player card group
+                const pMarker = this.players.find(p => p.id === car.driverId);
+                if (pMarker) {
+                    pMarker.group.position.copy(car.group.position);
+                    pMarker.currentPos.copy(car.group.position);
+                }
             });
 
             if (isImmersive) {
@@ -2290,7 +2307,7 @@ export class DomainExpansionSystem extends createSystem({
                     (this.f1VortexLeft.material as THREE.LineBasicMaterial).opacity = 0.85;
                     (this.f1VortexRight.material as THREE.LineBasicMaterial).opacity = 0.85;
 
-                    const rbCar = this.nurburgringCars.find(c => c.colorType === 'redbull')?.group;
+                    const rbCar = this.nurburgringCars.find(c => c.colorType === 'mclaren')?.group;
                     if (rbCar && this.f1VortexLeft_RB) {
                         this.f1VortexLeft_RB.visible = true;
                         this.f1VortexRight_RB.visible = true;
@@ -2406,16 +2423,17 @@ export class DomainExpansionSystem extends createSystem({
                         this.f1SprayMesh.visible = true;
                         (this.f1SprayMesh.material as THREE.MeshBasicMaterial).opacity = 0.45;
 
-                        const rbCar = this.nurburgringCars.find(c => c.colorType === 'redbull')?.group;
-                        const feCar = this.nurburgringCars.find(c => c.colorType === 'ferrari')?.group;
                         const heading = this.f1zAxis;
 
-                        // Emit Mercedes (slots 0 - 59)
-                        if (this.nurburgringF1Car) {
-                            const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(this.nurburgringF1Car.matrix);
-                            const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(this.nurburgringF1Car.matrix);
-                            
-                            let idx = this.f1SprayEmitSlot * 8;
+                        // Emit spray for all 6 cars
+                        this.nurburgringCars.forEach((car, carIdx) => {
+                            car.group.updateMatrix();
+                            const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(car.group.matrix);
+                            const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(car.group.matrix);
+
+                            let emitSlot = this.f1SprayEmitSlots[carIdx];
+
+                            let idx = (carIdx * 60 + emitSlot) * 8;
                             this.f1SprayData[idx + 0] = lRearPos.x;
                             this.f1SprayData[idx + 1] = lRearPos.y;
                             this.f1SprayData[idx + 2] = lRearPos.z;
@@ -2425,7 +2443,7 @@ export class DomainExpansionSystem extends createSystem({
                             this.f1SprayData[idx + 6] = 0.0;
                             this.f1SprayData[idx + 7] = 1.0;
 
-                            idx = ((this.f1SprayEmitSlot + 1) % 60) * 8;
+                            idx = (carIdx * 60 + ((emitSlot + 1) % 60)) * 8;
                             this.f1SprayData[idx + 0] = rRearPos.x;
                             this.f1SprayData[idx + 1] = rRearPos.y;
                             this.f1SprayData[idx + 2] = rRearPos.z;
@@ -2435,69 +2453,11 @@ export class DomainExpansionSystem extends createSystem({
                             this.f1SprayData[idx + 6] = 0.0;
                             this.f1SprayData[idx + 7] = 1.0;
 
-                            this.f1SprayEmitSlot = (this.f1SprayEmitSlot + 2) % 60;
-                        }
+                            this.f1SprayEmitSlots[carIdx] = (emitSlot + 2) % 60;
+                        });
 
-                        // Emit Red Bull (slots 60 - 119)
-                        if (rbCar) {
-                            rbCar.updateMatrix();
-                            const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(rbCar.matrix);
-                            const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(rbCar.matrix);
-
-                            let idx = (60 + this.f1SprayEmitSlot_RB) * 8;
-                            this.f1SprayData[idx + 0] = lRearPos.x;
-                            this.f1SprayData[idx + 1] = lRearPos.y;
-                            this.f1SprayData[idx + 2] = lRearPos.z;
-                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
-                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
-                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
-                            this.f1SprayData[idx + 6] = 0.0;
-                            this.f1SprayData[idx + 7] = 1.0;
-
-                            idx = (60 + ((this.f1SprayEmitSlot_RB + 1) % 60)) * 8;
-                            this.f1SprayData[idx + 0] = rRearPos.x;
-                            this.f1SprayData[idx + 1] = rRearPos.y;
-                            this.f1SprayData[idx + 2] = rRearPos.z;
-                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
-                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
-                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
-                            this.f1SprayData[idx + 6] = 0.0;
-                            this.f1SprayData[idx + 7] = 1.0;
-
-                            this.f1SprayEmitSlot_RB = (this.f1SprayEmitSlot_RB + 2) % 60;
-                        }
-
-                        // Emit Ferrari (slots 120 - 179)
-                        if (feCar) {
-                            feCar.updateMatrix();
-                            const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(feCar.matrix);
-                            const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(feCar.matrix);
-
-                            let idx = (120 + this.f1SprayEmitSlot_FE) * 8;
-                            this.f1SprayData[idx + 0] = lRearPos.x;
-                            this.f1SprayData[idx + 1] = lRearPos.y;
-                            this.f1SprayData[idx + 2] = lRearPos.z;
-                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
-                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
-                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
-                            this.f1SprayData[idx + 6] = 0.0;
-                            this.f1SprayData[idx + 7] = 1.0;
-
-                            idx = (120 + ((this.f1SprayEmitSlot_FE + 1) % 60)) * 8;
-                            this.f1SprayData[idx + 0] = rRearPos.x;
-                            this.f1SprayData[idx + 1] = rRearPos.y;
-                            this.f1SprayData[idx + 2] = rRearPos.z;
-                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
-                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
-                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
-                            this.f1SprayData[idx + 6] = 0.0;
-                            this.f1SprayData[idx + 7] = 1.0;
-
-                            this.f1SprayEmitSlot_FE = (this.f1SprayEmitSlot_FE + 2) % 60;
-                        }
-
-                        // Update all 180 spray particles
-                        for (let i = 0; i < 180; i++) {
+                        // Update all 360 spray particles
+                        for (let i = 0; i < 360; i++) {
                             const offset = i * 8;
                             if (this.f1SprayData[offset + 7] === 1.0) {
                                 // move
@@ -3062,7 +3022,7 @@ export class DomainExpansionSystem extends createSystem({
                 }
 
                 // Smooth position LERP — only update needed
-                if (!this.isSportSequenceActive) {
+                if (!this.isSportSequenceActive && this.currentStadiumType !== 'nurburgring') {
                     p.group.position.lerp(p.targetPos, dt * 1.5);
                     p.currentPos.copy(p.group.position);
                 }
@@ -3155,9 +3115,9 @@ export class DomainExpansionSystem extends createSystem({
                 tagMat.opacity += (targetOpacityTag - tagMat.opacity) * dt * 10.0;
                 p.tag.scale.setScalar(THREE.MathUtils.lerp(p.tag.scale.x, targetTagScale, dt * 10.0));
                 
-                p.tag.visible = tagMat.opacity > 0.01;
-                p.mesh.visible = bodyMat.opacity > 0.01;
-                p.ring.visible = ringMat.opacity > 0.01;
+                p.tag.visible = (this.currentStadiumType !== 'nurburgring') && (tagMat.opacity > 0.01);
+                p.mesh.visible = (this.currentStadiumType !== 'nurburgring') && (bodyMat.opacity > 0.01);
+                p.ring.visible = (this.currentStadiumType !== 'nurburgring') && (ringMat.opacity > 0.01);
 
                 // Fade/Reveal stats card smoothly
                 const cardMesh = p.statsCard.children[0] as THREE.Mesh;
@@ -5245,10 +5205,20 @@ export class DomainExpansionSystem extends createSystem({
             { id: "ref", name: "M. Carettini", role: "umpire",  jersey: "R",  team: "neutral", x:  0.020, z:  0.025, primary: "NBA Referee",          secondary: "15 yrs experience", rcbCardKey: "" },
         ];
 
+        const rosterNurburgring: PlayerEntry[] = [
+            { id: "f1_lh", name: "L. Hamilton", role: "fielder", jersey: "44", team: "yellow",  x: 0, z: 0, primary: "Lewis Hamilton", secondary: "Ferrari", rcbCardKey: "f1LewisHamilton" },
+            { id: "f1_cl", name: "C. Leclerc",  role: "fielder", jersey: "16", team: "yellow",  x: 0, z: 0, primary: "Charles Leclerc", secondary: "Ferrari", rcbCardKey: "f1CharlesLeclerc" },
+            { id: "f1_ln", name: "L. Norris",   role: "fielder", jersey: "4",  team: "blue",    x: 0, z: 0, primary: "Lando Norris", secondary: "McLaren", rcbCardKey: "f1LandoNorris" },
+            { id: "f1_op", name: "O. Piastri",  role: "fielder", jersey: "81", team: "blue",    x: 0, z: 0, primary: "Oscar Piastri", secondary: "McLaren", rcbCardKey: "f1OscarPiastri" },
+            { id: "f1_gr", name: "G. Russell",  role: "fielder", jersey: "63", team: "neutral", x: 0, z: 0, primary: "George Russell", secondary: "Mercedes", rcbCardKey: "f1GeorgeRussell" },
+            { id: "f1_ka", name: "K. Antonelli", role: "fielder", jersey: "12", team: "neutral", x: 0, z: 0, primary: "Kimi Antonelli", secondary: "Mercedes", rcbCardKey: "f1KimiAntonelli" }
+        ];
+
         const roster: PlayerEntry[] =
             this.currentStadiumType === 'berlin' ? rosterFootball
           : this.currentStadiumType === 'inuit'  ? rosterBasketball
-          : (this.currentStadiumType === 'butterflies' || this.currentStadiumType === 'nurburgring') ? []
+          : this.currentStadiumType === 'nurburgring' ? rosterNurburgring
+          : this.currentStadiumType === 'butterflies' ? []
           : rosterCricket;
 
         // ── Shared Phong glassmorphic materials (created ONCE per team — not 22× per player) ───────
@@ -7578,7 +7548,7 @@ export class DomainExpansionSystem extends createSystem({
             // --- 3b. F1 NÜRBURGRING RACE CHOREOGRAPHY (20s cinematic lap) ---
 
             const mercCar = this.nurburgringCars.find(c => c.colorType === 'merc');
-            const rbCar   = this.nurburgringCars.find(c => c.colorType === 'redbull');
+            const rbCar   = this.nurburgringCars.find(c => c.colorType === 'mclaren');
             const feCar   = this.nurburgringCars.find(c => c.colorType === 'ferrari');
 
             // Helper: draw sector card using the shared celebration canvas
@@ -7700,7 +7670,7 @@ export class DomainExpansionSystem extends createSystem({
 
                 // Show P1 card for Mercedes
                 if (time >= 1.0 && time < 1.15) {
-                    drawPositionCard('1', 'HAMILTON', 'MERCEDES', '#00d2be');
+                    drawPositionCard('1', 'RUSSELL', 'MERCEDES', '#00d2be');
                     this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.055, 0.0);
                     this.sportCelebrationCard.visible = true;
                     this.sportCelebrationCard.scale.set(0.001, 0.001, 0.001);
@@ -7739,7 +7709,7 @@ export class DomainExpansionSystem extends createSystem({
                 if (feCar)   feCar.speed   = 0.052 - Math.sin(time * 8.0) * 0.004;
 
                 if (time >= 8.0 && time < 8.2) {
-                    drawPositionCard('2', 'VERSTAPPEN', 'RED BULL', '#3b82f6');
+                    drawPositionCard('2', 'NORRIS', 'MCLAREN', '#ff6600');
                     this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.055, 0.0);
                     this.sportCelebrationCard.visible = true;
                     this.sportCelebrationCard.scale.set(0.001, 0.001, 0.001);
@@ -7748,7 +7718,7 @@ export class DomainExpansionSystem extends createSystem({
                 // Wheel-to-wheel spark at Hatzenbach apex
                 if (time >= 9.5 && time < 9.65) {
                     this.triggerFirework(0.04, 0.007, -0.075, 0xef4444, 0.01, 0, 0.005, 0, 0.7);
-                    this.triggerFirework(0.042, 0.007, -0.073, 0x3b82f6, 0.01, 0, 0.005, 0, 0.7);
+                    this.triggerFirework(0.042, 0.007, -0.073, 0xff6600, 0.01, 0, 0.005, 0, 0.7);
                 }
 
             // ── PHASE 11-14s: Red Bull pit stop sprint out of pit lane ──
@@ -7766,12 +7736,12 @@ export class DomainExpansionSystem extends createSystem({
                 }
 
                 if (time >= 11.0 && time < 11.25) {
-                    drawPitCard('RED BULL', '2.3s', '#3b82f6');
+                    drawPitCard('MCLAREN', '2.3s', '#ff6600');
                     this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.055, 0.0);
                     this.sportCelebrationCard.visible = true;
                     this.sportCelebrationCard.scale.set(0.001, 0.001, 0.001);
                     // Pit-stop spark at pit-lane entry (front straight outside)
-                    this.triggerFirework(0.0, 0.012, -0.07, 0x3b82f6, 0.008, 0, 0.004, 0, 0.5);
+                    this.triggerFirework(0.0, 0.012, -0.07, 0xff6600, 0.008, 0, 0.004, 0, 0.5);
                 }
 
             // ── PHASE 14-16s: Sector 2 time card ──
@@ -7788,13 +7758,13 @@ export class DomainExpansionSystem extends createSystem({
                     this.triggerFirework(-0.03, 0.014, 0.075, 0xa855f7, 0.009, 0, 0.005, 0, 0.6);
                 }
 
-                // Red Bull overtakes Mercedes on Döttinger approach
+                // McLaren overtakes Mercedes on Döttinger approach
                 if (time >= 15.0 && time < 15.15) {
-                    drawPositionCard('1', 'VERSTAPPEN', 'RED BULL', '#3b82f6');
+                    drawPositionCard('1', 'NORRIS', 'MCLAREN', '#ff6600');
                     this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.055, 0.0);
                     this.sportCelebrationCard.visible = true;
                     this.sportCelebrationCard.scale.set(0.001, 0.001, 0.001);
-                    this.triggerFirework(0.0, 0.018, -0.06, 0x3b82f6, 0.012, 0, 0.008, 0, 0.8);
+                    this.triggerFirework(0.0, 0.018, -0.06, 0xff6600, 0.012, 0, 0.008, 0, 0.8);
                     this.triggerFirework(0.01, 0.018, -0.062, 0xfbbf24, 0.009, 0, 0.006, 0, 0.6);
                 }
 
@@ -7834,7 +7804,7 @@ export class DomainExpansionSystem extends createSystem({
                     ctx2.fillText('5:09.244', 128, 76);
                     ctx2.font = '11px monospace';
                     ctx2.fillStyle = '#c084fc';
-                    ctx2.fillText('VERSTAPPEN — RED BULL RACING', 128, 108);
+                    ctx2.fillText('NORRIS — MCLAREN RACING', 128, 108);
                     this.sportCelebrationTexture.needsUpdate = true;
                     this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.055, 0.0);
                     this.sportCelebrationCard.visible = true;
@@ -7844,9 +7814,9 @@ export class DomainExpansionSystem extends createSystem({
                     this.triggerFirework(0.02, 0.022, 0.0, 0x22d3ee, 0.014, 0, 0.011, 0, 1.0);
                 }
 
-                // Chequered flag & Hamilton P1 Winner card at 19.3s
+                // Chequered flag & Russell P1 Winner card at 19.3s
                 if (time >= 19.3 && time < 26.0) {
-                    drawPositionCard('1', 'HAMILTON', 'MERCEDES', '#00d2be');
+                    drawPositionCard('1', 'RUSSELL', 'MERCEDES', '#00d2be');
                     this.sportCelebrationCard.position.set(0.0, this.ROOF_Y + 0.055, 0.0);
                     this.sportCelebrationCard.visible = true;
                 }
@@ -8238,7 +8208,7 @@ export class DomainExpansionSystem extends createSystem({
         // 4. Closed winding 3D Spline representing Nürburgring with topography elevations
         const points = [
             new THREE.Vector3( 0.00,  0.003, -0.09), // Start/GP Straight
-            new THREE.Vector3( 0.04,  0.005, -0.08), // Hatzenbach
+            new THREE.Vector3( 0.04,  0.003, -0.09), // Hatzenbach (straightened)
             new THREE.Vector3( 0.08,  0.012, -0.05), // Flugplatz (elevation!)
             new THREE.Vector3( 0.06,  0.002, -0.01), // Fuchsroehre (dip!)
             new THREE.Vector3( 0.09,  0.008,  0.03), // Adenauer Forst
@@ -8247,7 +8217,7 @@ export class DomainExpansionSystem extends createSystem({
             new THREE.Vector3(-0.08,  0.010,  0.05), // Hohe Acht (highest point!)
             new THREE.Vector3(-0.07,  0.005, -0.01), // Pflanzgarten
             new THREE.Vector3(-0.05,  0.002, -0.06), // Schwalbenschwanz
-            new THREE.Vector3(-0.03,  0.002, -0.08)  // Döttinger Höhe
+            new THREE.Vector3(-0.04,  0.003, -0.09)  // Döttinger Höhe (straightened)
         ];
         this.nurburgringCurve = new THREE.CatmullRomCurve3(points, true);
         this.nurburgringFrenetFrames = this.nurburgringCurve.computeFrenetFrames(1000, true);
@@ -8263,7 +8233,7 @@ export class DomainExpansionSystem extends createSystem({
         roadShape.closePath();
 
         const extrudeSettings = {
-            steps: 128,
+            steps: 256,
             bevelEnabled: false,
             extrudePath: this.nurburgringCurve
         };
@@ -8290,32 +8260,47 @@ export class DomainExpansionSystem extends createSystem({
         const lineMesh = new THREE.Line(lineGeo, lineMat);
         this.nurburgringGroup.add(lineMesh);
 
-        // 7. Spawn the 3 detailed F1 cars (20% smaller)
+        // 7. Spawn the 6 detailed F1 cars (20% smaller)
         this.nurburgringCars = [];
         this.nurburgringF1WheelMats = [];
 
-        // Mercedes: Silver body, white helmet, teal visor/axle accents (tracked car with HUD)
+        // Mercedes: George Russell (tracked car with HUD)
         this.nurburgringF1Car = new THREE.Group();
         this.nurburgringF1Wheels = [];
         this.nurburgringF1WheelMats = [];
-        const merc = this.createDetailedF1Car(0xa1a1aa, 0xffffff, 0x00d2be, 'merc');
-        this.nurburgringF1Car.add(merc.car);
-        this.nurburgringF1Wheels = merc.wheels;
+        const mercRussell = this.createDetailedF1Car(0xa1a1aa, 0xffffff, 0x00d2be, 'merc');
+        this.nurburgringF1Car.add(mercRussell.car);
+        this.nurburgringF1Wheels = mercRussell.wheels;
         this.createNurburgringF1HUD();
         this.nurburgringGroup.add(this.nurburgringF1Car);
 
-        // Red Bull: Dark Blue body, yellow helmet, red visor/axle accents
-        const rb = this.createDetailedF1Car(0x0c1630, 0xeab308, 0xef4444, 'redbull');
-        this.nurburgringGroup.add(rb.car);
+        // Mercedes: Kimi Antonelli
+        const mercAntonelli = this.createDetailedF1Car(0xa1a1aa, 0x1e3a8a, 0xeab308, 'merc');
+        this.nurburgringGroup.add(mercAntonelli.car);
 
-        // Ferrari: Rosso Corsa body, black helmet, white visor/axle accents
-        const ferrari = this.createDetailedF1Car(0xd10000, 0x18181b, 0xffffff, 'ferrari');
-        this.nurburgringGroup.add(ferrari.car);
+        // Ferrari: Charles Leclerc
+        const ferrariLeclerc = this.createDetailedF1Car(0xd10000, 0xffffff, 0xffffff, 'ferrari');
+        this.nurburgringGroup.add(ferrariLeclerc.car);
+
+        // Ferrari: Lewis Hamilton
+        const ferrariHamilton = this.createDetailedF1Car(0xd10000, 0x18181b, 0xeab308, 'ferrari');
+        this.nurburgringGroup.add(ferrariHamilton.car);
+
+        // McLaren: Lando Norris
+        const mclarenNorris = this.createDetailedF1Car(0xff6600, 0x4ade80, 0xeab308, 'mclaren');
+        this.nurburgringGroup.add(mclarenNorris.car);
+
+        // McLaren: Oscar Piastri
+        const mclarenPiastri = this.createDetailedF1Car(0xff6600, 0x0284c7, 0xffffff, 'mclaren');
+        this.nurburgringGroup.add(mclarenPiastri.car);
 
         this.nurburgringCars.push(
-            { group: this.nurburgringF1Car, progress: 0.0, speed: 0.052, wheels: this.nurburgringF1Wheels, colorType: 'merc' },
-            { group: rb.car, progress: 0.0, speed: 0.052, wheels: rb.wheels, colorType: 'redbull' },
-            { group: ferrari.car, progress: 0.0, speed: 0.052, wheels: ferrari.wheels, colorType: 'ferrari' }
+            { group: this.nurburgringF1Car, progress: 0.0, speed: 0.052, wheels: this.nurburgringF1Wheels, colorType: 'merc', driverId: 'f1_gr' },
+            { group: mercAntonelli.car, progress: 0.0, speed: 0.052, wheels: mercAntonelli.wheels, colorType: 'merc', driverId: 'f1_ka' },
+            { group: ferrariLeclerc.car, progress: 0.0, speed: 0.052, wheels: ferrariLeclerc.wheels, colorType: 'ferrari', driverId: 'f1_cl' },
+            { group: ferrariHamilton.car, progress: 0.0, speed: 0.052, wheels: ferrariHamilton.wheels, colorType: 'ferrari', driverId: 'f1_lh' },
+            { group: mclarenNorris.car, progress: 0.0, speed: 0.052, wheels: mclarenNorris.wheels, colorType: 'mclaren', driverId: 'f1_ln' },
+            { group: mclarenPiastri.car, progress: 0.0, speed: 0.052, wheels: mclarenPiastri.wheels, colorType: 'mclaren', driverId: 'f1_op' }
         );
 
         this.tableGroup.add(this.nurburgringGroup);
@@ -8323,7 +8308,7 @@ export class DomainExpansionSystem extends createSystem({
         console.log("[NurburgringMap] High-fidelity wider racetrack, line guides, and 3 detailed F1 racing cars initialized!");
     }
 
-    private createDetailedF1Car(bodyColor: number, helmetColor: number, visorColor: number, colorType: 'merc' | 'redbull' | 'ferrari') {
+    private createDetailedF1Car(bodyColor: number, helmetColor: number, visorColor: number, colorType: 'merc' | 'ferrari' | 'mclaren') {
         const car = new THREE.Group();
         const wheels: THREE.Mesh[] = [];
 
@@ -8620,8 +8605,8 @@ export class DomainExpansionSystem extends createSystem({
             car.add(stripe);
         });
 
-        // 20% smaller F1 car size scale applied to the entire group
-        car.scale.setScalar(0.8);
+        // 20% smaller F1 car size scale applied to the entire group (scaled from 0.8 to 0.64)
+        car.scale.setScalar(0.64);
 
         return { car, wheels };
     }
@@ -8644,11 +8629,11 @@ export class DomainExpansionSystem extends createSystem({
             depthWrite: false
         });
 
-        // Scaled to compensate for the F1 car group 0.8 scale so HUD is 50% larger (0.030x0.015) in world space
-        const hudGeom = new THREE.PlaneGeometry(0.0375, 0.01875);
+        // Scaled to compensate for the F1 car group 0.64 scale so HUD is 50% larger (0.030x0.015) in world space
+        const hudGeom = new THREE.PlaneGeometry(0.046875, 0.0234375);
         this.f1HudMesh = new THREE.Mesh(hudGeom, this.f1HudMat);
         // Position it floating directly above the driver helmet inside F1 car local space
-        this.f1HudMesh.position.set(0, 0.01875, -0.001875);
+        this.f1HudMesh.position.set(0, 0.0234375, -0.00234375);
         this.nurburgringF1Car.add(this.f1HudMesh);
     }
 
@@ -8676,7 +8661,7 @@ export class DomainExpansionSystem extends createSystem({
         const vortexRightGeo_RB = new THREE.BufferGeometry();
         vortexRightGeo_RB.setAttribute('position', new THREE.BufferAttribute(new Float32Array(25 * 3), 3));
         const vortexMat_RB = new THREE.LineBasicMaterial({
-            color: 0x3b82f6, // Red Bull blue/neon glow
+            color: 0xff6600, // McLaren papaya orange glow
             transparent: true,
             opacity: 0.0,
             linewidth: 2,
@@ -8733,14 +8718,14 @@ export class DomainExpansionSystem extends createSystem({
             blending: THREE.AdditiveBlending,
             depthWrite: false
         });
-        // 180 particles max (60 per car)
-        this.f1SprayMesh = new THREE.InstancedMesh(sprayGeom, sprayMat, 180);
+        // 360 particles max (60 per car for 6 cars)
+        this.f1SprayMesh = new THREE.InstancedMesh(sprayGeom, sprayMat, 360);
         if (this.nurburgringGroup) {
             this.nurburgringGroup.add(this.f1SprayMesh);
         }
 
-        // Pre-allocate Float32Array for particle states (180 particles * 8 values: x, y, z, vx, vy, vz, age, active)
-        this.f1SprayData = new Float32Array(180 * 8);
+        // Pre-allocate Float32Array for particle states (360 particles * 8 values: x, y, z, vx, vy, vz, age, active)
+        this.f1SprayData = new Float32Array(360 * 8);
 
         // Hide initially
         if (this.nurburgringF1Car) this.nurburgringF1Car.visible = false;
