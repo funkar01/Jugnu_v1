@@ -1103,3 +1103,12 @@
   - `[x]` Overrode the Jugnu companion position (`0.12, 1.45, -0.22`), scale (`0.12`), and yaw rotation on the 2D landing page when `!isXR` (not presenting) to keep it floating next to the glassmorphic card.
   - `[x]` Removed the floor grid (`GridHelper`) helper lines from `src/index.ts`.
   - `[x]` Verified compilation safety (`npx tsc --noEmit`) and client builds (`npm run build`).
+
+- `[x]` WebXR UI Icon Assets Migration & Zero-GC Canvas Tinting (Current Run)
+  - `[x]` Initialized pre-allocated offscreen scratch canvas (`iconTintCanvas`, `iconTintCtx`) to eliminate frame-time memory allocation overhead and GC pressure.
+  - `[x]` Preloaded high-resolution PNG icon assets from `public/ui/Icons/` asynchronously inside `initCompassUI()`.
+  - `[x]` Programmed high-fidelity `drawIconImage()` helper utilising `source-in` composite blending to scale and tint icon shapes to pure white on the fly.
+  - `[x]` Updated `redrawCompassGrid()` to draw PNG icons for CHAT, TUTORIAL, MINIMAP, VENUE, VOICE, and WALLS, maintaining the vector LOCK and terminal DEBUG console.
+  - `[x]` Updated `redrawActionCompass()` to draw PNG icons for PLAY SEQ, STORM, NAVIG, and CLEAR.
+  - `[x]` Restored compiler resolution for external dependency `@webspatial/core-sdk` by performing a clean `npm install`.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and compiled client production bundle successfully (`npm run build`).
