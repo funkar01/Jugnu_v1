@@ -8207,8 +8207,8 @@ export class DomainExpansionSystem extends createSystem({
 
         // 4. Closed winding 3D Spline representing Nürburgring with topography elevations
         const points = [
-            new THREE.Vector3( 0.00,  0.003, -0.090), // Start/GP Straight
-            new THREE.Vector3( 0.04,  0.003, -0.089), // Hatzenbach (straightened with Z-offset)
+            new THREE.Vector3( 0.00,  0.003, -0.09), // Start/GP Straight
+            new THREE.Vector3( 0.04,  0.003, -0.09), // Hatzenbach (straightened)
             new THREE.Vector3( 0.08,  0.012, -0.05), // Flugplatz (elevation!)
             new THREE.Vector3( 0.06,  0.002, -0.01), // Fuchsroehre (dip!)
             new THREE.Vector3( 0.09,  0.008,  0.03), // Adenauer Forst
@@ -8217,9 +8217,40 @@ export class DomainExpansionSystem extends createSystem({
             new THREE.Vector3(-0.08,  0.010,  0.05), // Hohe Acht (highest point!)
             new THREE.Vector3(-0.07,  0.005, -0.01), // Pflanzgarten
             new THREE.Vector3(-0.05,  0.002, -0.06), // Schwalbenschwanz
-            new THREE.Vector3(-0.04,  0.003, -0.091)  // Döttinger Höhe (straightened with Z-offset)
+            new THREE.Vector3(-0.04,  0.003, -0.09)  // Döttinger Höhe (straightened)
         ];
         this.nurburgringCurve = new THREE.CatmullRomCurve3(points, true);
+
+        // Override computeFrenetFrames to enforce a flat road orientation using a fixed Up-Vector (0, 1, 0)
+        this.nurburgringCurve.computeFrenetFrames = function(segments: number, closed?: boolean) {
+            const tangents: THREE.Vector3[] = [];
+            const normals: THREE.Vector3[] = [];
+            const binormals: THREE.Vector3[] = [];
+
+            const tempBinormal = new THREE.Vector3();
+            const tempNormal = new THREE.Vector3();
+            const up = new THREE.Vector3(0, 1, 0);
+
+            for (let i = 0; i <= segments; i++) {
+                const u = i / segments;
+                const tangent = this.getTangentAt(u, new THREE.Vector3()).normalize();
+                tangents.push(tangent);
+
+                // Binormal = Tangent x Up (normalized) to keep road width perfectly horizontal
+                tempBinormal.crossVectors(tangent, up).normalize();
+                if (tempBinormal.lengthSq() < 0.0001) {
+                    tempBinormal.set(0, 0, 1);
+                }
+                binormals.push(tempBinormal.clone());
+
+                // Normal = Binormal x Tangent
+                tempNormal.crossVectors(tempBinormal, tangent).normalize();
+                normals.push(tempNormal.clone());
+            }
+
+            return { tangents, normals, binormals };
+        };
+
         this.nurburgringFrenetFrames = this.nurburgringCurve.computeFrenetFrames(1000, true);
 
         // 5. Extrude 3D flat road Geometry along spline
