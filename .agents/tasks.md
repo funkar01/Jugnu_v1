@@ -1112,3 +1112,9 @@
   - `[x]` Updated `redrawActionCompass()` to draw PNG icons for PLAY SEQ, STORM, NAVIG, and CLEAR.
   - `[x]` Restored compiler resolution for external dependency `@webspatial/core-sdk` by performing a clean `npm install`.
   - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and compiled client production bundle successfully (`npm run build`).
+
+- `[x]` NBA Player Cards Integration (Current Run)
+  - `[x]` Copied 10 newly provided player card images from `C:\Users\SSD\Pictures\Jugnu\NBAUi\NBA` into static project asset directory under `public/NBACards/`.
+  - `[x]` Registered and preloaded the 10 NBA player card textures in the assets manifest in `src/index.ts`.
+  - `[x]` Updated the basketball roster array (`rosterBasketball`) inside `src/domainExpansion.ts` to map Pacers (Home team) and Thunder (Away team) players with their respective `rcbCardKey` pointing to the preloaded card textures.
+  - `[x]` Confirmed zero static type errors (`npx tsc --noEmit`) and compiled production Vite client assets cleanly (`npm run build`).

@@ -5229,18 +5229,18 @@ export class DomainExpansionSystem extends createSystem({
         ];
 
         const rosterBasketball: PlayerEntry[] = [
-            // ── LA Lakers (Blue — home) ──────────────────────────────────────
-            { id: "p1",  name: "L. James",     role: "batsman", jersey: "23", team: "blue",   x:  0.000, z:  0.010, primary: "Pts: 28  Reb: 7",      secondary: "SF — Paint",        rcbCardKey: "" },
-            { id: "p2",  name: "A. Davis",     role: "batsman", jersey: "3",  team: "blue",   x:  0.000, z: -0.010, primary: "Pts: 22  Blk: 3",      secondary: "C — Post",          rcbCardKey: "" },
-            { id: "p3",  name: "A. Reaves",    role: "fielder", jersey: "15", team: "blue",   x: -0.030, z:  0.025, primary: "Pts: 14  3PT: 3/6",    secondary: "PG — Perimeter",    rcbCardKey: "" },
-            { id: "p4",  name: "R. Hachimura", role: "fielder", jersey: "28", team: "blue",   x:  0.030, z:  0.025, primary: "Pts: 10  Reb: 4",      secondary: "PF — Wing",         rcbCardKey: "" },
-            { id: "p5",  name: "D. Russell",   role: "fielder", jersey: "1",  team: "blue",   x: -0.045, z:  0.000, primary: "Pts: 18  Ast: 9",      secondary: "PG — Ball Handler", rcbCardKey: "" },
-            // ── Boston Celtics (Yellow — away) ──────────────────────────────
-            { id: "a1",  name: "J. Brown",     role: "batsman", jersey: "7",  team: "yellow", x:  0.000, z:  0.035, primary: "Pts: 26  Reb: 5",      secondary: "SG — Wing",         rcbCardKey: "" },
-            { id: "a2",  name: "J. Tatum",     role: "batsman", jersey: "0",  team: "yellow", x:  0.000, z:  0.050, primary: "Pts: 31  Ast: 6",      secondary: "SF — Perimeter",    rcbCardKey: "" },
-            { id: "a3",  name: "K. Porzingis", role: "fielder", jersey: "8",  team: "yellow", x:  0.040, z:  0.045, primary: "Pts: 16  Blk: 2",      secondary: "C — Post",          rcbCardKey: "" },
-            { id: "a4",  name: "D. White",     role: "fielder", jersey: "0",  team: "yellow", x: -0.040, z:  0.045, primary: "Pts: 12  3PT: 4/7",    secondary: "SG — Shooter",      rcbCardKey: "" },
-            { id: "a5",  name: "J. Holiday",   role: "fielder", jersey: "11", team: "yellow", x: -0.055, z:  0.035, primary: "Pts: 11  Stl: 2",      secondary: "PG — Defender",     rcbCardKey: "" },
+            // ── Indiana Pacers (Blue — home) ──────────────────────────────────
+            { id: "p1",  name: "T. Haliburton", role: "batsman", jersey: "0",  team: "blue",   x:  0.000, z:  0.010, primary: "Pts: 20.1  Ast: 10.9",  secondary: "PG — Playmaker",    rcbCardKey: "nbaTyreseHaliburton" },
+            { id: "p2",  name: "M. Turner",     role: "batsman", jersey: "33", team: "blue",   x:  0.000, z: -0.010, primary: "Pts: 17.1  Blk: 1.9",   secondary: "C — Post",          rcbCardKey: "nbaMylesTurner" },
+            { id: "p3",  name: "A. Nembhard",   role: "fielder", jersey: "2",  team: "blue",   x: -0.030, z:  0.025, primary: "Pts: 12.9  Ast: 4.1",   secondary: "SG — Guard",        rcbCardKey: "nbaAndrewNembhard" },
+            { id: "p4",  name: "A. Nesmith",    role: "fielder", jersey: "23", team: "blue",   x:  0.030, z:  0.025, primary: "Pts: 12.2  Reb: 3.8",   secondary: "SF — Wing",         rcbCardKey: "nbaAaronNesmith" },
+            { id: "p5",  name: "P. Siakam",     role: "fielder", jersey: "43", team: "blue",   x: -0.045, z:  0.000, primary: "Pts: 21.7  Reb: 7.1",   secondary: "PF — Forward",      rcbCardKey: "nbaPascalSiakam" },
+            // ── Oklahoma City Thunder (Yellow — away) ──────────────────────────
+            { id: "a1",  name: "S. Gilgeous-Alex", role: "batsman", jersey: "2",  team: "yellow", x:  0.000, z:  0.035, primary: "Pts: 30.1  Stl: 2.0",  secondary: "PG — Guard",        rcbCardKey: "nbaShaiSGA" },
+            { id: "a2",  name: "C. Holmgren",   role: "batsman", jersey: "7",  team: "yellow", x:  0.000, z:  0.050, primary: "Pts: 16.5  Blk: 2.3",   secondary: "C — Center",        rcbCardKey: "nbaChetHolmgren" },
+            { id: "a3",  name: "J. Williams",   role: "fielder", jersey: "8",  team: "yellow", x:  0.040, z:  0.045, primary: "Pts: 19.1  Ast: 4.5",   secondary: "PF — Forward",      rcbCardKey: "nbaJalenWilliams" },
+            { id: "a4",  name: "A. Caruso",     role: "fielder", jersey: "9",  team: "yellow", x: -0.040, z:  0.045, primary: "Pts: 10.1  Def: Elite",  secondary: "SG — Defender",     rcbCardKey: "nbaAlexCaruso" },
+            { id: "a5",  name: "L. Dort",       role: "fielder", jersey: "5",  team: "yellow", x: -0.055, z:  0.035, primary: "Pts: 10.9  Def: Lock",   secondary: "SF — Wing",         rcbCardKey: "nbaLuguentzDort" },
             // Officials
             { id: "ref", name: "M. Carettini", role: "umpire",  jersey: "R",  team: "neutral", x:  0.020, z:  0.025, primary: "NBA Referee",          secondary: "15 yrs experience", rcbCardKey: "" },
         ];

@@ -200,6 +200,17 @@ const assets: AssetManifest = {
   rcbSuyash:      { url: "./RCBCards/RCB_Name_SUYASH SHARMA.jpeg",      type: AssetType.Texture, priority: "background" },
   rcbSwapnil:     { url: "./RCBCards/RCB_Name_SWAPNIL SINGH.jpeg",      type: AssetType.Texture, priority: "background" },
   rcbVenkatesh:   { url: "./RCBCards/RCB_Name_VENKATESH IYER.jpeg",     type: AssetType.Texture, priority: "background" },
+  // NBA Player Cards (Indiana Pacers vs Oklahoma City Thunder)
+  nbaAaronNesmith:       { url: "./NBACards/Indiana Pacers_Aaron Nesmith (SF).png",                  type: AssetType.Texture, priority: "background" },
+  nbaAndrewNembhard:     { url: "./NBACards/Indiana Pacers_Andrew Nembhard (SG  PG).png",            type: AssetType.Texture, priority: "background" },
+  nbaMylesTurner:        { url: "./NBACards/Indiana Pacers_Myles Turner (C).png",                    type: AssetType.Texture, priority: "background" },
+  nbaPascalSiakam:       { url: "./NBACards/Indiana Pacers_Pascal Siakam (PF).png",                  type: AssetType.Texture, priority: "background" },
+  nbaTyreseHaliburton:   { url: "./NBACards/Indiana Pacers_Tyrese Haliburton (PG).png",              type: AssetType.Texture, priority: "background" },
+  nbaAlexCaruso:         { url: "./NBACards/Oklahoma City Thunder_Alex Caruso (SG).png",             type: AssetType.Texture, priority: "background" },
+  nbaChetHolmgren:       { url: "./NBACards/Oklahoma City Thunder_Chet Holmgren (C-PF).png",         type: AssetType.Texture, priority: "background" },
+  nbaJalenWilliams:      { url: "./NBACards/Oklahoma City Thunder_Jalen Williams (SG-SF).png",       type: AssetType.Texture, priority: "background" },
+  nbaLuguentzDort:       { url: "./NBACards/Oklahoma City Thunder_Luguentz Dort (SF-SG).png",        type: AssetType.Texture, priority: "background" },
+  nbaShaiSGA:            { url: "./NBACards/Oklahoma City Thunder_Shai Gilgeous-Alexander (PG  SG).png", type: AssetType.Texture, priority: "background" },
 };
 
 World.create(document.getElementById("scene-container") as HTMLDivElement, {
