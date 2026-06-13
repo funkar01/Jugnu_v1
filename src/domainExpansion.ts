@@ -3538,12 +3538,19 @@ export class DomainExpansionSystem extends createSystem({
             // Scale-gated fade-out for AR TV Billboard: vanishes smoothly as we scale the stadium up, or when fireworks play, or during active replays
             if (this.arBillboard) {
                 const areFireworksPlaying = this.areFireworksActive();
+                // Floating top banner hides by the 2nd scale level (~2.0) and
+                // reappears when scaled back down. Fully visible at <=1.5.
+                const billboardFade = THREE.MathUtils.clamp(
+                    THREE.MathUtils.mapLinear(this.currentTableScale, 1.5, 2.0, 1.0, 0.0),
+                    0.0,
+                    1.0
+                );
                 this.arBillboard.traverse((child) => {
                     if (child instanceof THREE.Mesh) {
                         const mat = child.material as THREE.Material;
                         if (mat && mat.transparent) {
                             const defOpacity = child.userData.defaultOpacity ?? 0.8;
-                            const targetOpacity = (areFireworksPlaying || this.isSportSequenceActive) ? 0.0 : (defOpacity * fadeFactor);
+                            const targetOpacity = (areFireworksPlaying || this.isSportSequenceActive) ? 0.0 : (defOpacity * billboardFade);
                             mat.opacity += (targetOpacity - mat.opacity) * dt * 8.0;
                         }
                     }
@@ -4969,7 +4976,7 @@ export class DomainExpansionSystem extends createSystem({
         this.arBillboard.position.set(0, 0.175, 0); // Spawning at 0.175m (brought down by 4cm)
         this.arBillboard.renderOrder = 990;
 
-        const bannerGeom = new THREE.PlaneGeometry(0.108, 0.0688);
+        const bannerGeom = new THREE.PlaneGeometry(0.108, 0.0608);
         const bannerMat = new THREE.MeshBasicMaterial({ 
             transparent: true, 
             side: THREE.DoubleSide,
@@ -4981,11 +4988,12 @@ export class DomainExpansionSystem extends createSystem({
         this.arBillboard.add(banner);
         
         const texLoader = new THREE.TextureLoader();
-        texLoader.load('./ui/ipl/grand_finale_banner.png', (tex) => {
-            const alphaTex = this.makeBlackTransparent(tex.image);
-            this.iplBillboardTexture = alphaTex;
+
+        texLoader.load('./ui/ipl/center (1).png', (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace;
+            this.iplBillboardTexture = tex;
             if (this.currentStadiumType === 'default' || !this.currentStadiumType) {
-                bannerMat.map = alphaTex;
+                bannerMat.map = tex;
                 bannerMat.needsUpdate = true;
             }
         });
@@ -6576,28 +6584,36 @@ export class DomainExpansionSystem extends createSystem({
     private initScoreDisplay() {
         const texLoader = new THREE.TextureLoader();
         
-        const iplFiles = ['rr_stats.png', 'h2h_metrics.png', 'ipl_champion_trophy.png', 'h2h_boundaries.png', 'rcb_stats.png'];
+        const iplFiles = ['left extreme.png', 'left.png', 'center (1).png', 'right.png', 'right extreme.png'];
         const soccerFiles = ['bayern_stats.png', 'soccer_metrics.png', 'ucl_score_banner.png', 'soccer_boundaries.png', 'bvb_stats.png'];
 
+        // Symmetric 5-board row: 2 left + center + 2 right, evenly spaced, all
+        // facing the same forward (+Z) direction and coplanar (same Y + same Z)
+        // so they sit on one clean horizontal plane with no overlap.
+        // Common height keeps tops/bottoms aligned; widths follow each PNG's
+        // aspect ratio (left extreme = 2.0, all others = 1.777).
+        const PANEL_H = 0.027;                 // shared height -> aligned row (scaled +50%)
         const configs = [
-            { file: 'rr_stats.png', angleOffset: -55, w: 0.08, h: 0.022 },
-            { file: 'h2h_metrics.png', angleOffset: -25, w: 0.05, h: 0.029 },
-            { file: 'ipl_champion_trophy.png', angleOffset: 0, w: 0.045, h: 0.028 },
-            { file: 'h2h_boundaries.png', angleOffset: 25, w: 0.05, h: 0.029 },
-            { file: 'rcb_stats.png', angleOffset: 55, w: 0.08, h: 0.021 }
+            { file: 'left extreme.png',  x: -0.126, w: PANEL_H * 2.0,  h: PANEL_H },
+            { file: 'left.png',          x: -0.063, w: PANEL_H * 1.777, h: PANEL_H },
+            { file: 'center (1).png',    x:  0.000, w: PANEL_H * 1.777, h: PANEL_H },
+            { file: 'right.png',         x:  0.063, w: PANEL_H * 1.777, h: PANEL_H },
+            { file: 'right extreme.png', x:  0.126, w: PANEL_H * 1.777, h: PANEL_H }
         ];
 
-        for (let i = 0; i < 5; i++) {
+        const PANEL_Y = this.ROOF_Y + 0.006;  // resting height on the roof rim
+        const PANEL_Z = -0.090;                // single flat plane (front of stadium)
+
+        for (let i = 0; i < configs.length; i++) {
             this.iplTextures.push(null);
             this.soccerTextures.push(null);
         }
 
         configs.forEach((cfg, idx) => {
-            const angle = Math.PI + (cfg.angleOffset * Math.PI / 180);
-            const px = Math.sin(angle) * this.ROOF_RADIUS;
-            const pz = Math.cos(angle) * this.ROOF_RADIUS;
+            const px = cfg.x;
+            const pz = PANEL_Z;  // coplanar flat row
 
-            const panelGeom = new THREE.PlaneGeometry(cfg.w, cfg.h); 
+            const panelGeom = new THREE.PlaneGeometry(cfg.w, cfg.h);
             const panelMat = new THREE.MeshBasicMaterial({
                 transparent: true,
                 side: THREE.DoubleSide,
@@ -6605,14 +6621,16 @@ export class DomainExpansionSystem extends createSystem({
             });
             const panelMesh = new THREE.Mesh(panelGeom, panelMat);
 
-            texLoader.load(`./ui/ipl/${iplFiles[idx]}`, (tex) => {
-                const alphaTex = this.makeBlackTransparent(tex.image);
-                this.iplTextures[idx] = alphaTex;
-                if (this.currentStadiumType === 'default' || !this.currentStadiumType) {
-                    panelMat.map = alphaTex;
-                    panelMat.needsUpdate = true;
-                }
-            });
+            if (iplFiles[idx]) {
+                texLoader.load(`./ui/ipl/${iplFiles[idx]}`, (tex) => {
+                    tex.colorSpace = THREE.SRGBColorSpace;
+                    this.iplTextures[idx] = tex;
+                    if (this.currentStadiumType === 'default' || !this.currentStadiumType) {
+                        panelMat.map = tex;
+                        panelMat.needsUpdate = true;
+                    }
+                });
+            }
 
             texLoader.load(`./ui/football/${soccerFiles[idx]}`, (tex) => {
                 const alphaTex = this.makeBlackTransparent(tex.image);
@@ -6623,9 +6641,9 @@ export class DomainExpansionSystem extends createSystem({
                 }
             });
 
-            panelMesh.position.set(px, this.ROOF_Y + 0.006, pz);
-            panelMesh.rotation.y = angle + Math.PI;
-            panelMesh.rotation.x = -0.18; 
+            panelMesh.position.set(px, PANEL_Y, pz);
+            panelMesh.rotation.y = 0;
+            panelMesh.rotation.x = -0.18;
 
             this.tableGroup.add(panelMesh);
             this.scoreDisplayMeshes.push(panelMesh);

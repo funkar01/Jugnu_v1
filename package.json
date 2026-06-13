@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "set NODE_OPTIONS=--max-old-space-size=4096 && node --max-old-space-size=4096 node_modules/vite/bin/vite.js",
     "build": "vite build",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
