@@ -56,21 +56,35 @@ export class JugnuDebugBoard extends THREE.Group {
     private hookConsole() {
         const self = this;
 
+        const formatArg = (arg: any) => {
+            if (arg instanceof Error) {
+                return arg.message || arg.toString();
+            }
+            if (arg && typeof arg === 'object') {
+                try {
+                    return JSON.stringify(arg);
+                } catch (e) {
+                    return '[Unserializable Object]';
+                }
+            }
+            return String(arg);
+        };
+
         console.log = function(...args: any[]) {
             self.originalLog.apply(console, args);
-            const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+            const msg = args.map(formatArg).join(' ');
             self.addLog('info', msg);
         };
 
         console.warn = function(...args: any[]) {
             self.originalWarn.apply(console, args);
-            const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+            const msg = args.map(formatArg).join(' ');
             self.addLog('warn', msg);
         };
 
         console.error = function(...args: any[]) {
             self.originalError.apply(console, args);
-            const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+            const msg = args.map(formatArg).join(' ');
             self.addLog('error', msg);
         };
     }
