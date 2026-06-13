@@ -2540,8 +2540,8 @@ export class JugnuSystem extends createSystem({
 
       // Initialize Chat Tab UI
       this.compassChatCanvas = document.createElement('canvas');
-      this.compassChatCanvas.width = 512;
-      this.compassChatCanvas.height = 384;
+      this.compassChatCanvas.width = 768;
+      this.compassChatCanvas.height = 576;
       this.compassChatCtx = this.compassChatCanvas.getContext('2d')!;
 
       this.compassChatTexture = new THREE.CanvasTexture(this.compassChatCanvas);
@@ -2550,7 +2550,7 @@ export class JugnuSystem extends createSystem({
       this.compassChatMat = this.createHolographicMaterial(this.compassChatTexture, 0.0);
 
       this.compassChatCard = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.36, 0.27),
+          new THREE.PlaneGeometry(0.54, 0.405),
           this.compassChatMat
       );
       // Sits behind Jugnu and the compass layer on a medium sized screen
@@ -2563,8 +2563,8 @@ export class JugnuSystem extends createSystem({
 
       // Initialize Debug Console UI
       this.compassDebugCanvas = document.createElement('canvas');
-      this.compassDebugCanvas.width = 512;
-      this.compassDebugCanvas.height = 384;
+      this.compassDebugCanvas.width = 768;
+      this.compassDebugCanvas.height = 576;
       this.compassDebugCtx = this.compassDebugCanvas.getContext('2d')!;
 
       this.compassDebugTexture = new THREE.CanvasTexture(this.compassDebugCanvas);
@@ -2573,7 +2573,7 @@ export class JugnuSystem extends createSystem({
       this.compassDebugMat = this.createHolographicMaterial(this.compassDebugTexture, 0.0);
 
       this.compassDebugCard = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.36, 0.27),
+          new THREE.PlaneGeometry(0.54, 0.405),
           this.compassDebugMat
       );
       this.compassDebugCard.position.set(0, -0.02, 0.0); // Z slides to -0.04 when open
@@ -2585,8 +2585,8 @@ export class JugnuSystem extends createSystem({
 
       // Initialize Tutorial Tab UI
       this.compassTutorialCanvas = document.createElement('canvas');
-      this.compassTutorialCanvas.width = 512;
-      this.compassTutorialCanvas.height = 384;
+      this.compassTutorialCanvas.width = 768;
+      this.compassTutorialCanvas.height = 576;
       this.compassTutorialCtx = this.compassTutorialCanvas.getContext('2d')!;
 
       this.compassTutorialTexture = new THREE.CanvasTexture(this.compassTutorialCanvas);
@@ -2595,7 +2595,7 @@ export class JugnuSystem extends createSystem({
       this.compassTutorialMat = this.createHolographicMaterial(this.compassTutorialTexture, 0.0);
 
       this.compassTutorialCard = new THREE.Mesh(
-          new THREE.PlaneGeometry(0.36, 0.27),
+          new THREE.PlaneGeometry(0.54, 0.405),
           this.compassTutorialMat
       );
       this.compassTutorialCard.position.set(0, -0.02, -0.01);
@@ -3296,8 +3296,10 @@ export class JugnuSystem extends createSystem({
 
   private redrawCompassTutorial(step: number) {
       const ctx = this.compassTutorialCtx;
-      const w = 512;
-      const h = 384;
+      const w = 768;
+      const h = 576;
+      const dx = 128;
+      const dy = 96;
       ctx.clearRect(0, 0, w, h);
 
       // Draw semi-transparent backing board that fits inside the frame
@@ -3308,7 +3310,7 @@ export class JugnuSystem extends createSystem({
 
       // Draw preprocessed frame
       if (this.tutorialFrameCanvas) {
-          ctx.drawImage(this.tutorialFrameCanvas, 0, 0);
+          ctx.drawImage(this.tutorialFrameCanvas, 0, 0, w, h);
       } else {
           // Fallback borders while loading
           ctx.strokeStyle = '#ffd700';
@@ -3328,19 +3330,19 @@ export class JugnuSystem extends createSystem({
       ctx.fillStyle = '#ffd700';
       ctx.font = 'bold 20px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText("HOLOGRAPHIC TUTORIAL", w / 2, 36);
+      ctx.fillText("HOLOGRAPHIC TUTORIAL", w / 2, 36 + dy);
 
       // Divider line
       ctx.strokeStyle = 'rgba(255, 215, 0, 0.3)';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(24, 48); ctx.lineTo(w - 24, 48);
+      ctx.moveTo(24 + dx, 48 + dy); ctx.lineTo(w - 24 - dx, 48 + dy);
       ctx.stroke();
 
       // Current Active Instruction
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 15px monospace';
-      ctx.fillText(`STEP ${step + 1} OF 3`, w / 2, 85);
+      ctx.fillText(`STEP ${step + 1} OF 3`, w / 2, 85 + dy);
 
       // Draw tutorial illustration/diagram representing the steps
       let title = "";
@@ -3353,18 +3355,18 @@ export class JugnuSystem extends createSystem({
           ctx.strokeStyle = 'rgba(255, 215, 0, 0.6)';
           ctx.lineWidth = 3;
           ctx.beginPath();
-          ctx.arc(w / 2, 170, 25, 0, 2 * Math.PI); // Jugnu body
+          ctx.arc(w / 2, 170 + dy, 25, 0, 2 * Math.PI); // Jugnu body
           ctx.stroke();
           ctx.fillStyle = '#f97316';
           ctx.beginPath();
-          ctx.arc(w / 2, 170, 10, 0, 2 * Math.PI); // Jugnu core
+          ctx.arc(w / 2, 170 + dy, 10, 0, 2 * Math.PI); // Jugnu core
           ctx.fill();
           
           // Pinching fingers lines
           ctx.strokeStyle = '#00ffff';
           ctx.beginPath();
-          ctx.moveTo(w / 2 - 45, 170); ctx.lineTo(w / 2 - 25, 170); // Pinching left
-          ctx.moveTo(w / 2 + 45, 170); ctx.lineTo(w / 2 + 25, 170); // Pinching right
+          ctx.moveTo(w / 2 - 45, 170 + dy); ctx.lineTo(w / 2 - 25, 170 + dy); // Pinching left
+          ctx.moveTo(w / 2 + 45, 170 + dy); ctx.lineTo(w / 2 + 25, 170 + dy); // Pinching right
           ctx.stroke();
       } else if (step === 1) {
           title = "Two-Handed Pinch";
@@ -3374,13 +3376,13 @@ export class JugnuSystem extends createSystem({
           ctx.strokeStyle = '#00ffff';
           ctx.lineWidth = 3;
           ctx.beginPath();
-          ctx.moveTo(w / 2 - 50, 170); ctx.lineTo(w / 2 - 10, 170); // Finger 1
-          ctx.moveTo(w / 2 + 50, 170); ctx.lineTo(w / 2 + 10, 170); // Finger 2
+          ctx.moveTo(w / 2 - 50, 170 + dy); ctx.lineTo(w / 2 - 10, 170 + dy); // Finger 1
+          ctx.moveTo(w / 2 + 50, 170 + dy); ctx.lineTo(w / 2 + 10, 170 + dy); // Finger 2
           ctx.stroke();
           ctx.fillStyle = '#ff007f';
           ctx.beginPath();
-          ctx.arc(w / 2 - 10, 170, 5, 0, 2 * Math.PI); // Tip 1
-          ctx.arc(w / 2 + 10, 170, 5, 0, 2 * Math.PI); // Tip 2
+          ctx.arc(w / 2 - 10, 170 + dy, 5, 0, 2 * Math.PI); // Tip 1
+          ctx.arc(w / 2 + 10, 170 + dy, 5, 0, 2 * Math.PI); // Tip 2
           ctx.fill();
       } else if (step === 2) {
           title = "Wrist Control Button";
@@ -3390,13 +3392,13 @@ export class JugnuSystem extends createSystem({
           ctx.strokeStyle = '#ffd700';
           ctx.lineWidth = 3;
           ctx.beginPath();
-          ctx.roundRect(w / 2 - 40, 155, 80, 30, 6); // Button
+          ctx.roundRect(w / 2 - 40, 155 + dy, 80, 30, 6); // Button
           ctx.stroke();
           ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
           ctx.fill();
           ctx.fillStyle = '#ffffff';
           ctx.font = 'bold 12px monospace';
-          ctx.fillText("MAP TOGGLE", w / 2, 174);
+          ctx.fillText("MAP TOGGLE", w / 2, 174 + dy);
       } else {
           title = "Tutorial Complete";
           desc = "All core gestures learned successfully! You are fully configured to operate Jugnu XR Core features. Use the Compass UI for stadium controls at any time.";
@@ -3405,19 +3407,19 @@ export class JugnuSystem extends createSystem({
           ctx.strokeStyle = '#22c55e';
           ctx.lineWidth = 5;
           ctx.beginPath();
-          ctx.moveTo(w / 2 - 20, 170);
-          ctx.lineTo(w / 2 - 5, 185);
-          ctx.lineTo(w / 2 + 20, 150);
+          ctx.moveTo(w / 2 - 20, 170 + dy);
+          ctx.lineTo(w / 2 - 5, 185 + dy);
+          ctx.lineTo(w / 2 + 20, 150 + dy);
           ctx.stroke();
       }
 
       ctx.fillStyle = '#ffd700';
       ctx.font = 'bold 16px monospace';
-      ctx.fillText(title, w / 2, 230);
+      ctx.fillText(title, w / 2, 230 + dy);
 
       ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
       ctx.font = '13px monospace';
-      this.wrapText(desc, w / 2, 260, 440, 18);
+      this.wrapText(desc, w / 2, 260 + dy, 440, 18);
 
       this.compassTutorialTexture.needsUpdate = true;
   }
@@ -3448,8 +3450,10 @@ export class JugnuSystem extends createSystem({
 
   private redrawCompassChat() {
       const ctx = this.compassChatCtx;
-      const w = 512;
-      const h = 384;
+      const w = 768;
+      const h = 576;
+      const dx = 128;
+      const dy = 96;
       ctx.clearRect(0, 0, w, h);
 
       // Draw semi-transparent backing board that fits inside the frame
@@ -3460,7 +3464,7 @@ export class JugnuSystem extends createSystem({
 
       // Draw preprocessed frame
       if (this.chatFrameCanvas) {
-          ctx.drawImage(this.chatFrameCanvas, 0, 0);
+          ctx.drawImage(this.chatFrameCanvas, 0, 0, w, h);
       } else {
           // Fallback solid border while loading
           ctx.strokeStyle = '#f97316';
@@ -3474,39 +3478,39 @@ export class JugnuSystem extends createSystem({
       ctx.fillStyle = '#f97316';
       ctx.font = 'bold 18px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('JUGNU TRANSCRIPT & DEBUG CHAT', w / 2, 34);
+      ctx.fillText('JUGNU TRANSCRIPT & DEBUG CHAT', w / 2, 34 + dy);
 
       // Header Divider
       ctx.strokeStyle = 'rgba(249, 115, 22, 0.4)';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(24, 48); ctx.lineTo(w - 24, 48);
+      ctx.moveTo(24 + dx, 48 + dy); ctx.lineTo(w - 24 - dx, 48 + dy);
       ctx.stroke();
 
       // Chat text rendering
       ctx.textAlign = 'left';
       ctx.font = '13px monospace';
       
-      let y = 78;
+      let y = 78 + dy;
       const startIdx = Math.max(0, this.chatHistory.length - 12);
       const visibleLines = this.chatHistory.slice(startIdx);
 
       visibleLines.forEach((line) => {
           if (line.sender === 'You') {
               ctx.fillStyle = '#38bdf8'; // Sky blue
-              ctx.fillText('YOU: ', 24, y);
+              ctx.fillText('YOU: ', 24 + dx, y);
               ctx.fillStyle = '#ffffff';
-              ctx.fillText(line.text, 64, y);
+              ctx.fillText(line.text, 64 + dx, y);
           } else if (line.sender === 'Jugnu') {
               ctx.fillStyle = '#f97316'; // Orange
-              ctx.fillText('JUGNU: ', 24, y);
+              ctx.fillText('JUGNU: ', 24 + dx, y);
               ctx.fillStyle = '#e2e8f0';
-              ctx.fillText(line.text, 78, y);
+              ctx.fillText(line.text, 78 + dx, y);
           } else {
               ctx.fillStyle = '#22c55e'; // Green for system
-              ctx.fillText('SYS: ', 24, y);
+              ctx.fillText('SYS: ', 24 + dx, y);
               ctx.fillStyle = '#a7f3d0';
-              ctx.fillText(line.text, 64, y);
+              ctx.fillText(line.text, 64 + dx, y);
           }
           y += 24;
       });
@@ -3571,8 +3575,10 @@ export class JugnuSystem extends createSystem({
 
   private redrawCompassDebug() {
       const ctx = this.compassDebugCtx;
-      const w = 512;
-      const h = 384;
+      const w = 768;
+      const h = 576;
+      const dx = 128;
+      const dy = 96;
       ctx.clearRect(0, 0, w, h);
 
       // Draw semi-transparent backing board that fits inside the frame
@@ -3583,7 +3589,7 @@ export class JugnuSystem extends createSystem({
 
       // Draw preprocessed frame
       if (this.debugFrameCanvas) {
-          ctx.drawImage(this.debugFrameCanvas, 0, 0);
+          ctx.drawImage(this.debugFrameCanvas, 0, 0, w, h);
       } else {
           // Fallback borders and corner accents while loading
           ctx.strokeStyle = '#00ffff';
@@ -3620,24 +3626,24 @@ export class JugnuSystem extends createSystem({
       ctx.fillStyle = '#00ffff';
       ctx.font = 'bold 18px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText("SYSTEM DEBUG CONSOLE", w / 2, 34);
+      ctx.fillText("SYSTEM DEBUG CONSOLE", w / 2, 34 + dy);
 
       // Header Divider
       ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(24, 48); ctx.lineTo(w - 24, 48);
+      ctx.moveTo(24 + dx, 48 + dy); ctx.lineTo(w - 24 - dx, 48 + dy);
       ctx.stroke();
 
       // Print logs
       ctx.textAlign = 'left';
       ctx.font = '12px monospace';
 
-      let y = 78;
+      let y = 78 + dy;
       this.debugHistory.forEach((log) => {
           // Time tag
           ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-          ctx.fillText(`[${log.timestamp}]`, 24, y);
+          ctx.fillText(`[${log.timestamp}]`, 24 + dx, y);
 
           // Log prefix & content depending on level
           let prefix = '';
@@ -3652,11 +3658,11 @@ export class JugnuSystem extends createSystem({
               prefix = '[FAIL] ';
           }
 
-          ctx.fillText(prefix, 100, y);
+          ctx.fillText(prefix, 100 + dx, y);
 
           // Log body
           ctx.fillStyle = log.type === 'error' ? '#ff8a80' : 'rgba(255, 255, 255, 0.9)';
-          ctx.fillText(log.text, 150, y);
+          ctx.fillText(log.text, 150 + dx, y);
 
           y += 24;
       });
@@ -3665,7 +3671,7 @@ export class JugnuSystem extends createSystem({
       const now = Date.now();
       if (Math.floor(now / 500) % 2 === 0) {
           ctx.fillStyle = '#00ffff';
-          ctx.fillRect(24, y - 10, 8, 12);
+          ctx.fillRect(24 + dx, y - 10, 8, 12);
       }
 
       this.compassDebugTexture.needsUpdate = true;
