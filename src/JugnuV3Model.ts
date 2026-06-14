@@ -103,6 +103,7 @@ export class JugnuV3Model extends THREE.Group {
             uniform vec3 U_CompColor;
             uniform float U_Transition;
             uniform float u_time;
+            uniform float U_FaceOpacity;
             varying vec2 vUv;
             
             void main() {
@@ -114,18 +115,15 @@ export class JugnuV3Model extends THREE.Group {
                 // Extract value (Luminance) from the input to use as Fac
                 float val = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
                 
-                // ColorRamp 2: Alpha mapping (0 to 0.036 -> 0 to 1)
-                float bodyAlpha = smoothstep(0.0, 0.036, val);
+                // ColorRamp 2: Alpha mapping (0.04 to 0.12 -> 0 to 1) to clean up compression noise
+                float bodyAlpha = smoothstep(0.04, 0.12, val);
                 
-                // Circular gradient at the center
-                float dist = distance(vUv, vec2(0.5));
-                vec3 radialColor = mix(U_MoodColor + vec3(0.15), U_MoodColor * 0.85, smoothstep(0.0, 0.4, dist));
+                // Color the grayscale video with the mood color, keeping highlights shiny and white
+                vec3 baseColor = texColor.rgb * U_MoodColor;
                 
-                // Edge outline mask based on val
-                float edgeMask = smoothstep(0.01, 0.05, val) - smoothstep(0.1, 0.3, val);
-                
-                // Base color tinted by the current mood color and complementary edge
-                vec3 baseColor = mix(radialColor, U_CompColor, edgeMask * 0.9);
+                // Keep the brightest specular highlights white for a premium glass feel
+                float specular = smoothstep(0.6, 0.95, val);
+                baseColor = mix(baseColor, vec3(1.0), specular * 0.4);
                 
                 // Scale UV from the center to shrink the sprite to 75%
                 // Offset by 0.1 to the right (subtract from UV)
@@ -141,9 +139,9 @@ export class JugnuV3Model extends THREE.Group {
                 }
                 
                 // Calculate an alpha mask from the luminance of the sprite (black becomes 0.0, white becomes 1.0)
-                float expressionMask = dot(sprite.rgb, vec3(0.299, 0.587, 0.114));
+                float expressionMask = dot(sprite.rgb, vec3(0.299, 0.587, 0.114)) * U_FaceOpacity;
                 
-                // Mix pure white over the procedural base using the expression mask
+                // Mix pure white over the video base using the expression mask
                 vec3 finalColor = mix(baseColor, vec3(1.0), expressionMask);
                 
                 // The final alpha should encompass both the body and the floating expression mask
@@ -163,7 +161,8 @@ export class JugnuV3Model extends THREE.Group {
                 U_MoodColor: { value: MoodColors['happy'].clone() },
                 U_CompColor: { value: MoodCompColors['happy'].clone() },
                 U_Transition: { value: 0.0 },
-                u_time: { value: 0.0 }
+                u_time: { value: 0.0 },
+                U_FaceOpacity: { value: 1.0 }
             },
             vertexShader,
             fragmentShader,
@@ -198,6 +197,12 @@ export class JugnuV3Model extends THREE.Group {
         // Smooth color transition targeted in update loop
         this.targetColor.copy(MoodColors[mood]);
         this.targetCompColor.copy(MoodCompColors[mood]);
+    }
+
+    public setFaceOpacity(opacity: number) {
+        if (this.material && this.material.uniforms.U_FaceOpacity) {
+            this.material.uniforms.U_FaceOpacity.value = opacity;
+        }
     }
 
     public triggerPinchAnimation() {

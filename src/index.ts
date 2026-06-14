@@ -45,6 +45,7 @@ import { DomainExpansionSystem } from "./domainExpansion.js";
 import { CityMapSystem } from "./cityMapSystem.js";
 import { ObjectDetectionSystem } from "./objectDetectionSystem.js";
 import { SpatialFXSystem } from "./spatialFX.js";
+import { OnboardingSystem } from "./onboardingSystem.js";
 import { ACESFilmicToneMapping, Color, GridHelper, Material } from "three";
 
 export const IS_DEV = ((import.meta as any).env.VITE_DEBUG_MODE === "true") || (import.meta as any).env.DEV;
@@ -391,6 +392,10 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
 
   if (enterXrBtn) {
     enterXrBtn.addEventListener("click", () => {
+      // Trigger onboarding audio context to bypass browser autoplay blocks
+      if (typeof (window as any).startOnboardingAudio === "function") {
+        (window as any).startOnboardingAudio();
+      }
       world.launchXR();
     });
   }
@@ -445,5 +450,5 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     }
   });
 
-  world.registerSystem(PanelSystem).registerSystem(JugnuSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem).registerSystem(SpatialFXSystem);
+  world.registerSystem(PanelSystem).registerSystem(JugnuSystem).registerSystem(DomainExpansionSystem).registerSystem(CityMapSystem).registerSystem(SpatialFXSystem).registerSystem(OnboardingSystem);
 });

@@ -615,10 +615,11 @@ export class JugnuSystem extends createSystem({
     this.floatTime += dt;
     
     // Room Loading Block
-    if (this.interactionState === 'WaitingForRoom') {
+    const isOnboardingActive = (window as any).onboardingActive === true;
+    if (this.interactionState === 'WaitingForRoom' || isOnboardingActive) {
         const isXR = (this.renderer.xr as any).isPresenting;
         
-        if (!isXR) {
+        if (!isXR && !isOnboardingActive) {
             this.activateJugnu();
         } else {
             let roomFound = false;
@@ -629,25 +630,25 @@ export class JugnuSystem extends createSystem({
                 }
             }
             
-            if (roomFound) {
+            if (roomFound && !isOnboardingActive) {
                 this.activateJugnu();
             } else {
                 this.roomWaitTimer -= dt;
                 
-                if (this.roomWaitTimer <= 0) {
+                if (this.roomWaitTimer <= 0 && !isOnboardingActive) {
                     if (!this.sceneCaptureRequested) {
                         this.sceneCaptureRequested = true;
                         const session = (this.renderer.xr as any).getSession ? (this.renderer.xr as any).getSession() : (this.renderer.xr as any).session;
                         if (session && typeof session.requestSceneCapture === 'function') {
                             session.requestSceneCapture().then(() => {
                                 setTimeout(() => {
-                                    if (this.interactionState === 'WaitingForRoom') {
+                                    if (this.interactionState === 'WaitingForRoom' && !(window as any).onboardingActive) {
                                         this.activateJugnu();
                                     }
                                 }, 2000);
                             }).catch((err: any) => {
                                 console.warn("Scene capture failed or denied:", err);
-                                if (this.interactionState === 'WaitingForRoom') {
+                                if (this.interactionState === 'WaitingForRoom' && !(window as any).onboardingActive) {
                                     this.activateJugnu();
                                 }
                             });
@@ -657,14 +658,25 @@ export class JugnuSystem extends createSystem({
                     } else {
                         // Wait for fallback timer to force spawn Jugnu
                         this.fallbackSpawnTimer -= dt;
-                        if (this.fallbackSpawnTimer <= 0) {
+                        if (this.fallbackSpawnTimer <= 0 && !isOnboardingActive) {
                             if (this.interactionState === 'WaitingForRoom') {
                                 this.activateJugnu();
                             }
                         }
                     }
                 }
-                this.queries.jugnu.entities.forEach(e => { if (e.object3D) e.object3D.visible = false; });
+                const onboardingState = (window as any).onboardingSystem?.state;
+                const isFormedPhase = onboardingState === 'revealing' || onboardingState === 'hello';
+                if (!isFormedPhase) {
+                    this.queries.jugnu.entities.forEach(e => { if (e.object3D) e.object3D.visible = false; });
+                } else {
+                    this.queries.jugnu.entities.forEach(e => {
+                        const jugModel = e.object3D as JugnuV3Model;
+                        if (jugModel && typeof jugModel.update === 'function') {
+                            jugModel.update(dt);
+                        }
+                    });
+                }
                 return; 
             }
         }
@@ -2029,6 +2041,7 @@ export class JugnuSystem extends createSystem({
       }
       
       this.world.createTransformEntity(this.firefliesMesh);
+      this.firefliesMesh.visible = false; // Hide on init during onboarding
   }
 
   private updateFireflies(dt: number) {

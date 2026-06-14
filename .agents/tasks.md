@@ -1335,3 +1335,42 @@
   - `[x]` Removed the entire `stencilMaterial` mutation block from `src/index.ts`. The IWSDK `AnimatedHand` shader already natively handles the passthrough holdout effect via its vertex shader (shrinks geometry inward) and `gl_FragColor = vec4(0,0,0,0)` fragment output.
   - `[x]` Removed the now-unused `stencilMaterial` import from `src/index.ts`.
   - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Cinematic Onboarding Scene: The Birth of Jugnu (Phases 1, 2, 3 & 4) (Current Run)
+  - `[x]` Configured timelines so that all 4 onboarding phases last exactly 5.0 seconds each (total onboarding time: 20.0s).
+  - `[x]` Constructed `OnboardingSystem` in `src/onboardingSystem.ts` managing the void dome environment and gold/orange pixie dust embers (increased particle scale to 1.2cm for clean visibility).
+  - `[x]` Fixed Z-order sorting glitch where transparent pixie embers were hidden outside the hand meshes by setting `voidMesh.renderOrder = -100` so the background dome is rendered first.
+  - `[x]` Solved static particle drift by separating the sinusoidal relative wiggle from the physical velocity integration.
+  - `[x]` Fixed 2D mouse repulsion by casting camera-projected rays to place the interaction coordinates directly under the user's cursor.
+  - `[x]` Fixed TypeError crash in WebXR presenting modes by adding null-safety to background color restoration.
+  - `[x]` Engineered Web Audio API synthesizers to produce a low atmospheric drone and a rhythmic spatialized heartbeat panned orbiting the player's head.
+  - `[x]` Integrated system registration and user-gesture autoplay wiring inside `src/index.ts`.
+  - `[x]` Synchronized visibility and interaction state in `src/jugnu.ts` to suspend the companion's operations, hide yellow-green fireflies during onboarding, and prevent early hiding during Phase 4 (The Hello).
+  - `[x]` **[Phase 2: The Gathering]** Built the swirl and pull math (Zero-GC) directing embers into a swirling galaxy converging at `(0, 1.45, -0.8)`.
+  - `[x]` **[Phase 2: The Gathering]** Spawned dynamic orange PointLight at the center desk whose intensity swells from `0` to `8.0` over Phase 2 to dynamically illuminate player hands.
+  - `[x]` **[Phase 2: The Gathering]** Programmed drone pitch sweeps (drone frequencies ramp up) and synthesized glittering glissando chime notes (high sine waves at 1.7kHz - 2.7kHz playing rapidly).
+  - `[x]` **[Phase 3: The Ignition & Formation]** Integrated the authentic high-fidelity `JugnuV3Model` directly instead of a crude procedural geometry. Rendered the actual glassy star shell and glowing orange core, animating its expansion scale using a spring-based underdamped jelly bounce, and hiding its digital face by introducing a custom shader uniform (`U_FaceOpacity = 0.0`).
+  - `[x]` **[Phase 3: The Ignition & Formation]** Programmed glassy pop synthesizer (click triangle sweep + bubble sine sweep) and upbeat sports-synth beat synthesizer (kick drum, hi-hats, sawtooth bassline, stadium cheers) running entirely programmatically via Web Audio.
+  - `[x]` **[Phase 3: The Ignition & Formation]** Implemented lighting flash burst (50.0 intensity) and temporary stadium framework reveal by dropping void opacity to 0.15 and restoring original scene lights.
+  - `[x]` **[Phase 4: The Hello]** Animated the face opacity from `0.0` to `1.0` to perform a cheerful digital blink (fade-in, brief shut, and open) exactly as Phase 4 starts.
+  - `[x]` **[Phase 4: The Hello]** Programmed active companion 360-degree flip animation around X-axis, and dynamic sparkle trails at 15.0s.
+  - `[x]` **[Phase 4: The Hello]** Programmed a billboard canvas-based glassmorphic dialogue bubble above Jugnu's head displaying: *"Hey there! I'm Jugnu, your virtual captain. Ready to light up the field?"*.
+  - `[x]` **[Phase 4: The Hello]** Programmed a cute electronic giggle synth (four rapid sine wave chirps).
+  - `[x]` Ensure correct entity cleanups of bubble, star shell, and core meshes in `completeOnboarding()`.
+  - `[x]` Verified static type safety check (`npx tsc --noEmit`) and client production build compilation (`npm run build`).
+
+- `[x]` Visual Adjustments to Jugnu V3 Model & Onboarding Flow (Current Run)
+  - `[x]` Fixed colorless/desaturated companion appearance: mapped the grayscale pre-rendered video's luminance directly to the rich `U_MoodColor` (instead of blending with a grayscale base at 50%), preserving bright white specular highlights for a premium glassy feel.
+  - `[x]` Updated `src/onboardingSystem.ts` to set face opacity to `1.0` at the start of Phase 3, allowing the digital face to be fully visible during the spring-based formation bounce.
+  - `[x]` Refined Phase 4 face hello animation to execute a smooth blink (closed eyes and reopen) without the redundant initial fade-in from `0.0`.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Onboarding Phase 3 Companion Visibility Fix & Testing Timer (Current Run)
+  - `[x]` Fixed an onboarding bug in `src/jugnu.ts` where the companion update loop overrode the model visibility to `false` during the `revealing` state (Phase 3). Resolved it by checking `onboardingSystem?.state` and ensuring the model remains visible during both Phase 3 (`revealing`) and Phase 4 (`hello`).
+  - `[x]` Implemented a testing timer overlay in the top right corner of the window in `src/onboardingSystem.ts` that dynamically displays `PHASE: <number> (<state>) | TIME: <seconds>` during onboarding and auto-removes itself upon completion.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Onboarding Phase 3 Happy Expression Continuity (Current Run)
+  - `[x]` Updated `src/onboardingSystem.ts` update loop during the `revealing` phase to explicitly and continuously enforce `setFaceOpacity(1.0)` and `setMood('happy')` on the companion mesh.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
