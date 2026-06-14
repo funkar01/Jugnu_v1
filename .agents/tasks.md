@@ -1392,5 +1392,6 @@
   - `[x]` **[Tilt Refinement]** Projected end-of-Phase-1 coordinates into the local tilted space using inverse rotation quaternions to prevent visual snapping.
   - `[x]` **[Tilt Refinement]** Leveraged pre-allocated scratch vectors and quaternions (`scratchQ`, `scratchQ_2`, `scratchV3_3`, `scratchV3_4`, `scratchV3_5`) to ensure zero-GC overhead.
   - `[x]` **[Timeline Refinement]** Reduced the active duration of Phase 1 (slow drift & hand repulsion) from 5.0 seconds to 3.0 seconds, dynamically shifting the downstream thresholds.
+  - `[x]` **[Audio Refinement]** Programmed a dynamic exponential gain fade-out (over 1.0 seconds) for the atmospheric drone synth at the start of Phase 3, and scheduled its oscillators to stop.
   - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
 

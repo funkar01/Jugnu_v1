@@ -45,6 +45,11 @@ class DialogueBubble extends THREE.Group {
         this.add(this.mesh);
     }
     
+    public setText(text: string) {
+        this.drawBubble(text);
+        this.texture.needsUpdate = true;
+    }
+    
     private drawBubble(text: string) {
         const ctx = this.ctx;
         const w = this.canvas.width;
@@ -751,6 +756,33 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                 this.playGlassyPop();
                 if (this.audioCtx) {
                     this.playSportsSynthBeat(this.audioCtx.currentTime);
+                    
+                    // Fade out the atmospheric drone as soon as Jugnu is revealed (Phase 3 reveal starts)
+                    if (this.droneGain) {
+                        const now = this.audioCtx.currentTime;
+                        this.droneGain.gain.cancelScheduledValues(now);
+                        this.droneGain.gain.setValueAtTime(this.droneGain.gain.value, now);
+                        // Smoothly fade out to 0 over 1.0 seconds
+                        this.droneGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.0);
+                        
+                        // Schedule oscillator stops to save system audio resources
+                        try {
+                            if (this.droneOsc1) {
+                                this.droneOsc1.stop(now + 1.1);
+                                this.droneOsc1 = null;
+                            }
+                            if (this.droneOsc2) {
+                                this.droneOsc2.stop(now + 1.1);
+                                this.droneOsc2 = null;
+                            }
+                            if (this.droneLfo) {
+                                this.droneLfo.stop(now + 1.1);
+                                this.droneLfo = null;
+                            }
+                        } catch (e) {
+                            console.warn("[OnboardingSystem] Error stopping drone oscillators:", e);
+                        }
+                    }
                 }
             }
         } else if (this.state === 'revealing') {
