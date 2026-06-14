@@ -1118,3 +1118,220 @@
   - `[x]` Registered and preloaded the 10 NBA player card textures in the assets manifest in `src/index.ts`.
   - `[x]` Updated the basketball roster array (`rosterBasketball`) inside `src/domainExpansion.ts` to map Pacers (Home team) and Thunder (Away team) players with their respective `rcbCardKey` pointing to the preloaded card textures.
   - `[x]` Confirmed zero static type errors (`npx tsc --noEmit`) and compiled production Vite client assets cleanly (`npm run build`).
+
+- `[x]` F1 Live Roster and Dynamic Player Cards (Current Run)
+  - `[x]` Created telemetry profiling helper `getF1Telemetry()` in `src/domainExpansion.ts`.
+  - `[x]` Instantiated 3D F1 Roster (`0.24m x 0.18m`) and Player Card group (`0.16m x 0.09m` dual-panel) inside `createNurburgringGroup()`.
+  - `[x]` Implemented real-time driver sorting based on distance traveled (`lap + progress`) and drew live roster list.
+- `[x]` Reposition spoke labels to 52px offset to prevent clipping large circles
+  - `[x]` Reduce outer background template opacity to 40%
+  - `[x]` Create solid dark backing (`rgba(5, 5, 12, 1.0)`) for center panel with subtle 35% overlay texture
+  - `[x]` Increase center text size and use bold system-ui sans-serif fonts for perfect legibility
+  - `[x]` Verify clean static compilation and client build
+- `[x]` Compass UI Icon Hover Animations & Transparency Tuning (Current Run)
+  - `[x]` Make the center panel 80% opacity (20% more transparent: `rgba(5, 5, 12, 0.80)`)
+  - `[x]` Increase center title text size to bold 24px and details to bold 15px with balanced line wrapping
+  - `[x]` Implement dynamic sine wave Y-axis hover float animation for spoke icons (`Math.sin(floatTime * 6.0) * 4.0`)
+  - `[x]` Keep complementary background circles and active border rings static while icons float above them
+  - `[x]` Verify clean static compilation and client build
+- `[x]` Center Panel Transparency Refinements (Current Run)
+  - `[x]` Remove custom solid center circular overlay backing from main canvas
+  - `[x]` Draw the provided center template image (`innerTintCanvas`) at 80% opacity with colors linked to Jugnu
+  - `[x]` Verify clean static compilation and client build
+- `[x]` Run dev server and retrieve network testing link (Current Run)
+  - `[x]` Run npm install to populate node_modules
+  - `[x]` Run dev server via npm run dev (bypassing PowerShell policy via cmd /c)
+  - `[x]` Retrieve network IP address of the host machine (10.232.137.127)
+  - `[x]` Generate the headset-testing URL (https://10.232.137.127:8081/)
+
+- `[x]` Jugnu Sticker Integration Feasibility Analysis (Current Run)
+  - `[x]` Analyze tech stack of JugnuXR (IWSDK, Three.js, Vite)
+  - `[x]` Analyze tech stack of Jugnu_Stickar (MindAR, CDN Three.js, Canvas)
+  - `[x]` Formulate integration architecture (Multi-Page App vs Single-Page DOM routing)
+  - `[x]` Deliver comparative analysis and feasibility report
+
+- `[x]` PICO OS 6 & WebSpatial SDK Porting (Current Run)
+  - `[x]` Fixed the User-Agent redirect regex in [index.html](file:///c:/Users/SSD/Documents/GitHub/Jugnu_v1/index.html) to prevent Pico headsets from being redirected to `sticker.html`.
+  - `[x]` Installed `@webspatial/core-sdk` package dependency.
+  - `[x]` Integrated dynamic `Spatial` runtime initialization inside [src/index.ts](file:///c:/Users/SSD/Documents/GitHub/Jugnu_v1/src/index.ts) to support Pico OS 6 native WebApp spatial sessions while maintaining Quest/IWSDK fallback.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and successfully compiled Vite client production bundle with `npm run build`.
+
+- `[x]` Nürburgring 10 F1 Cars Expansion (Current Run)
+  - `[x]` Updated `createNurburgringGroup()` to define and spawn 10 detailed F1 cars (Mercedes, Red Bull, Ferrari, McLaren, Aston Martin, Alpine, Williams, Haas, Sauber, and VCARB) with unique body, helmet, and visor colors.
+  - `[x]` Updated the animation loop inside `update()` to calculate staggered track progress offsets (0.05 step lag) for the trailing 8 cars to space them along the spline.
+  - `[x]` Verified type safety using `npx tsc --noEmit` and completed client production bundle build.
+
+- `[x]` Nürburgring Visual Polish & Z-Fighting Resolution (Current Run)
+  - `[x]` Scaled the holographic containment cylinder dynamically by `1.45x` for custom maps (Nürburgring and Butterflies) to encompass the full track bounds, preventing cars and assets from clipping through the cylinder boundaries.
+  - `[x]` Configured the holographic containment cylinder visibility dynamically in `update()` so that it is only set to visible if its opacity is non-zero, resolving sorting and occlusion glitches.
+  - `[x]` Raised the grid helper and border line positions by `0.45mm` (to `0.0025m` relative height) on custom maps to completely eliminate Z-fighting flicker when zooming in/scaling up.
+  - `[x]` Verified type safety using `npx tsc --noEmit` and successfully compiled client production bundle with `npm run build`.
+
+- `[x]` Action Compass UI Subsystem & Grid Floor Removal (Current Run)
+  - `[x]` Removed physical `tcdLauncherButton` and label meshes from stadium roof rim.
+  - `[x]` Cleared all holographic `GridHelper` floor lines from `berlinGroup`, `inuitGroup`, `butterflyGroup`, and `nurburgringGroup` lazy-loaders.
+  - `[x]` Engineered the smaller Action Compass UI (`PlaneGeometry(0.10, 0.10)`) utilizing offscreen canvas tint overlays of `CompassUiOuter.png` and `CompassUiInner.png` mapped to custom holographic `ShaderMaterial`.
+  - `[x]` Rendered 4 orthogonal spokes: `PLAY SEQ` (magenta play icon), `STORM` (indigo cloud icon), `NAVIG` (orange arrow icon), and `CLEAR` (red X cross icon).
+  - `[x]` Programmed local coordinate proximity checking, billboarding, hover details text updates, haptic vibration, and tap depth triggers.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful client build (`npm run build`).
+
+- `[x]` Action Compass UI Subsystem Attachment & Minimap Sync (Current Run)
+  - `[x]` Relocated Action Compass UI group (`actionCompassGroup`) from the stadium desk space to the companion Compass UI group (`compassGroup`) at local offset `(0.11, 0.11, 0.0)` (top-right corner).
+  - `[x]` Cleaned up duplicate/obsolete TCD properties and updates from the stadium system (`src/domainExpansion.ts`).
+  - `[x]` Programmed companion update loop in `src/jugnu.ts` to open the Action Compass UI when the minimap is spawned and close it when closed, with smooth lerped scale transitions.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production bundling (`npm run build`).
+
+- `[x]` Action UI & Compass Spawning next to Minimap Fixes (Current Run)
+  - `[x]` Called `initActionCompassUI()` in `initCompassUI()` to resolve the missing initialization bug.
+  - `[x]` Added `redrawActionCompass` hooks in the image loader `onload` callbacks to update the CanvasTexture when textures resolve.
+  - `[x]` Modified `src/jugnu.ts` to persist the Compass UI open state as long as `isMinimapSpawned` is true.
+  - `[x]` Bypassed the 2.0-second pinch release auto-close timeout when `isMinimapSpawned` is true.
+  - `[x]` Programmed the Compass UI to close instantly when the minimap is closed (`isMinimapSpawned` transitions from true to false).
+  - `[x]` Ensured state restoration handles the active minimap spawn state properly when returning from scaled-max overlays.
+  - `[x]` Shrunk the local coordinate positioning offset of `actionCompassGroup` to a snug `(0.085, 0.085, 0.0)` to bring it closer to the companion Compass UI.
+  - `[x]` Synchronized the Action spoke backing circles to use `compColorHex` (animated complementary color linked to Jugnu's mood) instead of static dark slate.
+  - `[x]` Verified type check (`npx tsc --noEmit`) and client production build (`npm run build`) complete successfully with zero errors.
+
+- `[x]` Action UI Fine-Tuning, Bubble Charge, F1 Winner, Speedline Origin, and F1 Model Overhaul (Current Run)
+  - `[x]` Repositioned companion Action UI offset to `(0.11, 0.03, 0.0)` in `src/jugnu.ts` to push it lower and right.
+  - `[x]` Updated bubble progress draining factor to `/ 1.0` in `src/domainExpansion.ts` to align with the 1.0-second charge threshold.
+  - `[x]` Fixed speedline (vortex trail) origin by adding `this.f1VortexInitialized = false` inside the non-immersive `else` block of `updateNurburgringMap()`.
+  - `[x]` Extended F1 winner celebration card duration and floating animations up to `26.0s` (the end of the replay) and bypassed early card hiding at `20.0s` for F1.
+  - `[x]` Overhauled the procedural F1 car mesh with aerodynamic tapered nosecone, swept front wings, sculpted sidepods (inlet + ramp), tapered engine cover, multi-element rear wings, and color-coded Pirelli-style tire sidewall stripes.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful client build (`npm run build`).
+
+- `[x]` Dynamic Stadium Scoreboard & Soccer UI Integration (Current Run)
+  - `[x]` Copied the 5 generated soccer graphics to clean, recognizable filenames: `bayern_stats.png`, `soccer_metrics.png`, `ucl_score_banner.png`, `soccer_boundaries.png`, and `bvb_stats.png`.
+  - `[x]` Declared texture cache properties in `src/domainExpansion.ts` (`iplTextures`, `soccerTextures`, `iplBillboardTexture`, and `soccerBillboardTexture`).
+  - `[x]` Preloaded and processed both Cricket and Soccer textures inside `initScoreDisplay()` and `initARBillboard()` using a transparent luma threshold canvas filter.
+  - `[x]` Coded dynamic scoreboard material swapping in `setStadiumType()`, scaling the portrait player card textures (Slot 0 and Slot 4) to maintain aspect ratio, and shifting their Y coordinates to avoid clipping.
+  - `[x]` Synced the central floating AR billboard to display `ucl_score_banner.png` in Berlin (Soccer) mode.
+  - `[x]` Gated the scoreboard panels and central billboard visibility, hiding them completely in `inuit` (Basketball), `nurburgring` (F1), and `butterflies` (Butterfly Park) modes to prevent Cricket graphics leak.
+  - `[x]` Verified type checks (`npx tsc --noEmit`) and completed client production build compilation.
+
+- `[x]` Dev Server Execution & Headset Connection Link (Current Run)
+  - `[x]` Execute `npm run dev` in background
+  - `[x]` Retrieve host local network IP addresses (`https://192.168.1.2:8081/` and `https://172.16.0.2:8081/`) for VR headset WebXR debugging
+
+- `[x]` Venue UI Radial Arc Rehaul & Tab Mutual Focus System (Current Run)
+  - `[x]` Overhauled `compassStadiumCanvas` to `600x600` pixels and `compassStadiumCard` to `0.30m x 0.30m` plane centered at Y = 0.0 concentric with the compass.
+  - `[x]` Rewrote `redrawCompassStadiumMenu()` using radial canvas drawing, circular center-cropped venue icons, checkmark badges, and radially centered rotated texts.
+  - `[x]` Updated fingertip collision checks to use polar coordinate math checking radial distance `[0.08, 0.13]` meters and top semi-circle coordinates matching targeted angles `[160°, 125°, 90°, 55°, 20°]`.
+  - `[x]` Implemented mutual tab exclusion in `handleCompassTileClick` to close all other open tabs when any new tab is opened.
+  - `[x]` Shifted info tabs coordinates to `x = 0.71, y = 0.0` when open to resolve layout conflicts with the Action UI.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful client production build (`npm run build`).
+
+- `[x]` Venue Selector Fix & Tab Proximity Refinements (Current Run)
+  - `[x]` Modified `src/jugnu.ts` tab proximity targets: shifted targets from X=0.71 to X=0.28 to bring Chat, Tutorial, and Debug panels closer to the user.
+  - `[x]` Modified `src/jugnu.ts` stadium menu hover/press coordinates: changed Z bounds check to be asymmetrical (`cardLocalTip.z > -0.04 && cardLocalTip.z < 0.025` / `0.014`), allowing physical index finger push-through up to 4cm past the plane.
+  - `[x]` Verified typecheck safety via `npx tsc --noEmit`.
+  - `[x]` Verified production client build success via `npm run build`.
+
+- `[x]` Action UI Layout & Text Upscaling (Current Run)
+  - `[x]` Updated `initActionCompassUI()` default position in `src/jugnu.ts` to `(0.11, -0.06, 0.0)`.
+  - `[x]` Added smooth position lerp animation for `actionCompassGroup` in `src/jugnu.ts` update loop to slide down to `Y = -0.16` when `isStadiumMenuOpen` is active.
+  - `[x]` Upscaled Venue UI text sizes in `redrawCompassStadiumMenu()`: checkmark (10px -> 12px), name (11px -> 16px/15px), and sub-label (8px -> 11px) with adjusted vertical offsets.
+  - `[x]` Upscaled Action UI text sizes in `redrawActionCompass()`: spoke label (12px -> 16px), title (20px -> 28px), and details (12px -> 16px) with adjusted layout parameters.
+  - `[x]` Verified typecheck safety via `npx tsc --noEmit`.
+  - `[x]` Verified production client build success via `npm run build`.
+
+- `[x]` Soccer Replay Glitch, Roster Optimization & Ball Overlay (Current Run)
+  - `[x]` Cached original local scale inside `child.userData.originalScale` for both goals and hoops/nets during GLTF loading traversals.
+  - `[x]` Rewrote `updateNetsWiggling()` and `restoreHoopScales()` in `src/domainExpansion.ts` to multiply wiggling dimensions relatively to `originalScale` and copy original scales back upon completion, eliminating the football goal warp glitch.
+  - `[x]` Optimized `rosterFootball` by removing 5 unused static players (`d1`, `d4`, `m1`, `fw2`, and linesman `ar1`), reducing the roster to 8 active actors to clean up pitch layout.
+  - `[x]` Set `depthTest: false` and `renderOrder = 9999` on `sequenceBall` and `hawkeyeBall` materials/meshes so they are overlayed over all geometry and visible at all times.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful client build (`npm run build`).
+
+- `[x]` Compass UI Face-User Orientation Refinements (Current Run)
+  - `[x]` Modified `src/jugnu.ts` updates loop to unconditionally execute `this.compassGroup.lookAt(this.headPos)` every frame.
+  - `[x]` Removed static locked orientation caching (`lockedCompassQuat`) when the panel is locked in space, allowing the backing board, tabs, venue panels, and action deck to rotate and face the user continuously.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Compass UI Top-Spawning Tilted Tabs Refinements (Current Run)
+  - `[x]` Shifted Tutorial and Debug open position coordinates in `src/jugnu.ts` to `(X = 0.0, Y = 0.28)`, spawning them clear of the concentric Venue UI selector card Y boundary.
+  - `[x]` Interpolated the local rotation around X-axis for Tutorial and Debug panels inside `src/jugnu.ts` to tilt them forward/downwards by 0.3 radians when open and restore them flat (0.0 radians) when closed.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Compass UI Tab Upscaling & Y Position Refinements (Current Run)
+  - `[x]` Increased PlaneGeometry dimensions for Chat, Tutorial, and Debug tab panels by 50% (from 0.24x0.18 to 0.36x0.27 meters) inside `src/jugnu.ts`.
+  - `[x]` Lowered the target open Y position coordinate for Tutorial and Debug panels from Y = 0.28 to Y = 0.23 to sit comfortably above the selector ring without clipping.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Compass UI Chat Tab Positioning & Tilting Refinements (Current Run)
+  - `[x]` Shifted the open target coordinates of the Chat tab card in `src/jugnu.ts` to `(X = 0.0, Y = 0.23)` to align perfectly with the Tutorial and Debug tab panels.
+  - `[x]` Interpolated the local X-axis rotation of the Chat tab card in `src/jugnu.ts` to tilt it forward/downwards by 0.3 radians when open and restore it flat (0.0 radians) when closed, matching the behavior of the other top-spawning tabs.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Venue UI Image Brightness & Ribbon Transparency Refinements (Current Run)
+  - `[x]` Set `blending = THREE.NormalBlending` for `compassStadiumMat` to render center-cropped venue photos fully bright, opaque, and visible.
+  - `[x]` Adjusted the strokeStyle transparency of the background semicircular glass ribbon in `redrawCompassStadiumMenu()` to `rgba(5, 5, 26, 0.40)` to match the opacity of the main compass backing board.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Wrist Button Toggle & Icon Swap Refinements (Current Run)
+  - `[x]` Modified `handleWristClose()` in `src/domainExpansion.ts` to toggle between closing and opening the minimap in front of the user.
+  - `[x]` Updated `drawWristButton()` in `src/domainExpansion.ts` to draw a 3-fold accordion map icon when the minimap is closed, and a cross (×) icon when open.
+  - `[x]` Triggered `drawWristButton(0, false)` on all table spawn toggles in `src/domainExpansion.ts` to instantly refresh and synchronize the icon state.
+  - `[x]` Verified typecheck safety via `npx tsc --noEmit` and production build compilation via `npm run build`.
+
+- `[x]` Custom Image Tab Frames & Floating Transparency (Current Run)
+  - `[x]` Copied updated `TutorialTab.png` from pictures folder into `public/textures/`.
+  - `[x]` Preloaded and preprocessed all three frame PNGs to strip black backgrounds smoothly with feathered alpha scaling.
+  - `[x]` Upscaled canvas resolution of all three tabs by 50% to `768x576` and mesh sizes to `0.54m x 0.405m`.
+  - `[x]` Shifted the semi-transparent backing board to cover only the inner text box region (`x = dx + 12`, `y = dy + 12`, `width = 488`, `height = 360`), allowing the outer frame borders to float transparently in space.
+  - `[x]` Added F1 car enhancements (Airbox intake scoop, T-camera pod, sidepod cooling inlets, DRS actuator pod, exhaust pipe, and diffuser rain LED).
+  - `[x]` Increased maximum gesture zoom scale limit from `6.0` to `10.0` and adjusted structural fading transitions.
+  - `[x]` Verified compilation safety (`npx tsc --noEmit`) and client builds (`npm run build`).
+
+- `[x]` Holographic Tutorial Subsystem & 6-Tab Interactive Point-and-Pinch (Current Run)
+  - `[x]` Extended `redrawCompassTutorial(step)` to load and loop dynamic tutorial videos (`view1.mp4`, `JugnuRotate.mp4`, `JugnuPinched.mp4`) in the center panel window of the tutorial card.
+  - `[x]` Added point-and-pinch input hover and press selection for the 6 side tabs next to the tutorial card inside `JugnuSystem.update`.
+  - `[x]` Implemented dynamic visual state rendering for the 6 tabs (SUMMON COMPASS, ROTATE MAP, ZOOM MAP, DOMAINS, REPLAY EVENT, WEATHER STYLES) via `redrawTutorialTabMesh`.
+  - `[x]` Wired automatic tutorial step transitions: Step 0 -> 1 on compass summon, Step 1 -> 2 on minimap rotation, Step 2 -> 3 on two-handed zoom, Step 3 -> 4 on stadium selection, Step 4 -> 5 on PLAY spoke click, and Step 5 -> 6 on STORM spoke click.
+  - `[x]` Updated floating `JugnuInstructionBoard` texts to support the 6 upgraded tutorial descriptions.
+  - `[x]` Verified TypeScript type safety check (`npx tsc --noEmit`) and production build compilation (`npm run build`).
+
+- `[x]` Raycast Point-and-Pinch Side Tabs & Landing Page Refinements (Current Run)
+  - `[x]` Registered tutorial tab meshes as ECS entities with `Interactable`, `TutorialTabRef`, `PhysicsShape` (Box), and kinematic `PhysicsBody` components to enable pointing and raycast pinch selection from a distance.
+  - `[x]` Subscribed to the `tutorialTabPressed` ECS query in `src/jugnu.ts` to capture raycast presses and dynamically set the tutorial steps/videos from afar.
+  - `[x]` Removed pointer `Interactable` from the Jugnu companion model in `src/index.ts` to prevent raycast collision clashes.
+  - `[x]` Moved Gemini AI voice recording trigger directly to the Compass UI `VOICE` spoke button inside `handleCompassTileClick()`.
+  - `[x]` Overrode the Jugnu companion position (`0.12, 1.45, -0.22`), scale (`0.12`), and yaw rotation on the 2D landing page when `!isXR` (not presenting) to keep it floating next to the glassmorphic card.
+  - `[x]` Removed the floor grid (`GridHelper`) helper lines from `src/index.ts`.
+  - `[x]` Verified compilation safety (`npx tsc --noEmit`) and client builds (`npm run build`).
+
+- `[x]` WebXR UI Icon Assets Migration & Zero-GC Canvas Tinting (Current Run)
+  - `[x]` Initialized pre-allocated offscreen scratch canvas (`iconTintCanvas`, `iconTintCtx`) to eliminate frame-time memory allocation overhead and GC pressure.
+  - `[x]` Preloaded high-resolution PNG icon assets from `public/ui/Icons/` asynchronously inside `initCompassUI()`.
+  - `[x]` Programmed high-fidelity `drawIconImage()` helper utilising `source-in` composite blending to scale and tint icon shapes to pure white on the fly.
+  - `[x]` Updated `redrawCompassGrid()` to draw PNG icons for CHAT, TUTORIAL, MINIMAP, VENUE, VOICE, and WALLS, maintaining the vector LOCK and terminal DEBUG console.
+  - `[x]` Updated `redrawActionCompass()` to draw PNG icons for PLAY SEQ, STORM, NAVIG, and CLEAR.
+  - `[x]` Restored compiler resolution for external dependency `@webspatial/core-sdk` by performing a clean `npm install`.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and compiled client production bundle successfully (`npm run build`).
+
+- `[x]` NBA Player Cards Integration (Current Run)
+  - `[x]` Copied 10 newly provided player card images from `C:\Users\SSD\Pictures\Jugnu\NBAUi\NBA` into static project asset directory under `public/NBACards/`.
+  - `[x]` Registered and preloaded the 10 NBA player card textures in the assets manifest in `src/index.ts`.
+  - `[x]` Updated the basketball roster array (`rosterBasketball`) inside `src/domainExpansion.ts` to map Pacers (Home team) and Thunder (Away team) players with their respective `rcbCardKey` pointing to the preloaded card textures.
+  - `[x]` Confirmed zero static type errors (`npx tsc --noEmit`) and compiled production Vite client assets cleanly (`npm run build`).
+
+- `[x]` F1 Live Roster and Dynamic Player Cards (Current Run)
+  - `[x]` Created telemetry profiling helper `getF1Telemetry()` in `src/domainExpansion.ts`.
+  - `[x]` Instantiated 3D F1 Roster (`0.24m x 0.18m`) and Player Card group (`0.16m x 0.09m` dual-panel) inside `createNurburgringGroup()`.
+  - `[x]` Implemented real-time driver sorting based on distance traveled (`lap + progress`) and drew live roster list.
+  - `[x]` Programmed user index-finger touch detection using local transform mapping on the roster plane.
+  - `[x]` Implemented dynamic spawning of player cards floating above the moving cars, updating live telemetry feeds.
+  - `[x]` Configured the 7-second collapse timer with a cubic easing scale transition.
+  - `[x]` Added billboarding to keep the roster and card group facing the user.
+  - `[x]` Integrated haptics, click sounds, and spark particles on selection using global `spatialFX`.
+  - `[x]` Ran static typecheck `npx tsc --noEmit` and confirmed clean production build `npm run build`.
+- `[x]` Nurburgring F1 Map Hand Tracking and Occlusion Glitch Fixes (Current Run)
+  - `[x]` Injected NaN-safety checks into the `computeFrenetFrames` CatmullRomCurve3 override to prevent zero-length normalization and NaN vector propagation.
+  - `[x]` Injected NaN-safety checks into the F1 car updates within `update()` to prevent division-by-zero or collinear basis transformations when calculating position and rotation matrices.
+  - `[x]` Added `uv` coordinates to the procedural ribbon `trackGeo` geometry in `createNurburgringGroup()` to satisfy Three.js WebGL and WebXR standard material pipeline attributes.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Root Cause Fix — Frozen Holdout Hand Mesh Duplication on F1 Map (Current Run)
+  - `[x]` Traced frozen/duplicate stencil hand mesh to `src/index.ts`: the code mutated the IWSDK singleton `stencilMaterial` (a `ShaderMaterial`) by setting `transparent=false`, `colorWrite=false`, and firing `needsUpdate=true`. This triggered a mid-session WebGL shader recompile on the skinned hand mesh, freezing it at the last recorded joint transform and producing a frozen holdout-material duplicate.
+  - `[x]` Removed the entire `stencilMaterial` mutation block from `src/index.ts`. The IWSDK `AnimatedHand` shader already natively handles the passthrough holdout effect via its vertex shader (shrinks geometry inward) and `gl_FragColor = vec4(0,0,0,0)` fragment output.
+  - `[x]` Removed the now-unused `stencilMaterial` import from `src/index.ts`.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).

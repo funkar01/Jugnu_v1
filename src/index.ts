@@ -11,21 +11,11 @@ import {
   Box3,
   Box3Helper,
   Vector3,
-  stencilMaterial,
   AmbientLight,
   DirectionalLight,
   HemisphereLight,
   VisibilityState,
 } from "@iwsdk/core";
-
-// Configure hand stencil material to act as a holdout (occlusion) mask showing passthrough
-if (stencilMaterial) {
-  stencilMaterial.colorWrite = false;
-  stencilMaterial.transparent = false;
-  stencilMaterial.depthWrite = true;
-  stencilMaterial.depthTest = true;
-  stencilMaterial.needsUpdate = true;
-}
 
 
 import {

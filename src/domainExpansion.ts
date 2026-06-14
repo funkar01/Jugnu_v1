@@ -326,6 +326,29 @@ export class DomainExpansionSystem extends createSystem({
     private nurburgringF1Speed = 0.052;
     private nurburgringTrackMat!: THREE.MeshStandardMaterial;
 
+    // --- F1 Live Roster and Spawning Player Cards ---
+    private f1RosterMesh!: THREE.Mesh;
+    private f1RosterCanvas!: HTMLCanvasElement;
+    private f1RosterCtx!: CanvasRenderingContext2D;
+    private f1RosterTexture!: THREE.CanvasTexture;
+    private f1RosterMat!: THREE.MeshBasicMaterial;
+    private f1RosterHoveredRowIndex = -1;
+    private f1TouchCooldown = 0.0;
+
+    private f1ActiveCardGroup!: THREE.Group;
+    private f1ActiveCardImgMesh!: THREE.Mesh;
+    private f1ActiveCardMesh!: THREE.Mesh;
+    private f1ActiveCardCanvas!: HTMLCanvasElement;
+    private f1ActiveCardCtx!: CanvasRenderingContext2D;
+    private f1ActiveCardTexture!: THREE.CanvasTexture;
+    private f1ActiveCardMat!: THREE.MeshBasicMaterial;
+    private f1ActiveCardDriverId: string | null = null;
+    private f1ActiveCardTimer = 0.0;
+
+    private f1CarLaps: Record<string, number> = { f1_gr: 1, f1_ka: 1, f1_cl: 1, f1_lh: 1, f1_ln: 1, f1_op: 1 };
+    private f1CarPrevProgress: Record<string, number> = { f1_gr: 0, f1_ka: 0, f1_cl: 0, f1_lh: 0, f1_ln: 0, f1_op: 0 };
+
+
     // F1 Telemetry HUD System
     private f1HudCanvas!: HTMLCanvasElement;
     private f1HudCtx!: CanvasRenderingContext2D;
@@ -1439,9 +1462,24 @@ export class DomainExpansionSystem extends createSystem({
             this.createButterflyGroup();
         }
 
-        // Lazily build Nürburgring racetrack
+        // Lazily build Nürburgring racetrack — deferred via setTimeout to run
+        // OUTSIDE the XRFrame callback. createNurburgringGroup() is synchronous
+        // and CPU-heavy (~150-400ms on Quest 3). Running it inside rAF/XRFrame
+        // causes the WebXR runtime to miss its frame deadline and freeze the
+        // skinned hand SkinnedMesh at its last pose (the holdout ghost bug).
         if (stadiumType === 'nurburgring' && !this.nurburgringGroup) {
-            this.createNurburgringGroup();
+            // Set a sentinel so we don't queue multiple builds
+            (this as any)._nurburgringBuilding = true;
+            setTimeout(() => {
+                if (!this.nurburgringGroup) {
+                    this.createNurburgringGroup();
+                }
+                if (this.nurburgringGroup) {
+                    this.nurburgringGroup.visible = (this.currentStadiumType === 'nurburgring');
+                }
+                delete (this as any)._nurburgringBuilding;
+                console.log('[NurburgringMap] Deferred build complete — outside XRFrame.');
+            }, 0);
         }
 
         // 2. Lazily create new meshes if they don't exist yet
@@ -1705,6 +1743,10 @@ export class DomainExpansionSystem extends createSystem({
         });
         this.players = [];
         this.initPlayerMarkers();
+
+        // Clear collected original stadium material states to prevent weather updates leaking across stadiums
+        this.standsOriginalColors = [];
+        this.floodlightOriginalColors = [];
 
         // 5. Update bubble name tags
         this.nameTags.forEach((tagMesh, idx) => {
@@ -2093,14 +2135,39 @@ export class DomainExpansionSystem extends createSystem({
                 carProgress = (this.nurburgringF1Progress + baseLag + progressDiff + 1.0) % 1.0;
                 lateralOffset = sign * Math.sin(this.nurburgringOvertakePhase + phaseOffset) * 0.005;
 
+                car.progress = carProgress;
+
+                // Detect lap count increments
+                const prevP = this.f1CarPrevProgress[car.driverId] ?? 0;
+                if (carProgress < prevP && (prevP - carProgress) > 0.5) {
+                    this.f1CarLaps[car.driverId] = (this.f1CarLaps[car.driverId] ?? 1) + 1;
+                }
+                this.f1CarPrevProgress[car.driverId] = carProgress;
+
+
                 // Query positions and tangents from Nurburgring spline curve
                 this.nurburgringCurve.getPointAt(carProgress, this.f1Pos);
                 this.nurburgringCurve.getTangentAt(carProgress, this.f1zAxis);
-                this.f1zAxis.normalize();
+                if (this.f1zAxis.lengthSq() < 0.0001) {
+                    this.f1zAxis.set(0, 0, 1);
+                } else {
+                    this.f1zAxis.normalize();
+                }
 
                 const worldUp = this.scratchVector1.set(0, 1, 0);
-                this.f1xAxis.crossVectors(worldUp, this.f1zAxis).normalize();
-                this.f1yAxis.crossVectors(this.f1zAxis, this.f1xAxis).normalize();
+                this.f1xAxis.crossVectors(worldUp, this.f1zAxis);
+                if (this.f1xAxis.lengthSq() < 0.0001) {
+                    this.f1xAxis.set(1, 0, 0);
+                } else {
+                    this.f1xAxis.normalize();
+                }
+
+                this.f1yAxis.crossVectors(this.f1zAxis, this.f1xAxis);
+                if (this.f1yAxis.lengthSq() < 0.0001) {
+                    this.f1yAxis.set(0, 1, 0);
+                } else {
+                    this.f1yAxis.normalize();
+                }
 
                 // Apply lateral lane offsets to positions
                 this.f1Pos.addScaledVector(this.f1xAxis, lateralOffset);
@@ -2111,7 +2178,20 @@ export class DomainExpansionSystem extends createSystem({
 
                 // Apply spatial rotation matrix to match curves and track elevations
                 this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
-                car.group.quaternion.setFromRotationMatrix(this.f1RotationMatrix);
+
+                // Safety check for rotation matrix elements to prevent NaN quaternions
+                let hasNaN = false;
+                for (let idx = 0; idx < 16; idx++) {
+                    if (isNaN(this.f1RotationMatrix.elements[idx])) {
+                        hasNaN = true;
+                        break;
+                    }
+                }
+                if (!hasNaN) {
+                    car.group.quaternion.setFromRotationMatrix(this.f1RotationMatrix);
+                } else {
+                    car.group.quaternion.set(0, 0, 0, 1);
+                }
 
                 // Apply a realistic steering slip angle based on lateral offset rate of change
                 const phaseSpeed = isCorner ? 1.5 : (targetPhase - this.nurburgringOvertakePhase) * 5.0;
@@ -2525,6 +2605,195 @@ export class DomainExpansionSystem extends createSystem({
                     this.f1VortexLeftPoints_FE.forEach(p => p.set(0, 0, 0));
                     this.f1VortexRightPoints_FE.forEach(p => p.set(0, 0, 0));
                 }
+                
+                // ── F1 LIVE ROSTER & ACTIVE PLAYER CARD SPATIAL UPDATES ──
+                if (this.f1RosterMesh) {
+                    // A. Draw/refresh roster list
+                    this.drawF1Roster();
+
+                    // B. Roster Billboarding (always face user)
+                    if (this.player && this.player.head) {
+                        this.nurburgringGroup.updateMatrixWorld(true);
+                        
+                        const headPos = this.scratchVector3;
+                        this.player.head.getWorldPosition(headPos);
+
+                        const rosterWorldPos = this.scratchVector1;
+                        this.f1RosterMesh.getWorldPosition(rosterWorldPos);
+
+                        // Look at the player's head in world space
+                        const m = this.scratchMatrix;
+                        const worldUp = this.scratchVector2;
+                        worldUp.set(0, 1, 0);
+                        m.lookAt(rosterWorldPos, headPos, worldUp);
+
+                        const targetWorldQuat = this.scratchQuat1;
+                        targetWorldQuat.setFromRotationMatrix(m);
+                        
+                        // Flip 180° so the plane faces the user
+                        const flipQuat = this.scratchQuat2;
+                        flipQuat.setFromAxisAngle(worldUp, Math.PI);
+                        targetWorldQuat.multiply(flipQuat);
+
+                        // Convert world quaternion to local quaternion of f1RosterMesh
+                        const parentWorldQuat = this.scratchQuat2;
+                        this.nurburgringGroup.getWorldQuaternion(parentWorldQuat);
+
+                        const localQuat = this.scratchQuat1;
+                        localQuat.copy(parentWorldQuat).invert().multiply(targetWorldQuat);
+                        this.f1RosterMesh.quaternion.copy(localQuat);
+                    }
+
+                    // C. Index Finger Touch Checking on Roster
+                    const leftIndexTip = this.scratchVector1;
+                    const rightIndexTip = this.scratchVector2;
+                    const hasLeft = this.getIndexData('left', leftIndexTip);
+                    const hasRight = this.getIndexData('right', rightIndexTip);
+
+                    if (hasLeft || hasRight) {
+                        const tipsToCheck = [];
+                        if (hasLeft) tipsToCheck.push(leftIndexTip);
+                        if (hasRight) tipsToCheck.push(rightIndexTip);
+
+                        const inv = this.scratchMatrix2.copy(this.f1RosterMesh.matrixWorld).invert();
+                        let touchedRow = -1;
+                        let isTouchingRoster = false;
+                        let touchTipUsed = leftIndexTip;
+
+                        for (const tip of tipsToCheck) {
+                            const localTip = tip.clone().applyMatrix4(inv);
+                            // Roster size: 0.24m wide by 0.18m high. localTip coords: x: -0.12 to 0.12, y: -0.09 to 0.09, z: -0.015 to 0.015
+                            if (Math.abs(localTip.z) < 0.015 && Math.abs(localTip.x) < 0.12 && Math.abs(localTip.y) < 0.09) {
+                                isTouchingRoster = true;
+                                touchTipUsed = tip;
+
+                                // Map touch position to Canvas space (512 x 384)
+                                const cx = (localTip.x + 0.12) / 0.24 * 512;
+                                const cy = (0.09 - localTip.y) / 0.18 * 384; // 0 is top, 384 is bottom
+
+                                if (cy >= 60 && cy <= 380) {
+                                    const rowIndex = Math.floor((cy - 60) / 53.3);
+                                    if (rowIndex >= 0 && rowIndex < 6) {
+                                        touchedRow = rowIndex;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+
+                        if (touchedRow !== this.f1RosterHoveredRowIndex) {
+                            this.f1RosterHoveredRowIndex = touchedRow;
+                            this.drawF1Roster();
+                        }
+
+                        if (touchedRow !== -1 && isTouchingRoster && this.f1TouchCooldown <= 0.0) {
+                            const sortedDrivers = this.getSortedDrivers();
+                            const selectedDriver = sortedDrivers[touchedRow];
+                            if (selectedDriver) {
+                                this.f1TouchCooldown = 0.5; // 500ms cooldown
+                                this.triggerPlayerCard(selectedDriver.driverId);
+
+                                // Trigger click sound and sparks right at the finger tip!
+                                const spatialFX = (window as any).spatialFX;
+                                if (spatialFX) {
+                                    spatialFX.playPositionalSound('click', touchTipUsed);
+                                    spatialFX.triggerSpark(touchTipUsed, new THREE.Color(0x00ffff), 12);
+                                }
+
+                                // Trigger physical controller haptics
+                                const activeHand = (touchTipUsed === rightIndexTip && hasRight) ? 'right' : 'left';
+                                const source = this.input.getPrimaryInputSource(activeHand);
+                                if (source?.gamepad?.hapticActuators?.[0]) {
+                                    source.gamepad.hapticActuators[0].pulse(0.8, 40);
+                                }
+                            }
+                        }
+                    } else {
+                        if (this.f1RosterHoveredRowIndex !== -1) {
+                            this.f1RosterHoveredRowIndex = -1;
+                            this.drawF1Roster();
+                        }
+                    }
+
+                    if (this.f1TouchCooldown > 0.0) {
+                        this.f1TouchCooldown -= dt;
+                    }
+                }
+
+                // D. Spawned Player Card Updates
+                if (this.f1ActiveCardDriverId !== null && this.f1ActiveCardGroup) {
+                    // Find driver's F1 car
+                    const activeCar = this.nurburgringCars.find(c => c.driverId === this.f1ActiveCardDriverId);
+                    if (activeCar) {
+                        // Update timer
+                        this.f1ActiveCardTimer += dt;
+
+                        if (this.f1ActiveCardTimer >= 7.0) {
+                            // Collapse completely after 7 seconds
+                            this.f1ActiveCardGroup.visible = false;
+                            this.f1ActiveCardDriverId = null;
+                        } else {
+                            // Position card group directly above the car in table local coordinates
+                            // Floating 0.065m (6.5cm) high
+                            this.f1ActiveCardGroup.position.copy(activeCar.group.position);
+                            this.f1ActiveCardGroup.position.y += 0.065;
+
+                            // Redraw telemetry canvas
+                            const tel = this.getF1Telemetry(activeCar.progress);
+                            this.drawF1ActiveCard(tel.speed, tel.gear, tel.rpm, tel.throttle, tel.brake);
+
+                            // Easing scale animation: spawn & collapse
+                            let scale = 1.0;
+                            if (this.f1ActiveCardTimer < 0.4) {
+                                // Spawn: scale up from 0 to 1 over first 0.4s
+                                const t = this.f1ActiveCardTimer / 0.4;
+                                scale = 1.0 - Math.pow(1.0 - t, 3); // out-cubic easing
+                            } else if (this.f1ActiveCardTimer > 6.6) {
+                                // Collapse: scale down from 1 to 0 over final 0.4s
+                                const t = (7.0 - this.f1ActiveCardTimer) / 0.4;
+                                scale = Math.max(0.0, 1.0 - Math.pow(1.0 - t, 3));
+                            }
+
+                            this.f1ActiveCardGroup.scale.setScalar(scale);
+
+                            // Card Billboarding (always face user)
+                            if (this.player && this.player.head) {
+                                this.f1ActiveCardGroup.updateMatrixWorld(true);
+
+                                const headPos = this.scratchVector3;
+                                this.player.head.getWorldPosition(headPos);
+
+                                const cardWorldPos = this.scratchVector1;
+                                this.f1ActiveCardGroup.getWorldPosition(cardWorldPos);
+
+                                // Look at the player's head in world space
+                                const m = this.scratchMatrix;
+                                const worldUp = this.scratchVector2;
+                                worldUp.set(0, 1, 0);
+                                m.lookAt(cardWorldPos, headPos, worldUp);
+
+                                const targetWorldQuat = this.scratchQuat1;
+                                targetWorldQuat.setFromRotationMatrix(m);
+
+                                // Flip 180° so the front faces the user
+                                const flipQuat = this.scratchQuat2;
+                                flipQuat.setFromAxisAngle(worldUp, Math.PI);
+                                targetWorldQuat.multiply(flipQuat);
+
+                                // Convert to local quaternion
+                                const parentWorldQuat = this.scratchQuat2;
+                                this.nurburgringGroup.getWorldQuaternion(parentWorldQuat);
+
+                                const localQuat = this.scratchQuat1;
+                                localQuat.copy(parentWorldQuat).invert().multiply(targetWorldQuat);
+                                this.f1ActiveCardGroup.quaternion.copy(localQuat);
+                            }
+                        }
+                    }
+                } else if (this.f1ActiveCardGroup && this.f1ActiveCardGroup.visible) {
+                    this.f1ActiveCardGroup.visible = false;
+                }
+
                 if (this.f1SprayMesh) this.f1SprayMesh.visible = false;
             }
 
@@ -5627,16 +5896,15 @@ export class DomainExpansionSystem extends createSystem({
             cardGroup.add(backMesh);
 
             // Neon cyan wireframe border outline
-            const borderGeom = new THREE.PlaneGeometry(0.061, 0.0793);
-            const borderMat = new THREE.MeshBasicMaterial({
+            const borderBackGeom = new THREE.PlaneGeometry(0.061, 0.0793);
+            const borderGeom = new THREE.EdgesGeometry(borderBackGeom);
+            const borderMat = new THREE.LineBasicMaterial({
                 color: 0x00ffff,
-                wireframe: true,
                 transparent: true,
                 opacity: 0.0, // Init to 0, synced in update()
-                side: THREE.DoubleSide,
                 depthWrite: false
             });
-            const borderMesh = new THREE.Mesh(borderGeom, borderMat);
+            const borderMesh = new THREE.LineSegments(borderGeom, borderMat);
             borderMesh.position.y = BASE_Y;
             borderMesh.position.z = 0.0;
             borderMesh.userData.baseZ = 0.0;
@@ -8220,8 +8488,10 @@ export class DomainExpansionSystem extends createSystem({
             new THREE.Vector3(-0.04,  0.003, -0.09)  // Döttinger Höhe (straightened)
         ];
         this.nurburgringCurve = new THREE.CatmullRomCurve3(points, true);
+        (this.nurburgringCurve as any).isNurburgring = true;
 
-        // Override computeFrenetFrames to enforce a flat road orientation using a fixed Up-Vector (0, 1, 0)
+        // Override computeFrenetFrames directly on this curve instance to enforce flat road framing with Up-Vector (0, 1, 0)
+        // This avoids globally polluting THREE.Curve.prototype which interferes with WebXR hand skeletal mesh updates
         this.nurburgringCurve.computeFrenetFrames = function(segments: number, closed?: boolean) {
             const tangents: THREE.Vector3[] = [];
             const normals: THREE.Vector3[] = [];
@@ -8233,42 +8503,133 @@ export class DomainExpansionSystem extends createSystem({
 
             for (let i = 0; i <= segments; i++) {
                 const u = i / segments;
-                const tangent = this.getTangentAt(u, new THREE.Vector3()).normalize();
+                const tangent = this.getTangentAt(u, new THREE.Vector3());
+                if (tangent.lengthSq() < 0.0001) {
+                    tangent.set(0, 0, 1);
+                } else {
+                    tangent.normalize();
+                }
                 tangents.push(tangent);
 
                 // Binormal = Tangent x Up (normalized) to keep road width perfectly horizontal
-                tempBinormal.crossVectors(tangent, up).normalize();
+                tempBinormal.crossVectors(tangent, up);
                 if (tempBinormal.lengthSq() < 0.0001) {
                     tempBinormal.set(0, 0, 1);
+                } else {
+                    tempBinormal.normalize();
                 }
                 binormals.push(tempBinormal.clone());
 
                 // Normal = Binormal x Tangent
-                tempNormal.crossVectors(tempBinormal, tangent).normalize();
+                tempNormal.crossVectors(tempBinormal, tangent);
+                if (tempNormal.lengthSq() < 0.0001) {
+                    tempNormal.set(0, 1, 0);
+                } else {
+                    tempNormal.normalize();
+                }
                 normals.push(tempNormal.clone());
             }
 
             return { tangents, normals, binormals };
         };
 
-        this.nurburgringFrenetFrames = this.nurburgringCurve.computeFrenetFrames(1000, true);
+        // 250 segments: 4× faster than 1000, visually identical at minimap (cm) scale
+        this.nurburgringFrenetFrames = this.nurburgringCurve.computeFrenetFrames(250, true);
 
-        // 5. Extrude 3D flat road Geometry along spline
-        const roadWidth = 0.018; // 50% wider road (previously 0.012)
+        // 5. Build flat road as a custom ribbon BufferGeometry using our pre-computed Frenet frames.
+        //    This bypasses ExtrudeGeometry's internal frame interpretation which was causing a vertical twist.
+        //    Road width goes along binormal (horizontal), thickness goes along normal (upward).
+        const roadWidth    = 0.018;
         const roadThickness = 0.001;
-        const roadShape = new THREE.Shape();
-        roadShape.moveTo(-roadWidth / 2, -roadThickness / 2);
-        roadShape.lineTo(roadWidth / 2, -roadThickness / 2);
-        roadShape.lineTo(roadWidth / 2, roadThickness / 2);
-        roadShape.lineTo(-roadWidth / 2, roadThickness / 2);
-        roadShape.closePath();
+        const halfW = roadWidth / 2;
+        const halfT = roadThickness / 2;
+        const frames   = this.nurburgringFrenetFrames;
+        const numSeg   = frames.tangents.length - 1; // 250 segments → 251 frames
 
-        const extrudeSettings = {
-            steps: 256,
-            bevelEnabled: false,
-            extrudePath: this.nurburgringCurve
-        };
-        const trackGeo = new THREE.ExtrudeGeometry(roadShape, extrudeSettings);
+        // We build a tube-like ribbon with a rectangular cross-section (4 edges: top-left, top-right, bottom-right, bottom-left)
+        // Index layout per cross-section ring:  [0]=TL, [1]=TR, [2]=BR, [3]=BL
+        const vertsPerRing = 4;
+        const positions: number[] = [];
+        const normals_arr: number[] = [];
+        const indices: number[] = [];
+        const uvs: number[] = [];
+
+        const _pt  = new THREE.Vector3();
+        const _bn  = new THREE.Vector3();
+        const _nm  = new THREE.Vector3();
+
+        const totalRings = numSeg + 1;
+        for (let i = 0; i < totalRings; i++) {
+            const u = i / numSeg;
+            this.nurburgringCurve.getPointAt(u, _pt);
+            _bn.copy(frames.binormals[i]);
+            _nm.copy(frames.normals[i]);
+
+            // 4 corners of rectangular cross-section
+            // TL: -halfW along binormal, +halfT along normal
+            positions.push(
+                _pt.x + (-halfW) * _bn.x + halfT * _nm.x,
+                _pt.y + (-halfW) * _bn.y + halfT * _nm.y,
+                _pt.z + (-halfW) * _bn.z + halfT * _nm.z,
+            );
+            normals_arr.push(_nm.x, _nm.y, _nm.z);
+            uvs.push(u, 0.0);
+
+            // TR: +halfW along binormal, +halfT along normal
+            positions.push(
+                _pt.x + halfW * _bn.x + halfT * _nm.x,
+                _pt.y + halfW * _bn.y + halfT * _nm.y,
+                _pt.z + halfW * _bn.z + halfT * _nm.z,
+            );
+            normals_arr.push(_nm.x, _nm.y, _nm.z);
+            uvs.push(u, 0.33);
+
+            // BR: +halfW along binormal, -halfT along normal
+            positions.push(
+                _pt.x + halfW * _bn.x + (-halfT) * _nm.x,
+                _pt.y + halfW * _bn.y + (-halfT) * _nm.y,
+                _pt.z + halfW * _bn.z + (-halfT) * _nm.z,
+            );
+            normals_arr.push(-_nm.x, -_nm.y, -_nm.z);
+            uvs.push(u, 0.66);
+
+            // BL: -halfW along binormal, -halfT along normal
+            positions.push(
+                _pt.x + (-halfW) * _bn.x + (-halfT) * _nm.x,
+                _pt.y + (-halfW) * _bn.y + (-halfT) * _nm.y,
+                _pt.z + (-halfW) * _bn.z + (-halfT) * _nm.z,
+            );
+            normals_arr.push(-_nm.x, -_nm.y, -_nm.z);
+            uvs.push(u, 1.0);
+        }
+
+        // Generate quad-strip indices for top face (TL-TR), bottom face (BR-BL), and sides
+        for (let i = 0; i < numSeg; i++) {
+            const a = i * vertsPerRing;
+            const b = (i + 1) * vertsPerRing;
+
+            // Top face: TL(0)-TR(1) strip
+            indices.push(a + 0, a + 1, b + 1);
+            indices.push(a + 0, b + 1, b + 0);
+
+            // Bottom face: BR(2)-BL(3) strip
+            indices.push(a + 2, b + 2, a + 3);
+            indices.push(a + 3, b + 2, b + 3);
+
+            // Left side: TL(0)-BL(3)
+            indices.push(a + 0, b + 0, b + 3);
+            indices.push(a + 0, b + 3, a + 3);
+
+            // Right side: TR(1)-BR(2)
+            indices.push(a + 1, a + 2, b + 2);
+            indices.push(a + 1, b + 2, b + 1);
+        }
+
+        const trackGeo = new THREE.BufferGeometry();
+        trackGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        trackGeo.setAttribute('normal',   new THREE.Float32BufferAttribute(normals_arr, 3));
+        trackGeo.setAttribute('uv',       new THREE.Float32BufferAttribute(uvs, 2));
+        trackGeo.setIndex(indices);
         this.nurburgringTrackMat = new THREE.MeshStandardMaterial({
             color: 0x1b1b22, // Dark asphalt gray
             roughness: 0.75,
@@ -8333,6 +8694,98 @@ export class DomainExpansionSystem extends createSystem({
             { group: mclarenNorris.car, progress: 0.0, speed: 0.052, wheels: mclarenNorris.wheels, colorType: 'mclaren', driverId: 'f1_ln' },
             { group: mclarenPiastri.car, progress: 0.0, speed: 0.052, wheels: mclarenPiastri.wheels, colorType: 'mclaren', driverId: 'f1_op' }
         );
+
+        // --- Create F1 Live Roster ---
+        this.f1RosterCanvas = document.createElement('canvas');
+        this.f1RosterCanvas.width = 512;
+        this.f1RosterCanvas.height = 384;
+        this.f1RosterCtx = this.f1RosterCanvas.getContext('2d')!;
+
+        this.f1RosterTexture = new THREE.CanvasTexture(this.f1RosterCanvas);
+        this.f1RosterTexture.colorSpace = THREE.SRGBColorSpace;
+
+        this.f1RosterMat = new THREE.MeshBasicMaterial({
+            map: this.f1RosterTexture,
+            transparent: true,
+            opacity: 0.9,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+
+        // 0.24m wide by 0.18m high in table local coordinates
+        const rosterGeom = new THREE.PlaneGeometry(0.24, 0.18);
+        this.f1RosterMesh = new THREE.Mesh(rosterGeom, this.f1RosterMat);
+        // Position it behind the circular table track hologram: x=0, y=0.18, z=-0.22
+        this.f1RosterMesh.position.set(0, 0.18, -0.22);
+        this.nurburgringGroup.add(this.f1RosterMesh);
+        this.drawF1Roster(); // Draw initial empty roster
+
+        // --- Create F1 Spawning Active Player Card Group ---
+        this.f1ActiveCardGroup = new THREE.Group();
+        this.f1ActiveCardGroup.visible = false;
+        this.nurburgringGroup.add(this.f1ActiveCardGroup);
+
+        // Left Panel: Player Card Image
+        // Aspect ratio 3:4. size: 0.06m wide by 0.08m high.
+        // Positioned centered on the left: x = -0.045m
+        const imgGeom = new THREE.PlaneGeometry(0.06, 0.08);
+        const imgMat = new THREE.MeshBasicMaterial({
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        this.f1ActiveCardImgMesh = new THREE.Mesh(imgGeom, imgMat);
+        this.f1ActiveCardImgMesh.position.set(-0.045, 0, 0.001); // offset slightly forward
+        this.f1ActiveCardGroup.add(this.f1ActiveCardImgMesh);
+
+        // Right Panel: Telemetry Canvas
+        // size: 0.09m wide by 0.08m high.
+        // Positioned centered on the right: x = 0.035m (leaves a 0.005m gap)
+        this.f1ActiveCardCanvas = document.createElement('canvas');
+        this.f1ActiveCardCanvas.width = 256;
+        this.f1ActiveCardCanvas.height = 228;
+        this.f1ActiveCardCtx = this.f1ActiveCardCanvas.getContext('2d')!;
+
+        this.f1ActiveCardTexture = new THREE.CanvasTexture(this.f1ActiveCardCanvas);
+        this.f1ActiveCardTexture.colorSpace = THREE.SRGBColorSpace;
+
+        const telMat = new THREE.MeshBasicMaterial({
+            map: this.f1ActiveCardTexture,
+            transparent: true,
+            opacity: 0.85,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const telGeom = new THREE.PlaneGeometry(0.09, 0.08);
+        this.f1ActiveCardMesh = new THREE.Mesh(telGeom, telMat);
+        this.f1ActiveCardMesh.position.set(0.035, 0, 0.001);
+        this.f1ActiveCardGroup.add(this.f1ActiveCardMesh);
+
+        // Backing geometry: 0.16m wide by 0.09m high.
+        // Positioned centered at x = -0.005m (covers both left and right panel)
+        const cardBackGeom = new THREE.PlaneGeometry(0.16, 0.09);
+        const cardBackMat = new THREE.MeshBasicMaterial({
+            color: 0x050c1c,
+            transparent: true,
+            opacity: 0.82,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const cardBackMesh = new THREE.Mesh(cardBackGeom, cardBackMat);
+        cardBackMesh.position.set(-0.005, 0, 0.0);
+        this.f1ActiveCardGroup.add(cardBackMesh);
+
+        // Neon cyan wireframe border outline
+        const cardBorderGeom = new THREE.EdgesGeometry(cardBackGeom);
+        const cardBorderMat = new THREE.LineBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.45,
+            depthWrite: false
+        });
+        const cardBorderMesh = new THREE.LineSegments(cardBorderGeom, cardBorderMat);
+        cardBorderMesh.position.set(-0.005, 0, 0.0005);
+        this.f1ActiveCardGroup.add(cardBorderMesh);
 
         this.tableGroup.add(this.nurburgringGroup);
         this.initNurburgringVortexAndSpray();
@@ -8640,6 +9093,349 @@ export class DomainExpansionSystem extends createSystem({
         car.scale.setScalar(0.64);
 
         return { car, wheels };
+    }
+
+    private getF1Telemetry(fProgress: number): { speed: number, gear: number, rpm: number, throttle: number, brake: number } {
+        let speed = 220;
+        let gear = 5;
+        let rpm = 11500;
+        let throttle = 1.0;
+        let brake = 0.0;
+
+        if (fProgress >= 0.85 && fProgress < 0.98) {
+            // Main straight
+            const ratio = (fProgress - 0.85) / 0.13;
+            speed = Math.floor(290 + ratio * 55); // 290 to 345 km/h
+            gear = 8;
+            rpm = Math.floor(11500 + ratio * 1600);
+            throttle = 1.0;
+            brake = 0.0;
+        } else if (fProgress >= 0.98 || fProgress < 0.04) {
+            // Heavy braking into T1
+            const ratio = fProgress >= 0.98 ? (fProgress - 0.98) / 0.06 : (fProgress + 0.02) / 0.06;
+            speed = Math.floor(345 - ratio * 230); // 345 down to 115 km/h
+            gear = Math.max(2, Math.floor(8 - ratio * 6));
+            rpm = Math.floor(13100 - ratio * 3900);
+            throttle = 0.0;
+            brake = Math.sin(ratio * Math.PI) * 1.0; // spikes up
+        } else if (fProgress >= 0.04 && fProgress < 0.35) {
+            // Hatzenbach twisty curves
+            const ratio = (fProgress - 0.04) / 0.31;
+            speed = Math.floor(130 + Math.sin(ratio * Math.PI * 4) * 40 + ratio * 80);
+            gear = Math.floor(3 + ratio * 3);
+            rpm = Math.floor(9500 + Math.sin(ratio * Math.PI * 6) * 1500);
+            throttle = 0.6 + Math.sin(ratio * Math.PI * 4) * 0.3;
+            brake = Math.max(0.0, -Math.sin(ratio * Math.PI * 4) * 0.4);
+        } else if (fProgress >= 0.35 && fProgress < 0.60) {
+            // Adenauer Forst & Wehrseifen corners
+            const ratio = (fProgress - 0.35) / 0.25;
+            speed = Math.floor(180 - ratio * 90);
+            gear = Math.max(2, Math.floor(5 - ratio * 3));
+            rpm = Math.floor(11000 - ratio * 2000);
+            throttle = 0.2 + ratio * 0.3;
+            brake = Math.max(0.0, Math.sin(ratio * Math.PI * 2) * 0.7);
+        } else {
+            // Preparing and entering Döttinger straight
+            const ratio = (fProgress - 0.60) / 0.25;
+            speed = Math.floor(90 + ratio * 200);
+            gear = Math.floor(2 + ratio * 6);
+            rpm = Math.floor(8500 + ratio * 3000);
+            throttle = 1.0;
+            brake = 0.0;
+        }
+
+        return { speed, gear, rpm, throttle, brake };
+    }
+
+    private getSortedDrivers(): {
+        driverId: string;
+        name: string;
+        team: string;
+        rcbCardKey: string;
+        progress: number;
+        lap: number;
+        totalProgress: number;
+    }[] {
+        const rosterNurburgring = [
+            { id: "f1_lh", name: "L. Hamilton", team: "Ferrari", rcbCardKey: "f1LewisHamilton" },
+            { id: "f1_cl", name: "C. Leclerc", team: "Ferrari", rcbCardKey: "f1CharlesLeclerc" },
+            { id: "f1_ln", name: "L. Norris", team: "McLaren", rcbCardKey: "f1LandoNorris" },
+            { id: "f1_op", name: "O. Piastri", team: "McLaren", rcbCardKey: "f1OscarPiastri" },
+            { id: "f1_gr", name: "G. Russell", team: "Mercedes", rcbCardKey: "f1GeorgeRussell" },
+            { id: "f1_ka", name: "K. Antonelli", team: "Mercedes", rcbCardKey: "f1KimiAntonelli" }
+        ];
+
+        const drivers = rosterNurburgring.map(d => {
+            const car = this.nurburgringCars.find(c => c.driverId === d.id);
+            const progress = car ? (car as any).progress ?? 0 : 0;
+            const lap = this.f1CarLaps[d.id] ?? 1;
+            const totalProgress = (lap - 1) + progress;
+            return {
+                driverId: d.id,
+                name: d.name,
+                team: d.team,
+                rcbCardKey: d.rcbCardKey,
+                progress,
+                lap,
+                totalProgress
+            };
+        });
+
+        // Sort by totalProgress in descending order (highest progress = leading)
+        return drivers.sort((a, b) => b.totalProgress - a.totalProgress);
+    }
+
+    private drawF1Roster() {
+        if (!this.f1RosterCtx) return;
+        const ctx = this.f1RosterCtx;
+        ctx.clearRect(0, 0, 512, 384);
+
+        // 1. Translucent slate backing panel
+        ctx.fillStyle = 'rgba(6, 10, 24, 0.88)';
+        ctx.fillRect(0, 0, 512, 384);
+
+        // 2. High-tech glowing cyan border
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.8)';
+        ctx.lineWidth = 6;
+        ctx.strokeRect(6, 6, 500, 372);
+
+        // Inner frame border
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.2)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(12, 12, 488, 360);
+
+        // 3. Title Text
+        ctx.font = 'bold 24px "Orbitron", "Courier New", monospace';
+        ctx.fillStyle = '#22d3ee'; // Cyan
+        ctx.textAlign = 'left';
+        ctx.fillText('JUGNU F1 LIVE ROSTER', 24, 42);
+
+        // Current maximum lap count
+        const maxLap = Math.max(...Object.values(this.f1CarLaps));
+        ctx.font = 'bold 16px "Courier New", monospace';
+        ctx.fillStyle = '#f59e0b'; // Amber
+        ctx.textAlign = 'right';
+        ctx.fillText(`LAP ${maxLap}`, 488, 42);
+
+        // Separator line
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(12, 58);
+        ctx.lineTo(500, 58);
+        ctx.stroke();
+
+        // 4. Draw Rows
+        const sortedDrivers = this.getSortedDrivers();
+        const rowH = 54;
+        const startY = 60;
+
+        for (let i = 0; i < 6; i++) {
+            const driver = sortedDrivers[i];
+            if (!driver) continue;
+
+            const rowTop = startY + i * rowH;
+
+            // Hover state backing card highlight
+            if (this.f1RosterHoveredRowIndex === i) {
+                ctx.fillStyle = 'rgba(34, 211, 238, 0.15)';
+                ctx.fillRect(16, rowTop + 4, 480, rowH - 8);
+                ctx.strokeStyle = 'rgba(34, 211, 238, 0.6)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(16, rowTop + 4, 480, rowH - 8);
+            } else {
+                // Subtle divider
+                ctx.strokeStyle = 'rgba(34, 211, 238, 0.15)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(16, rowTop + rowH);
+                ctx.lineTo(496, rowTop + rowH);
+                ctx.stroke();
+            }
+
+            // A. Position number block
+            ctx.fillStyle = i === 0 ? '#f59e0b' : (i === 1 ? '#cbd5e1' : (i === 2 ? '#b45309' : '#1e293b'));
+            ctx.fillRect(24, rowTop + 12, 30, 30);
+            ctx.font = 'bold 18px monospace';
+            ctx.fillStyle = i < 3 ? '#090d16' : '#9ca3af';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${i + 1}`, 39, rowTop + 32);
+
+            // B. Driver name & Jersey
+            const rosterNurburgringRaw = [
+                { id: "f1_lh", jersey: "44" },
+                { id: "f1_cl", jersey: "16" },
+                { id: "f1_ln", jersey: "4" },
+                { id: "f1_op", jersey: "81" },
+                { id: "f1_gr", jersey: "63" },
+                { id: "f1_ka", jersey: "12" }
+            ];
+            const jersey = rosterNurburgringRaw.find(r => r.id === driver.driverId)?.jersey ?? "";
+            ctx.font = 'bold 18px "Courier New", monospace';
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'left';
+            ctx.fillText(`${driver.name} #${jersey}`, 72, rowTop + 32);
+
+            // C. Team logo tag (color coded border)
+            let teamColor = '#00ffff'; // Mercedes cyan
+            if (driver.team === 'Ferrari') teamColor = '#e11d48'; // Red
+            else if (driver.team === 'McLaren') teamColor = '#ea580c'; // Orange
+
+            ctx.strokeStyle = teamColor;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(230, rowTop + 14, 86, 26);
+            ctx.font = '11px monospace';
+            ctx.fillStyle = teamColor;
+            ctx.textAlign = 'center';
+            ctx.fillText(driver.team.toUpperCase(), 273, rowTop + 30);
+
+            // D. Telemetry Snippet: Lap and Live Speed
+            const tel = this.getF1Telemetry(driver.progress);
+            ctx.font = 'bold 15px "Courier New", monospace';
+            ctx.fillStyle = '#22d3ee';
+            ctx.textAlign = 'right';
+            ctx.fillText(`${tel.speed} KM/H`, 440, rowTop + 32);
+
+            ctx.font = '13px "Courier New", monospace';
+            ctx.fillStyle = '#a1a1aa';
+            ctx.fillText(`L${driver.lap}`, 480, rowTop + 32);
+        }
+
+        this.f1RosterTexture.needsUpdate = true;
+    }
+
+    private triggerPlayerCard(driverId: string) {
+        this.f1ActiveCardDriverId = driverId;
+        this.f1ActiveCardTimer = 0.0;
+        this.f1ActiveCardGroup.visible = true;
+        this.f1ActiveCardGroup.scale.setScalar(0.0);
+
+        // Play spatial spawn sounds!
+        const spatialFX = (window as any).spatialFX;
+        if (spatialFX) {
+            // Trigger sparkle positional sound at the F1 car position
+            const car = this.nurburgringCars.find(c => c.driverId === driverId);
+            if (car) {
+                const worldPos = new THREE.Vector3();
+                car.group.getWorldPosition(worldPos);
+                spatialFX.playPositionalSound('sparkle', worldPos);
+                spatialFX.triggerSpark(worldPos, new THREE.Color(0x00ffff), 12);
+            }
+        }
+
+        // Apply texture map lazily
+        const rosterNurburgringRaw = [
+            { id: "f1_lh", rcbCardKey: "f1LewisHamilton" },
+            { id: "f1_cl", rcbCardKey: "f1CharlesLeclerc" },
+            { id: "f1_ln", rcbCardKey: "f1LandoNorris" },
+            { id: "f1_op", rcbCardKey: "f1OscarPiastri" },
+            { id: "f1_gr", rcbCardKey: "f1GeorgeRussell" },
+            { id: "f1_ka", rcbCardKey: "f1KimiAntonelli" }
+        ];
+        const cardKey = rosterNurburgringRaw.find(r => r.id === driverId)?.rcbCardKey ?? "";
+        if (cardKey) {
+            const tex = AssetManager.getTexture(cardKey);
+            const cardMat = this.f1ActiveCardImgMesh.material as THREE.MeshBasicMaterial;
+            if (tex && cardMat) {
+                tex.colorSpace = THREE.SRGBColorSpace;
+                cardMat.map = tex;
+                cardMat.needsUpdate = true;
+            }
+        }
+        console.log(`[F1Roster] Spawned telemetry card for driver ${driverId}`);
+    }
+
+    private drawF1ActiveCard(speed: number, gear: number, rpm: number, throttle: number, brake: number) {
+        if (!this.f1ActiveCardCtx) return;
+        const ctx = this.f1ActiveCardCtx;
+        ctx.clearRect(0, 0, 256, 228);
+
+        // 1. Dark slate backing (covers the canvas)
+        ctx.fillStyle = 'rgba(5, 12, 28, 0.9)';
+        ctx.fillRect(0, 0, 256, 228);
+
+        // 2. Neon cyan accent top bar
+        ctx.fillStyle = 'rgba(0, 255, 255, 0.15)';
+        ctx.fillRect(0, 0, 256, 44);
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, 44);
+        ctx.lineTo(256, 44);
+        ctx.stroke();
+
+        // 3. Driver/Telemetry Title
+        const driverName = this.f1ActiveCardDriverId === 'f1_lh' ? 'L. HAMILTON'
+                         : this.f1ActiveCardDriverId === 'f1_cl' ? 'C. LECLERC'
+                         : this.f1ActiveCardDriverId === 'f1_ln' ? 'L. NORRIS'
+                         : this.f1ActiveCardDriverId === 'f1_op' ? 'O. PIASTRI'
+                         : this.f1ActiveCardDriverId === 'f1_gr' ? 'G. RUSSELL'
+                         : this.f1ActiveCardDriverId === 'f1_ka' ? 'K. ANTONELLI'
+                         : 'TELEMETRY';
+                         
+        ctx.font = 'bold 16px "Courier New", monospace';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'left';
+        ctx.fillText(driverName, 12, 28);
+
+        // 4. Speedometer text display
+        ctx.font = 'bold 36px monospace';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(`${speed}`, 12, 94);
+        
+        ctx.font = '12px monospace';
+        ctx.fillStyle = '#00ffff';
+        ctx.fillText('KM/H', 88, 86);
+
+        // 5. Gear block display
+        ctx.fillStyle = '#ea580c'; // McLaren orange / Amber gear color
+        ctx.font = 'bold 42px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${gear}`, 240, 96);
+        ctx.font = '10px monospace';
+        ctx.fillText('GEAR', 240, 60);
+
+        // 6. Throttle & Brake visual channels
+        ctx.fillStyle = '#1f2937'; // dark container bar
+        ctx.fillRect(12, 134, 108, 14);
+        ctx.fillStyle = '#10b981'; // Green throttle
+        ctx.fillRect(12, 134, Math.floor(throttle * 108), 14);
+
+        ctx.fillStyle = '#1f2937';
+        ctx.fillRect(136, 134, 108, 14);
+        ctx.fillStyle = '#ef4444'; // Red brake
+        ctx.fillRect(136, 134, Math.floor(brake * 108), 14);
+
+        ctx.font = 'bold 11px monospace';
+        ctx.fillStyle = '#9ca3af';
+        ctx.textAlign = 'left';
+        ctx.fillText('THROTTLE', 12, 126);
+        ctx.fillText('BRAKE', 136, 126);
+
+        // 7. RPM glowing progress indicator bar
+        const rpmRatio = Math.max(0, Math.min(1.0, (rpm - 5000) / 10000));
+        ctx.fillStyle = '#1f2937';
+        ctx.fillRect(12, 186, 232, 12);
+        
+        const rpmCol = rpm > 12500 ? '#f43f5e' : '#22d3ee'; // shifts rose/pink at rev limiter
+        ctx.fillStyle = rpmCol;
+        ctx.fillRect(12, 186, Math.floor(rpmRatio * 232), 12);
+
+        ctx.font = 'bold 11px monospace';
+        ctx.fillStyle = '#9ca3af';
+        ctx.fillText(`RPM: ${rpm}`, 12, 178);
+
+        // RPM segment dividers
+        ctx.strokeStyle = '#050c1c';
+        ctx.lineWidth = 2;
+        for (let j = 1; j < 10; j++) {
+            ctx.beginPath();
+            ctx.moveTo(12 + Math.floor(j * 23.2), 186);
+            ctx.lineTo(12 + Math.floor(j * 23.2), 198);
+            ctx.stroke();
+        }
+
+        this.f1ActiveCardTexture.needsUpdate = true;
     }
 
     private createNurburgringF1HUD() {
