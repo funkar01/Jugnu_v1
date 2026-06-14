@@ -1388,5 +1388,8 @@
   - `[x]` Eliminated particle snapping by capturing their exact end-of-Phase-1 positions as starting Phase 2 coordinates.
   - `[x]` Added lifetime-resetting and core-locking logic to keep converging particles orbiting tightly at the center.
   - `[x]` Implemented a supernova explosion shockwave in Phase 3, blasting particles outward radially while fading them out over 0.8 seconds.
+  - `[x]` **[Tilt Refinement]** Dynamically tilted the entire particle vortex galaxy (positions, targets, and initial velocities) to face the user's head position.
+  - `[x]` **[Tilt Refinement]** Projected end-of-Phase-1 coordinates into the local tilted space using inverse rotation quaternions to prevent visual snapping.
+  - `[x]` **[Tilt Refinement]** Leveraged pre-allocated scratch vectors and quaternions (`scratchQ`, `scratchQ_2`, `scratchV3_3`, `scratchV3_4`, `scratchV3_5`) to ensure zero-GC overhead.
   - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
 

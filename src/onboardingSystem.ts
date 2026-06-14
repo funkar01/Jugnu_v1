@@ -172,8 +172,8 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
     private onboardingTime = 0.0;
     public state: 'phase1' | 'phase2' | 'revealing' | 'hello' | 'complete' = 'phase1';
     
-    // Durations (Exactly 5.0 seconds each)
-    private activeDuration = 5.0;     // 5s of slow drift and hand repulsion (Phase 1)
+    // Durations (Exactly 5.0 seconds each, Phase 1 is 3.0s)
+    private activeDuration = 3.0;     // 3s of slow drift and hand repulsion (Phase 1)
     private gatheringDuration = 5.0;  // 5s of swirling convergence galaxy (Phase 2)
     private transitionDuration = 5.0; // 5s of extruded star expansion & flash (Phase 3)
     private helloDuration = 5.0;      // 5s of giggle, 360 flip and dialogue (Phase 4)
@@ -188,8 +188,13 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
     // Scratch variables for Zero-GC loops
     private scratchV3 = new THREE.Vector3();
     private scratchV3_2 = new THREE.Vector3();
+    private scratchV3_3 = new THREE.Vector3();
+    private scratchV3_4 = new THREE.Vector3();
+    private scratchV3_5 = new THREE.Vector3();
     private scratchColor = new THREE.Color();
     private scratchMatrix = new THREE.Matrix4();
+    private scratchQ = new THREE.Quaternion();
+    private scratchQ_2 = new THREE.Quaternion();
     private originalBackground: THREE.Color | THREE.Texture | null = null;
     
     init() {
@@ -356,24 +361,34 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
             const targetY = 1.45;
             const targetZ = -0.8;
             
+            // Calculate vector pointing to user's head to tilt the disk towards the user
+            const centerPos = this.player ? this.player.head.position : this.scratchV3_2.set(0, 1.45, 0);
+            const toUser = this.scratchV3.set(centerPos.x - targetX, centerPos.y - targetY, centerPos.z - targetZ).normalize();
+            if (toUser.lengthSq() < 0.001) {
+                toUser.set(0, 0, 1);
+            }
+            const q = this.scratchQ.setFromUnitVectors(new THREE.Vector3(0, 1, 0), toUser);
+            
+            // Relative position on the flat disk
+            const localPos = this.scratchV3_3.set(Math.cos(angle) * radius, heightOffset, Math.sin(angle) * radius);
+            localPos.applyQuaternion(q);
+            
             p.position.set(
-                targetX + Math.cos(angle) * radius,
-                targetY + heightOffset,
-                targetZ + Math.sin(angle) * radius
+                targetX + localPos.x,
+                targetY + localPos.y,
+                targetZ + localPos.z
             );
             
-            // Tangential velocity for initial orbit rotation
+            // Tangential velocity for initial orbit rotation in tilted space
             const speed = 0.12 + Math.random() * 0.15;
-            p.velocity.set(
-                -Math.sin(angle) * speed,
-                (Math.random() - 0.5) * 0.02,
-                Math.cos(angle) * speed
-            );
+            const localVel = this.scratchV3_3.set(-Math.sin(angle) * speed, (Math.random() - 0.5) * 0.02, Math.cos(angle) * speed);
+            localVel.applyQuaternion(q);
+            p.velocity.copy(localVel);
             
             p.life = 1.5 + Math.random() * 1.5;
             p.startRadius = radius;
             p.startAngle = angle;
-            p.startHeight = p.position.y;
+            p.startHeight = heightOffset; // store relative heightOffset along the normal
         } else {
             // Spawn directly in front of the camera's view frustum (Phase 1)
             p.position.set(
@@ -680,18 +695,29 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                 this.pointLight.visible = true;
                 this.chimeTimer = 0.0;
                 
-                // Capture starting trajectory coordinates for all existing embers (no visual snapping)
+                // Capture starting trajectory coordinates for all existing embers in tilted space (no visual snapping)
                 const targetX = 0.0;
                 const targetY = 1.45;
                 const targetZ = -0.8;
+                
+                const centerPos = this.player ? this.player.head.position : this.scratchV3_2.set(0, 1.45, 0);
+                const toUser = this.scratchV3.set(centerPos.x - targetX, centerPos.y - targetY, centerPos.z - targetZ).normalize();
+                if (toUser.lengthSq() < 0.001) {
+                    toUser.set(0, 0, 1);
+                }
+                const q = this.scratchQ.setFromUnitVectors(new THREE.Vector3(0, 1, 0), toUser);
+                const qInv = this.scratchQ_2.copy(q).invert();
+                
                 for (let i = 0; i < this.MAX_EMBERS; i++) {
                     const p = this.embersPool[i];
-                    const dx = p.position.x - targetX;
-                    const dy = p.position.y - targetY;
-                    const dz = p.position.z - targetZ;
-                    p.startRadius = Math.sqrt(dx * dx + dz * dz);
-                    p.startAngle = Math.atan2(dz, dx);
-                    p.startHeight = p.position.y;
+                    // Relative vector
+                    const localPos = this.scratchV3.set(p.position.x - targetX, p.position.y - targetY, p.position.z - targetZ);
+                    // Transform to tilted local space
+                    localPos.applyQuaternion(qInv);
+                    
+                    p.startRadius = Math.sqrt(localPos.x * localPos.x + localPos.z * localPos.z);
+                    p.startAngle = Math.atan2(localPos.z, localPos.x);
+                    p.startHeight = localPos.y;
                 }
             }
         } else if (this.state === 'phase2') {
@@ -947,6 +973,14 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         const targetY = 1.45;
         const targetZ = -0.8;
         
+        // Calculate vector pointing to user's head to tilt the disk towards the user
+        const toUser = this.scratchV3.set(centerPos.x - targetX, centerPos.y - targetY, centerPos.z - targetZ).normalize();
+        if (toUser.lengthSq() < 0.001) {
+            toUser.set(0, 0, 1);
+        }
+        const q = this.scratchQ.setFromUnitVectors(new THREE.Vector3(0, 1, 0), toUser);
+        const qInv = this.scratchQ_2.copy(q).invert();
+        
         for (let i = 0; i < this.MAX_EMBERS; i++) {
             const p = this.embersPool[i];
             p.age += safeDt;
@@ -958,7 +992,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                     // Reset age and lock target radius to the core so they keep swirling at the center
                     p.age = 0.0;
                     p.startRadius = 0.015 + (i % 5) * 0.01;
-                    p.startHeight = targetY + (Math.random() - 0.5) * 0.05;
+                    p.startHeight = (Math.random() - 0.5) * 0.05; // relative offset
                 } else {
                     p.age = 0.0;
                 }
@@ -997,14 +1031,15 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                     // --- Phase 2: Swirling Galaxy Gravitational Pull ---
                     const ratio = Math.min(1.0, Math.max(0.0, (this.onboardingTime - this.activeDuration) / this.gatheringDuration));
                     
-                    // Initialize start parameters on the fly if undefined
+                    // Initialize start parameters on the fly if undefined (projected to tilted space)
                     if (p.startRadius === undefined) {
                         const dx = p.position.x - targetX;
                         const dy = p.position.y - targetY;
                         const dz = p.position.z - targetZ;
-                        p.startRadius = Math.sqrt(dx * dx + dz * dz);
-                        p.startAngle = Math.atan2(dz, dx);
-                        p.startHeight = p.position.y;
+                        const localPos = this.scratchV3.set(dx, dy, dz).applyQuaternion(qInv);
+                        p.startRadius = Math.sqrt(localPos.x * localPos.x + localPos.z * localPos.z);
+                        p.startAngle = Math.atan2(localPos.z, localPos.x);
+                        p.startHeight = localPos.y;
                     }
                     
                     // Symmetrical two-arm spiral target radius: converges to center [0.015, 0.05]
@@ -1017,9 +1052,17 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                     const windUp = spiralTightness / (targetRadius + 0.035);
                     const targetAngle = p.startAngle! + ratio * 8.5 + windUp + (i % 2) * Math.PI;
                     
-                    const targetXPos = targetX + Math.cos(targetAngle) * targetRadius;
-                    const targetYPos = THREE.MathUtils.lerp(p.startHeight!, targetY, ratio);
-                    const targetZPos = targetZ + Math.sin(targetAngle) * targetRadius;
+                    // Local flat position relative to center on tilted plane
+                    const localTarget = this.scratchV3_3.set(
+                        Math.cos(targetAngle) * targetRadius,
+                        THREE.MathUtils.lerp(p.startHeight!, 0.0, ratio), // height offset converges to tilted plane
+                        Math.sin(targetAngle) * targetRadius
+                    );
+                    localTarget.applyQuaternion(q);
+                    
+                    const targetXPos = targetX + localTarget.x;
+                    const targetYPos = targetY + localTarget.y;
+                    const targetZPos = targetZ + localTarget.z;
                     
                     const dx_target = targetXPos - p.position.x;
                     const dy_target = targetYPos - p.position.y;
