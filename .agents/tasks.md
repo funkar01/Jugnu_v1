@@ -1360,7 +1360,7 @@
   - `[x]` Verified static type safety check (`npx tsc --noEmit`) and client production build compilation (`npm run build`).
 
 - `[x]` Visual Adjustments to Jugnu V3 Model & Onboarding Flow (Current Run)
-  - `[x]` Fixed colorless/desaturated companion appearance: mapped the grayscale pre-rendered video's luminance directly to the rich `U_MoodColor` (instead of blending with a grayscale base at 50%), preserving bright white specular highlights for a premium glassy feel.
+  - `[x]` Restored original high-fidelity multi-colored procedural look: mapped the grayscale pre-rendered video's luminance/outline masks to `U_MoodColor` (orange core and outer star shell) and `U_CompColor` (blue intermediate ring), matching the authentic appearance shown in the user's reference image.
   - `[x]` Updated `src/onboardingSystem.ts` to set face opacity to `1.0` at the start of Phase 3, allowing the digital face to be fully visible during the spring-based formation bounce.
   - `[x]` Refined Phase 4 face hello animation to execute a smooth blink (closed eyes and reopen) without the redundant initial fade-in from `0.0`.
   - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).

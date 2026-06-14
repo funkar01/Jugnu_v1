@@ -115,15 +115,18 @@ export class JugnuV3Model extends THREE.Group {
                 // Extract value (Luminance) from the input to use as Fac
                 float val = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
                 
-                // ColorRamp 2: Alpha mapping (0.04 to 0.12 -> 0 to 1) to clean up compression noise
-                float bodyAlpha = smoothstep(0.04, 0.12, val);
+                // ColorRamp 2: Alpha mapping (0 to 0.036 -> 0 to 1)
+                float bodyAlpha = smoothstep(0.0, 0.036, val);
                 
-                // Color the grayscale video with the mood color, keeping highlights shiny and white
-                vec3 baseColor = texColor.rgb * U_MoodColor;
+                // Circular gradient at the center
+                float dist = distance(vUv, vec2(0.5));
+                vec3 radialColor = mix(U_MoodColor + vec3(0.15), U_MoodColor * 0.85, smoothstep(0.0, 0.4, dist));
                 
-                // Keep the brightest specular highlights white for a premium glass feel
-                float specular = smoothstep(0.6, 0.95, val);
-                baseColor = mix(baseColor, vec3(1.0), specular * 0.4);
+                // Edge outline mask based on val
+                float edgeMask = smoothstep(0.01, 0.05, val) - smoothstep(0.1, 0.3, val);
+                
+                // Base color tinted by the current mood color and complementary edge
+                vec3 baseColor = mix(radialColor, U_CompColor, edgeMask * 0.9);
                 
                 // Scale UV from the center to shrink the sprite to 75%
                 // Offset by 0.1 to the right (subtract from UV)
