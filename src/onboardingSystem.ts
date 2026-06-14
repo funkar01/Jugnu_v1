@@ -10,6 +10,9 @@ interface EmberParticle {
     phase: number;
     life: number;
     age: number;
+    startRadius?: number;
+    startAngle?: number;
+    startHeight?: number;
 }
 
 class DialogueBubble extends THREE.Group {
@@ -121,9 +124,10 @@ class DialogueBubble extends THREE.Group {
 export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] } }) {
     // Void Mesh
     private voidMesh!: THREE.Mesh;
+    private energySourceGroup!: THREE.Group;
     
     // Embers Particle System
-    private readonly MAX_EMBERS = 150;
+    private readonly MAX_EMBERS = 1200;
     private embersPool: EmberParticle[] = [];
     private embersMesh!: THREE.InstancedMesh;
     private emberDummy = new THREE.Object3D();
@@ -216,8 +220,62 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         this.pointLight.position.set(0, 1.45, -0.8);
         this.pointLight.visible = false;
         this.world.createTransformEntity(this.pointLight);
+        // Create the energy source group (glassy star shell + glowing core) for Phase 2 -> Phase 3 transition
+        this.energySourceGroup = new THREE.Group();
+        this.energySourceGroup.position.set(0, 1.45, -0.8);
+        this.energySourceGroup.visible = false;
         
-
+        // 1. Glowing Core Sphere
+        const coreGeo = new THREE.SphereGeometry(0.045, 32, 32);
+        const coreMat = new THREE.MeshBasicMaterial({
+            color: 0xffaa33,
+            transparent: true,
+            opacity: 0.9
+        });
+        const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+        this.energySourceGroup.add(coreMesh);
+        
+        // 2. Glassy Rounded 8-Pointed Star Outer Shell
+        const points: THREE.Vector3[] = [];
+        const numPoints = 16;
+        const rOuter = 0.125;
+        const rInner = 0.085;
+        for (let i = 0; i < numPoints; i++) {
+            const angle = (i / numPoints) * Math.PI * 2;
+            const r = (i % 2 === 0) ? rOuter : rInner;
+            points.push(new THREE.Vector3(Math.cos(angle) * r, Math.sin(angle) * r, 0));
+        }
+        const curve = new THREE.CatmullRomCurve3(points, true, 'centripetal');
+        const smoothPoints3D = curve.getPoints(80);
+        const smoothPoints2D = smoothPoints3D.map(p => new THREE.Vector2(p.x, p.y));
+        const starShape = new THREE.Shape(smoothPoints2D);
+        
+        const extrudeSettings = {
+            depth: 0.03,
+            bevelEnabled: true,
+            bevelThickness: 0.015,
+            bevelSize: 0.015,
+            bevelSegments: 4
+        };
+        const starGeo = new THREE.ExtrudeGeometry(starShape, extrudeSettings);
+        starGeo.center();
+        
+        const starMat = new THREE.MeshPhysicalMaterial({
+            color: 0xffeedd,
+            roughness: 0.08,
+            metalness: 0.1,
+            transmission: 0.9,
+            ior: 1.45,
+            thickness: 0.04,
+            transparent: true,
+            opacity: 0.55,
+            side: THREE.DoubleSide
+        });
+        const starMesh = new THREE.Mesh(starGeo, starMat);
+        this.energySourceGroup.add(starMesh);
+        
+        this.world.createTransformEntity(this.energySourceGroup);
+        
         
         // Pre-allocate embers pool
         for (let i = 0; i < this.MAX_EMBERS; i++) {
@@ -234,7 +292,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         }
         
         // Setup InstancedMesh for embers
-        const emberGeo = new THREE.BoxGeometry(0.012, 0.012, 0.012);
+        const emberGeo = new THREE.BoxGeometry(0.007, 0.007, 0.007);
         const emberMat = new THREE.MeshBasicMaterial({
             color: 0xffaa33, // Warm gold-orange fallback color
             transparent: true,
@@ -286,19 +344,56 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
     }
     
     private respawnEmber(p: EmberParticle) {
-        // Spawn directly in front of the camera's view frustum
-        p.position.set(
-            (Math.random() - 0.5) * 3.0,
-            0.6 + Math.random() * 1.5,
-            -0.1 - Math.random() * 2.2
-        );
-        
-        // Drifting velocity
-        p.velocity.set(
-            (Math.random() - 0.5) * 0.12,
-            0.05 + Math.random() * 0.08, // Solid upward drift
-            (Math.random() - 0.5) * 0.12
-        );
+        if (this.state !== 'phase1' && this.state !== 'complete') {
+            // Spawn on outer cylinder disk around the target point (0, 1.45, -0.8) for perfect galaxy swirl
+            const arm = Math.random() < 0.5 ? 0 : 1;
+            const baseAngle = arm * Math.PI;
+            const angle = baseAngle + (Math.random() - 0.5) * 0.35; // small spread around spiral arms
+            const radius = 0.75 + Math.random() * 0.45; // disk radius 75cm to 1.2m
+            const heightOffset = (Math.random() - 0.5) * 0.15; // thickness of disk
+            
+            const targetX = 0.0;
+            const targetY = 1.45;
+            const targetZ = -0.8;
+            
+            p.position.set(
+                targetX + Math.cos(angle) * radius,
+                targetY + heightOffset,
+                targetZ + Math.sin(angle) * radius
+            );
+            
+            // Tangential velocity for initial orbit rotation
+            const speed = 0.12 + Math.random() * 0.15;
+            p.velocity.set(
+                -Math.sin(angle) * speed,
+                (Math.random() - 0.5) * 0.02,
+                Math.cos(angle) * speed
+            );
+            
+            p.life = 1.5 + Math.random() * 1.5;
+            p.startRadius = radius;
+            p.startAngle = angle;
+            p.startHeight = p.position.y;
+        } else {
+            // Spawn directly in front of the camera's view frustum (Phase 1)
+            p.position.set(
+                (Math.random() - 0.5) * 3.0,
+                0.6 + Math.random() * 1.5,
+                -0.1 - Math.random() * 2.2
+            );
+            
+            // Drifting velocity
+            p.velocity.set(
+                (Math.random() - 0.5) * 0.12,
+                0.05 + Math.random() * 0.08, // Solid upward drift
+                (Math.random() - 0.5) * 0.12
+            );
+            
+            p.life = 3.5 + Math.random() * 3.5;
+            p.startRadius = undefined;
+            p.startAngle = undefined;
+            p.startHeight = undefined;
+        }
         
         // Gradient color selection (Orange and Gold)
         const rand = Math.random();
@@ -312,7 +407,6 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         
         p.baseScale = 0.8 + Math.random() * 1.6;
         p.age = 0.0;
-        p.life = 3.5 + Math.random() * 3.5;
         p.phase = Math.random() * Math.PI * 2;
     }
     
@@ -585,14 +679,30 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                 this.state = 'phase2';
                 this.pointLight.visible = true;
                 this.chimeTimer = 0.0;
+                
+                // Capture starting trajectory coordinates for all existing embers (no visual snapping)
+                const targetX = 0.0;
+                const targetY = 1.45;
+                const targetZ = -0.8;
+                for (let i = 0; i < this.MAX_EMBERS; i++) {
+                    const p = this.embersPool[i];
+                    const dx = p.position.x - targetX;
+                    const dy = p.position.y - targetY;
+                    const dz = p.position.z - targetZ;
+                    p.startRadius = Math.sqrt(dx * dx + dz * dz);
+                    p.startAngle = Math.atan2(dz, dx);
+                    p.startHeight = p.position.y;
+                }
             }
         } else if (this.state === 'phase2') {
             if (this.onboardingTime >= this.activeDuration + this.gatheringDuration) {
                 console.log("[OnboardingSystem] Transitioning to Phase 3: Ignition & Formation...");
                 this.state = 'revealing';
                 
-                // Hide embers, reveal active companion with face visible
-                this.embersMesh.visible = false;
+                this.energySourceGroup.visible = false;
+                
+                // Keep embersMesh visible to perform the supernova expansion explosion and fade-out
+                // this.embersMesh.visible = false;
                 let jugEntity: any = null;
                 for (const e of this.queries.jugnu.entities) {
                     jugEntity = e;
@@ -636,7 +746,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
             }
         }
         
-        // --- Phase 2: Audio Modulations and Chimes Swell ---
+        // --- Phase 2: Audio Modulations, Chimes Swell & Energy Source ---
         if (this.state === 'phase2') {
             const ratio = (this.onboardingTime - this.activeDuration) / this.gatheringDuration;
             
@@ -666,7 +776,29 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                 // Heartbeat rate accelerates from 1.4s cycle down to 0.6s cycle
                 this.heartbeatInterval = 1.4 - ratio * 0.8;
             }
+
+            // --- Phase 2: Energy Source Materialization ---
+            if (ratio >= 0.5) {
+                const materializationRatio = (ratio - 0.5) / 0.5; // sweeps 0.0 -> 1.0
+                this.energySourceGroup.visible = true;
+                
+                // Spring-like scale up from 0.001 to 0.2
+                const targetScale = 0.2 * materializationRatio * (1.0 + 0.1 * Math.sin(materializationRatio * Math.PI * 2.5));
+                this.energySourceGroup.scale.setScalar(Math.max(0.001, targetScale));
+                
+                // Dynamic rotation
+                this.energySourceGroup.rotation.z = this.onboardingTime * 1.5;
+                
+                // Embers gathering density/glowing pulse on the core
+                const coreMesh = this.energySourceGroup.children[0] as THREE.Mesh;
+                if (coreMesh && coreMesh.material) {
+                    (coreMesh.material as THREE.MeshBasicMaterial).opacity = 0.5 + 0.4 * materializationRatio;
+                }
+            } else {
+                this.energySourceGroup.visible = false;
+            }
         } else if (this.state === 'revealing') {
+            this.energySourceGroup.visible = false;
             const revealTime = this.onboardingTime - (this.activeDuration + this.gatheringDuration);
             
             // Underdamped spring jelly bounce scale animation
@@ -797,6 +929,17 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         }
         
         // --- Embers Particle Galaxy updates ---
+        const revealTime = this.state === 'revealing' ? this.onboardingTime - (this.activeDuration + this.gatheringDuration) : 0;
+        
+        // Hide embers if in hello, complete, or if revealing is past 0.8s
+        const stateStr = this.state as string;
+        if (stateStr === 'hello' || stateStr === 'complete' || (stateStr === 'revealing' && revealTime >= 0.8)) {
+            this.embersMesh.visible = false;
+            return;
+        } else {
+            this.embersMesh.visible = true;
+        }
+
         const centerPos = this.player ? this.player.head.position : this.scratchV3_2.set(0, 1.45, 0);
         
         // Target point where particles condense (Jugnu spawn point)
@@ -809,7 +952,16 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
             p.age += safeDt;
             
             if (p.age >= p.life) {
-                this.respawnEmber(p);
+                if (this.state === 'phase1') {
+                    this.respawnEmber(p);
+                } else if (this.state === 'phase2') {
+                    // Reset age and lock target radius to the core so they keep swirling at the center
+                    p.age = 0.0;
+                    p.startRadius = 0.015 + (i % 5) * 0.01;
+                    p.startHeight = targetY + (Math.random() - 0.5) * 0.05;
+                } else {
+                    p.age = 0.0;
+                }
             } else {
                 p.phase += safeDt * 1.4;
                 
@@ -841,49 +993,68 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                     
                     p.velocity.multiplyScalar(1.0 - 1.1 * safeDt); // High damping for slow float
                     
-                } else {
-                    // --- Phase 2, 3 & 4: Swirling Galaxy Gravitational Pull ---
-                    const dx = targetX - p.position.x;
-                    const dy = targetY - p.position.y;
-                    const dz = targetZ - p.position.z;
+                } else if (this.state === 'phase2') {
+                    // --- Phase 2: Swirling Galaxy Gravitational Pull ---
+                    const ratio = Math.min(1.0, Math.max(0.0, (this.onboardingTime - this.activeDuration) / this.gatheringDuration));
                     
-                    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-                    
-                    if (dist < 0.05) {
-                        p.velocity.set(
-                            (Math.random() - 0.5) * 0.18,
-                            (Math.random() - 0.5) * 0.18,
-                            (Math.random() - 0.5) * 0.18
-                        );
-                    } else {
-                        const rx = dx / dist;
-                        const ry = dy / dist;
-                        const rz = dz / dist;
-                        
-                        const tx = -rz;
-                        const ty = 0.0;
-                        const tz = rx;
-                        
-                        const tLen = Math.sqrt(tx*tx + tz*tz);
-                        const tnx = tLen > 0.0001 ? tx / tLen : 0.0;
-                        const tnz = tLen > 0.0001 ? tz / tLen : 0.0;
-                        
-                        let ratio = 0.0;
-                        if (this.state === 'phase2') {
-                            ratio = (this.onboardingTime - this.activeDuration) / this.gatheringDuration;
-                        } else {
-                            ratio = 1.0;
-                        }
-                        
-                        const pullAccel = 0.6 + ratio * 2.8;
-                        const swirlAccel = 1.8 + ratio * 5.0;
-                        
-                        p.velocity.x += (rx * pullAccel + tnx * swirlAccel) * safeDt;
-                        p.velocity.y += (ry * pullAccel) * safeDt;
-                        p.velocity.z += (rz * pullAccel + tnz * swirlAccel) * safeDt;
+                    // Initialize start parameters on the fly if undefined
+                    if (p.startRadius === undefined) {
+                        const dx = p.position.x - targetX;
+                        const dy = p.position.y - targetY;
+                        const dz = p.position.z - targetZ;
+                        p.startRadius = Math.sqrt(dx * dx + dz * dz);
+                        p.startAngle = Math.atan2(dz, dx);
+                        p.startHeight = p.position.y;
                     }
                     
-                    p.velocity.multiplyScalar(1.0 - 0.35 * safeDt);
+                    // Symmetrical two-arm spiral target radius: converges to center [0.015, 0.05]
+                    const finalRadius = 0.015 + (i % 5) * 0.01;
+                    const targetRadius = THREE.MathUtils.lerp(p.startRadius!, finalRadius, ratio);
+                    
+                    // Target angle winds up tightly near the center (proportional to 1/(radius+c))
+                    // Symmetrical two-arm: offset by (i % 2) * PI
+                    const spiralTightness = 0.22;
+                    const windUp = spiralTightness / (targetRadius + 0.035);
+                    const targetAngle = p.startAngle! + ratio * 8.5 + windUp + (i % 2) * Math.PI;
+                    
+                    const targetXPos = targetX + Math.cos(targetAngle) * targetRadius;
+                    const targetYPos = THREE.MathUtils.lerp(p.startHeight!, targetY, ratio);
+                    const targetZPos = targetZ + Math.sin(targetAngle) * targetRadius;
+                    
+                    const dx_target = targetXPos - p.position.x;
+                    const dy_target = targetYPos - p.position.y;
+                    const dz_target = targetZPos - p.position.z;
+                    
+                    // Strong spring force towards the target position
+                    const springStrength = 16.0 + ratio * 44.0;
+                    p.velocity.x += dx_target * springStrength * safeDt;
+                    p.velocity.y += dy_target * springStrength * safeDt;
+                    p.velocity.z += dz_target * springStrength * safeDt;
+                    
+                    // High damping to keep spiral arms clean and tight
+                    const damping = 3.5 + ratio * 7.5;
+                    p.velocity.multiplyScalar(1.0 - damping * safeDt);
+                    
+                    p.position.addScaledVector(p.velocity, safeDt);
+                } else if (this.state === 'revealing') {
+                    // --- Phase 3: Ignition Blast (Shockwave / Supernova) ---
+                    const dx = p.position.x - targetX;
+                    const dy = p.position.y - targetY;
+                    const dz = p.position.z - targetZ;
+                    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                    
+                    const pushDirX = dist > 0.001 ? dx / dist : (Math.random() - 0.5);
+                    const pushDirY = dist > 0.001 ? dy / dist : (Math.random() - 0.5);
+                    const pushDirZ = dist > 0.001 ? dz / dist : (Math.random() - 0.5);
+                    
+                    // Strong outward blast force at the start of Phase 3, decaying quickly
+                    const blastSpeed = 7.0 * Math.exp(-revealTime * 5.0);
+                    p.velocity.x += pushDirX * blastSpeed * safeDt;
+                    p.velocity.y += pushDirY * blastSpeed * safeDt;
+                    p.velocity.z += pushDirZ * blastSpeed * safeDt;
+                    
+                    // Decelerate and drift outward
+                    p.velocity.multiplyScalar(1.0 - 2.0 * safeDt);
                     p.position.addScaledVector(p.velocity, safeDt);
                 }
                 
@@ -902,8 +1073,18 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                     opacity = 1.0 - (ageRatio - 0.82) / 0.18;
                 }
                 
-                if (this.state !== 'phase1') {
-                    opacity *= Math.max(1.0 - (this.onboardingTime - this.activeDuration) / (this.gatheringDuration), 0.0);
+                // Color and Opacity mods
+                if (this.state === 'phase2') {
+                    // In Phase 2, keep opacity high and blend to white-hot at center
+                    const distToCenter = p.position.distanceTo(this.scratchV3.set(targetX, targetY, targetZ));
+                    const heat = Math.max(0.0, 1.0 - distToCenter / 0.25); // 1.0 at center, 0.0 at 25cm
+                    this.scratchColor.copy(p.color).lerp(new THREE.Color(0xffffff), heat * 0.8);
+                } else if (this.state === 'revealing') {
+                    // Fade out rapidly during the blast
+                    opacity *= Math.max(1.0 - revealTime / 0.8, 0.0);
+                    this.scratchColor.copy(p.color);
+                } else {
+                    this.scratchColor.copy(p.color);
                 }
                 
                 const scale = p.baseScale * opacity;
@@ -918,7 +1099,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                 this.emberDummy.updateMatrix();
                 this.embersMesh.setMatrixAt(i, this.emberDummy.matrix);
                 
-                this.scratchColor.copy(p.color).multiplyScalar(opacity);
+                this.scratchColor.multiplyScalar(opacity);
                 this.embersMesh.setColorAt(i, this.scratchColor);
             }
         }
@@ -1141,6 +1322,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         this.voidMesh.visible = false;
         this.embersMesh.visible = false;
         this.pointLight.visible = false;
+        this.energySourceGroup.visible = false;
         
         // Ensure Jugnu is back to normal state
         let jugEntity: any = null;
@@ -1186,6 +1368,21 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                 this.embersMesh.material.forEach(m => m.dispose());
             } else {
                 this.embersMesh.material.dispose();
+            }
+            
+            // Dispose energy source geometries and materials
+            if (this.energySourceGroup) {
+                this.energySourceGroup.traverse((child) => {
+                    if ((child as any).isMesh) {
+                        const m = child as THREE.Mesh;
+                        m.geometry.dispose();
+                        if (Array.isArray(m.material)) {
+                            m.material.forEach(mat => mat.dispose());
+                        } else {
+                            m.material.dispose();
+                        }
+                    }
+                });
             }
         } catch (e) {
             console.warn("[OnboardingSystem] Error disposing resources:", e);

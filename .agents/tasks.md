@@ -1374,3 +1374,19 @@
   - `[x]` Updated `src/onboardingSystem.ts` update loop during the `revealing` phase to explicitly and continuously enforce `setFaceOpacity(1.0)` and `setMood('happy')` on the companion mesh.
   - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
 
+- `[x]` Onboarding Phase 2 to Phase 3 Cinematic Transition (Current Run)
+  - `[x]` Constructed a procedural energy source group (`energySourceGroup`) consisting of a bright glowing sphere core and an extruded rounded 8-pointed star glassy shell.
+  - `[x]` Programmed the energy source to materialize at the center desk during the second half of Phase 2 (7.5s - 10.0s) as the embers condense, using a spring-based scale-up (0.001 to 0.2) and dynamic Z rotation.
+  - `[x]` Handoff to Original Companion: Ensured that exactly at 10.0s (Phase 3), the energy source is hidden, a glassy pop plays, a lighting flash spikes, and the high-fidelity multi-colored original Jugnu companion model is revealed in its place, expanding outwards with a soft, underdamped jelly bounce.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Refined Phase 2 Particle Gathering & Phase 3 Explosion Blast (Current Run)
+  - `[x]` Mapped embers into two symmetrical spiral arms to create a structured double-spiral galaxy vortex.
+  - `[x]` Programmed logarithmic winding mathematical formulas (proportional to $1/(\text{radius} + c)$) to simulate realistic rotation speeds.
+  - `[x]` Kept embers fully visible at 1.0 opacity during Phase 2 so they form a bright, highly concentrated energy source at the center.
+  - `[x]` Interpolated ember colors towards pure white-hot ($0xffffff$) as they converge within 25cm of the center desk.
+  - `[x]` Eliminated particle snapping by capturing their exact end-of-Phase-1 positions as starting Phase 2 coordinates.
+  - `[x]` Added lifetime-resetting and core-locking logic to keep converging particles orbiting tightly at the center.
+  - `[x]` Implemented a supernova explosion shockwave in Phase 3, blasting particles outward radially while fading them out over 0.8 seconds.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
