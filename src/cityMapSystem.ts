@@ -507,7 +507,7 @@ export class CityMapSystem extends createSystem() {
         }
 
         // 5. Target Scale State Machine
-        if (this.isMapActive) {
+        if (this.isMapActive && !(window as any).minimapTableVisible) {
             this.targetScale = this.userScaleFactor;
         } else {
             this.targetScale = 0.0;

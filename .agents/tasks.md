@@ -1335,3 +1335,12 @@
   - `[x]` Removed the entire `stencilMaterial` mutation block from `src/index.ts`. The IWSDK `AnimatedHand` shader already natively handles the passthrough holdout effect via its vertex shader (shrinks geometry inward) and `gl_FragColor = vec4(0,0,0,0)` fragment output.
   - `[x]` Removed the now-unused `stencilMaterial` import from `src/index.ts`.
   - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` F1 Map Rendering, Alignment and Billboarding Fixes (Current Run)
+  - `[x]` Solved frozen hand tracking mesh (ghost hands) by deferring the CPU-heavy `createNurburgringGroup()` build via `setTimeout` to run outside the XRFrame/rAF rendering loop.
+  - `[x]` Fixed track vertical twisting by overriding `computeFrenetFrames` directly on the `nurburgringCurve` instance to enforce a flat horizontal Up-Vector `(0, 1, 0)` without polluting the global prototype.
+  - `[x]` Resolved incorrect billboarding on rotated/scaled parent groups for the F1 live roster and spawned player cards by using parent-inverted world quaternions.
+  - `[x]` Gated the target opacity of the Wankhede location pin to 0 when not on the default cricket map to prevent ghost overlays.
+  - `[x]` Added visibility gating to the Cricket Hawk-Eye splines and elements to hide them during F1/other maps.
+  - `[x]` Scaled down the city minimap dynamically in `CityMapSystem` when the F1 stadium table is visible to prevent overlap.
+  - `[x]` Verified typecheck safety (`npx tsc --noEmit`) and successful production build (`npm run build`).

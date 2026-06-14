@@ -233,6 +233,8 @@ export class DomainExpansionSystem extends createSystem({
     private xCrossMats: THREE.MeshBasicMaterial[] = [];
     private lastActiveDomainIndex = -1;
 
+    private f1RosterBgImage: HTMLImageElement | null = null;
+
     private currentDomainIndex = 0;
     private domainKeys = [
         "mivVideo",
@@ -320,11 +322,11 @@ export class DomainExpansionSystem extends createSystem({
     private holoCylinderWire!: THREE.LineSegments;
     private nurburgringF1Car!: THREE.Group;
     private nurburgringF1Wheels: THREE.Mesh[] = [];
-    private nurburgringF1WheelMats: THREE.MeshStandardMaterial[] = [];
+    private nurburgringF1WheelMats: THREE.MeshBasicMaterial[] = [];
     private nurburgringF1Progress = 0.0;
     private nurburgringOvertakePhase = 0.0;
     private nurburgringF1Speed = 0.052;
-    private nurburgringTrackMat!: THREE.MeshStandardMaterial;
+    private nurburgringTrackMat!: THREE.MeshBasicMaterial;
 
     // --- F1 Live Roster and Spawning Player Cards ---
     private f1RosterMesh!: THREE.Mesh;
@@ -517,6 +519,14 @@ export class DomainExpansionSystem extends createSystem({
             if (e.key.toLowerCase() === 'm') this.debugMPressed = false;
             if (e.key.toLowerCase() === 'p') this.debugPPressed = false;
         });
+
+        this.f1RosterBgImage = new Image();
+        this.f1RosterBgImage.src = './textures/F1RosterFrame.png';
+        this.f1RosterBgImage.onload = () => {
+            if (this.f1RosterCtx) {
+                this.drawF1Roster();
+            }
+        };
 
         // --- Create High-Performance Tactical Minimap Group ---
         this.tableGroup = new THREE.Group();
@@ -1457,29 +1467,37 @@ export class DomainExpansionSystem extends createSystem({
             this.techRing3.visible = (stadiumType !== 'butterflies');
         }
 
+        // Hide Cricket Hawk-Eye lines and balls during F1/other maps
+        if (this.hawkeyeLine) {
+            this.hawkeyeLine.visible = (stadiumType === 'default');
+        }
+        if (this.hawkeyeBall) {
+            this.hawkeyeBall.visible = (stadiumType === 'default');
+        }
+        if (this.hawkeyeRipple) {
+            this.hawkeyeRipple.visible = (stadiumType === 'default');
+        }
+
         // Lazily build Butterfly Park flat ground and butterflies
         if (stadiumType === 'butterflies' && !this.butterflyGroup) {
             this.createButterflyGroup();
         }
 
         // Lazily build Nürburgring racetrack — deferred via setTimeout to run
-        // OUTSIDE the XRFrame callback. createNurburgringGroup() is synchronous
-        // and CPU-heavy (~150-400ms on Quest 3). Running it inside rAF/XRFrame
-        // causes the WebXR runtime to miss its frame deadline and freeze the
-        // skinned hand SkinnedMesh at its last pose (the holdout ghost bug).
-        if (stadiumType === 'nurburgring' && !this.nurburgringGroup) {
-            // Set a sentinel so we don't queue multiple builds
+        // OUTSIDE the XRFrame callback. createNurburgringGroup() is CPU-heavy.
+        // Running it inside rAF causes frame drops and freezes hand meshes (the ghost hand bug).
+        if (stadiumType === 'nurburgring' && !this.nurburgringGroup && !(this as any)._nurburgringBuilding) {
             (this as any)._nurburgringBuilding = true;
             setTimeout(() => {
-                if (!this.nurburgringGroup) {
-                    this.createNurburgringGroup();
-                }
+                this.createNurburgringGroup();
+                (this as any)._nurburgringBuilding = false;
                 if (this.nurburgringGroup) {
                     this.nurburgringGroup.visible = (this.currentStadiumType === 'nurburgring');
                 }
-                delete (this as any)._nurburgringBuilding;
-                console.log('[NurburgringMap] Deferred build complete — outside XRFrame.');
-            }, 0);
+            }, 50);
+        }
+        if (this.nurburgringGroup) {
+            this.nurburgringGroup.visible = (stadiumType === 'nurburgring');
         }
 
         // 2. Lazily create new meshes if they don't exist yet
@@ -2052,9 +2070,9 @@ export class DomainExpansionSystem extends createSystem({
 
         // --- Update Nürburgring in the Minimap ---
         if (this.currentStadiumType === 'nurburgring' && this.nurburgringGroup && this.tableGroup.visible) {
-            const isImmersive = this.currentTableScale >= 2.5;
 
             // Update base race progress
+            const isImmersive = this.currentTableScale >= 2.5;
             this.nurburgringF1Progress += dt * this.nurburgringF1Speed;
             if (this.nurburgringF1Progress > 1.0) this.nurburgringF1Progress -= 1.0;
 
@@ -2219,13 +2237,9 @@ export class DomainExpansionSystem extends createSystem({
                 // ── 1. DYNAMIC WET TRACK REFLECTION ──
                 if (this.nurburgringTrackMat) {
                     if (this.weatherMode === 'rain') {
-                        this.nurburgringTrackMat.roughness = 0.15;
-                        this.nurburgringTrackMat.metalness = 0.85;
                         this.nurburgringTrackMat.color.setHex(0x0a0a0f); // darker when wet
                     } else {
-                        this.nurburgringTrackMat.roughness = 0.75;
-                        this.nurburgringTrackMat.metalness = 0.25;
-                        this.nurburgringTrackMat.color.setHex(0x1b1b22);
+                        this.nurburgringTrackMat.color.setHex(0x2a2a33);
                     }
                 }
 
@@ -2369,16 +2383,7 @@ export class DomainExpansionSystem extends createSystem({
                     }
                 }
 
-                // ── 4. WHEEL THERMALS & BRAKE DISC GLOW ──
-                this.nurburgringF1WheelMats.forEach((wMat) => {
-                    if (brake > 0.05) {
-                        wMat.emissive.setHex(0xff3300).multiplyScalar(brake);
-                    } else if (throttle < 0.85 && speed < 240) {
-                        wMat.emissive.setHex(0x992200).multiplyScalar(0.4);
-                    } else {
-                        wMat.emissive.setHex(0x000000);
-                    }
-                });
+                // Wheel thermal glow removed (MeshBasicMaterial, no emissive support)
 
                 // ── 5. VORTEX VAPOR TRAILS ──
                 if (this.f1VortexLeft && this.f1VortexRight) {
@@ -2621,7 +2626,7 @@ export class DomainExpansionSystem extends createSystem({
                         const rosterWorldPos = this.scratchVector1;
                         this.f1RosterMesh.getWorldPosition(rosterWorldPos);
 
-                        // Look at the player's head in world space
+                        // Look at the player's head in world space and convert to parent local space
                         const m = this.scratchMatrix;
                         const worldUp = this.scratchVector2;
                         worldUp.set(0, 1, 0);
@@ -2630,16 +2635,15 @@ export class DomainExpansionSystem extends createSystem({
                         const targetWorldQuat = this.scratchQuat1;
                         targetWorldQuat.setFromRotationMatrix(m);
                         
-                        // Flip 180° so the plane faces the user
+                        // Flip 180° so PlaneGeometry front (+Z) faces user
                         const flipQuat = this.scratchQuat2;
                         flipQuat.setFromAxisAngle(worldUp, Math.PI);
                         targetWorldQuat.multiply(flipQuat);
 
-                        // Convert world quaternion to local quaternion of f1RosterMesh
-                        const parentWorldQuat = this.scratchQuat2;
+                        const parentWorldQuat = this.scratchQuat2; // reuse scratchQuat2
                         this.nurburgringGroup.getWorldQuaternion(parentWorldQuat);
 
-                        const localQuat = this.scratchQuat1;
+                        const localQuat = this.scratchQuat1; // reuse scratchQuat1
                         localQuat.copy(parentWorldQuat).invert().multiply(targetWorldQuat);
                         this.f1RosterMesh.quaternion.copy(localQuat);
                     }
@@ -2756,38 +2760,37 @@ export class DomainExpansionSystem extends createSystem({
 
                             this.f1ActiveCardGroup.scale.setScalar(scale);
 
-                            // Card Billboarding (always face user)
-                            if (this.player && this.player.head) {
-                                this.f1ActiveCardGroup.updateMatrixWorld(true);
+                             // Card Billboarding (always face user)
+                             if (this.player && this.player.head) {
+                                 this.f1ActiveCardGroup.updateMatrixWorld(true);
 
-                                const headPos = this.scratchVector3;
-                                this.player.head.getWorldPosition(headPos);
+                                 const headPos = this.scratchVector3;
+                                 this.player.head.getWorldPosition(headPos);
 
-                                const cardWorldPos = this.scratchVector1;
-                                this.f1ActiveCardGroup.getWorldPosition(cardWorldPos);
+                                 const cardWorldPos = this.scratchVector1;
+                                 this.f1ActiveCardGroup.getWorldPosition(cardWorldPos);
 
-                                // Look at the player's head in world space
-                                const m = this.scratchMatrix;
-                                const worldUp = this.scratchVector2;
-                                worldUp.set(0, 1, 0);
-                                m.lookAt(cardWorldPos, headPos, worldUp);
+                                 // Look at the player's head in world space and convert to parent local space
+                                 const m = this.scratchMatrix;
+                                 const worldUp = this.scratchVector2;
+                                 worldUp.set(0, 1, 0);
+                                 m.lookAt(cardWorldPos, headPos, worldUp);
 
-                                const targetWorldQuat = this.scratchQuat1;
-                                targetWorldQuat.setFromRotationMatrix(m);
+                                 const targetWorldQuat = this.scratchQuat1;
+                                 targetWorldQuat.setFromRotationMatrix(m);
+                                 
+                                 // Flip 180° so PlaneGeometry front (+Z) faces user
+                                 const flipQuat = this.scratchQuat2;
+                                 flipQuat.setFromAxisAngle(worldUp, Math.PI);
+                                 targetWorldQuat.multiply(flipQuat);
 
-                                // Flip 180° so the front faces the user
-                                const flipQuat = this.scratchQuat2;
-                                flipQuat.setFromAxisAngle(worldUp, Math.PI);
-                                targetWorldQuat.multiply(flipQuat);
+                                 const parentWorldQuat = this.scratchQuat2; // reuse scratchQuat2
+                                 this.nurburgringGroup.getWorldQuaternion(parentWorldQuat);
 
-                                // Convert to local quaternion
-                                const parentWorldQuat = this.scratchQuat2;
-                                this.nurburgringGroup.getWorldQuaternion(parentWorldQuat);
-
-                                const localQuat = this.scratchQuat1;
-                                localQuat.copy(parentWorldQuat).invert().multiply(targetWorldQuat);
-                                this.f1ActiveCardGroup.quaternion.copy(localQuat);
-                            }
+                                 const localQuat = this.scratchQuat1; // reuse scratchQuat1
+                                 localQuat.copy(parentWorldQuat).invert().multiply(targetWorldQuat);
+                                 this.f1ActiveCardGroup.quaternion.copy(localQuat);
+                             }
                         }
                     }
                 } else if (this.f1ActiveCardGroup && this.f1ActiveCardGroup.visible) {
@@ -3763,7 +3766,7 @@ export class DomainExpansionSystem extends createSystem({
                 1.0
             );
 
-            const targetPinOpacity = (this.isSportSequenceActive || this.currentTableScale >= 2.5) ? 0.0 : (0.9 * fadeFactor);
+            const targetPinOpacity = (this.isSportSequenceActive || this.currentTableScale >= 2.5 || this.currentStadiumType !== 'default') ? 0.0 : (0.9 * fadeFactor);
             this.locationPin.traverse((child) => {
                 if (child instanceof THREE.Mesh) {
                     const mat = child.material as THREE.MeshBasicMaterial;
@@ -8451,16 +8454,13 @@ export class DomainExpansionSystem extends createSystem({
 
         // 1. Create a flat ground base (Deep holographic cyan-blue)
         const groundGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.002, 64);
-        const groundMat = new THREE.MeshStandardMaterial({
-            color: 0x003355, // Deep holographic cyan-blue
-            roughness: 0.9,
-            metalness: 0.3,
+        const groundMat = new THREE.MeshBasicMaterial({
+            color: 0x003355,
             transparent: true,
             opacity: 0.35
         });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.position.y = 0.001;
-        ground.receiveShadow = true;
         this.nurburgringGroup.add(ground);
 
         // Elegant grid floor removed
@@ -8492,7 +8492,7 @@ export class DomainExpansionSystem extends createSystem({
 
         // Override computeFrenetFrames directly on this curve instance to enforce flat road framing with Up-Vector (0, 1, 0)
         // This avoids globally polluting THREE.Curve.prototype which interferes with WebXR hand skeletal mesh updates
-        this.nurburgringCurve.computeFrenetFrames = function(segments: number, closed?: boolean) {
+        (this.nurburgringCurve as any).computeFrenetFrames = function(segments: number, closed?: boolean) {
             const tangents: THREE.Vector3[] = [];
             const normals: THREE.Vector3[] = [];
             const binormals: THREE.Vector3[] = [];
@@ -8533,111 +8533,28 @@ export class DomainExpansionSystem extends createSystem({
             return { tangents, normals, binormals };
         };
 
-        // 250 segments: 4× faster than 1000, visually identical at minimap (cm) scale
-        this.nurburgringFrenetFrames = this.nurburgringCurve.computeFrenetFrames(250, true);
+        this.nurburgringFrenetFrames = (this.nurburgringCurve as any).computeFrenetFrames(250, true);
 
-        // 5. Build flat road as a custom ribbon BufferGeometry using our pre-computed Frenet frames.
-        //    This bypasses ExtrudeGeometry's internal frame interpretation which was causing a vertical twist.
-        //    Road width goes along binormal (horizontal), thickness goes along normal (upward).
-        const roadWidth    = 0.018;
+        // 5. Extrude 3D flat road geometry along the spline (V17 approach — stable, no custom Frenet override)
+        const roadWidth = 0.018;
         const roadThickness = 0.001;
-        const halfW = roadWidth / 2;
-        const halfT = roadThickness / 2;
-        const frames   = this.nurburgringFrenetFrames;
-        const numSeg   = frames.tangents.length - 1; // 250 segments → 251 frames
+        const roadShape = new THREE.Shape();
+        roadShape.moveTo(-roadWidth / 2, -roadThickness / 2);
+        roadShape.lineTo( roadWidth / 2, -roadThickness / 2);
+        roadShape.lineTo( roadWidth / 2,  roadThickness / 2);
+        roadShape.lineTo(-roadWidth / 2,  roadThickness / 2);
+        roadShape.closePath();
 
-        // We build a tube-like ribbon with a rectangular cross-section (4 edges: top-left, top-right, bottom-right, bottom-left)
-        // Index layout per cross-section ring:  [0]=TL, [1]=TR, [2]=BR, [3]=BL
-        const vertsPerRing = 4;
-        const positions: number[] = [];
-        const normals_arr: number[] = [];
-        const indices: number[] = [];
-        const uvs: number[] = [];
-
-        const _pt  = new THREE.Vector3();
-        const _bn  = new THREE.Vector3();
-        const _nm  = new THREE.Vector3();
-
-        const totalRings = numSeg + 1;
-        for (let i = 0; i < totalRings; i++) {
-            const u = i / numSeg;
-            this.nurburgringCurve.getPointAt(u, _pt);
-            _bn.copy(frames.binormals[i]);
-            _nm.copy(frames.normals[i]);
-
-            // 4 corners of rectangular cross-section
-            // TL: -halfW along binormal, +halfT along normal
-            positions.push(
-                _pt.x + (-halfW) * _bn.x + halfT * _nm.x,
-                _pt.y + (-halfW) * _bn.y + halfT * _nm.y,
-                _pt.z + (-halfW) * _bn.z + halfT * _nm.z,
-            );
-            normals_arr.push(_nm.x, _nm.y, _nm.z);
-            uvs.push(u, 0.0);
-
-            // TR: +halfW along binormal, +halfT along normal
-            positions.push(
-                _pt.x + halfW * _bn.x + halfT * _nm.x,
-                _pt.y + halfW * _bn.y + halfT * _nm.y,
-                _pt.z + halfW * _bn.z + halfT * _nm.z,
-            );
-            normals_arr.push(_nm.x, _nm.y, _nm.z);
-            uvs.push(u, 0.33);
-
-            // BR: +halfW along binormal, -halfT along normal
-            positions.push(
-                _pt.x + halfW * _bn.x + (-halfT) * _nm.x,
-                _pt.y + halfW * _bn.y + (-halfT) * _nm.y,
-                _pt.z + halfW * _bn.z + (-halfT) * _nm.z,
-            );
-            normals_arr.push(-_nm.x, -_nm.y, -_nm.z);
-            uvs.push(u, 0.66);
-
-            // BL: -halfW along binormal, -halfT along normal
-            positions.push(
-                _pt.x + (-halfW) * _bn.x + (-halfT) * _nm.x,
-                _pt.y + (-halfW) * _bn.y + (-halfT) * _nm.y,
-                _pt.z + (-halfW) * _bn.z + (-halfT) * _nm.z,
-            );
-            normals_arr.push(-_nm.x, -_nm.y, -_nm.z);
-            uvs.push(u, 1.0);
-        }
-
-        // Generate quad-strip indices for top face (TL-TR), bottom face (BR-BL), and sides
-        for (let i = 0; i < numSeg; i++) {
-            const a = i * vertsPerRing;
-            const b = (i + 1) * vertsPerRing;
-
-            // Top face: TL(0)-TR(1) strip
-            indices.push(a + 0, a + 1, b + 1);
-            indices.push(a + 0, b + 1, b + 0);
-
-            // Bottom face: BR(2)-BL(3) strip
-            indices.push(a + 2, b + 2, a + 3);
-            indices.push(a + 3, b + 2, b + 3);
-
-            // Left side: TL(0)-BL(3)
-            indices.push(a + 0, b + 0, b + 3);
-            indices.push(a + 0, b + 3, a + 3);
-
-            // Right side: TR(1)-BR(2)
-            indices.push(a + 1, a + 2, b + 2);
-            indices.push(a + 1, b + 2, b + 1);
-        }
-
-        const trackGeo = new THREE.BufferGeometry();
-        trackGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        trackGeo.setAttribute('normal',   new THREE.Float32BufferAttribute(normals_arr, 3));
-        trackGeo.setAttribute('uv',       new THREE.Float32BufferAttribute(uvs, 2));
-        trackGeo.setIndex(indices);
-        this.nurburgringTrackMat = new THREE.MeshStandardMaterial({
-            color: 0x1b1b22, // Dark asphalt gray
-            roughness: 0.75,
-            metalness: 0.25
+        const extrudeSettings = {
+            steps: 128,
+            bevelEnabled: false,
+            extrudePath: this.nurburgringCurve
+        };
+        const trackGeo = new THREE.ExtrudeGeometry(roadShape, extrudeSettings);
+        this.nurburgringTrackMat = new THREE.MeshBasicMaterial({
+            color: 0x2a2a33
         });
         const trackMesh = new THREE.Mesh(trackGeo, this.nurburgringTrackMat);
-        trackMesh.receiveShadow = true;
-        trackMesh.castShadow = true;
         this.nurburgringGroup.add(trackMesh);
 
         // 6. Overlay glowing neon racing outline guide line
@@ -8698,7 +8615,7 @@ export class DomainExpansionSystem extends createSystem({
         // --- Create F1 Live Roster ---
         this.f1RosterCanvas = document.createElement('canvas');
         this.f1RosterCanvas.width = 512;
-        this.f1RosterCanvas.height = 384;
+        this.f1RosterCanvas.height = 768; // Vertical aspect ratio 2:3
         this.f1RosterCtx = this.f1RosterCanvas.getContext('2d')!;
 
         this.f1RosterTexture = new THREE.CanvasTexture(this.f1RosterCanvas);
@@ -8712,11 +8629,11 @@ export class DomainExpansionSystem extends createSystem({
             depthWrite: false
         });
 
-        // 0.24m wide by 0.18m high in table local coordinates
-        const rosterGeom = new THREE.PlaneGeometry(0.24, 0.18);
+        // 0.24m wide by 0.36m high in table local coordinates
+        const rosterGeom = new THREE.PlaneGeometry(0.24, 0.36);
         this.f1RosterMesh = new THREE.Mesh(rosterGeom, this.f1RosterMat);
-        // Position it behind the circular table track hologram: x=0, y=0.18, z=-0.22
-        this.f1RosterMesh.position.set(0, 0.18, -0.22);
+        // Position it behind the circular table track hologram: x=0, y=0.26, z=-0.22
+        this.f1RosterMesh.position.set(0, 0.26, -0.22);
         this.nurburgringGroup.add(this.f1RosterMesh);
         this.drawF1Roster(); // Draw initial empty roster
 
@@ -8787,6 +8704,9 @@ export class DomainExpansionSystem extends createSystem({
         cardBorderMesh.position.set(-0.005, 0, 0.0005);
         this.f1ActiveCardGroup.add(cardBorderMesh);
 
+        // V17 approach: add directly to tableGroup as a normal child.
+        // The ECS TransformSystem is fine with this since tableGroup is already registered;
+        // nurburgringGroup has no entityIdx so TransformSystem ignores it during parenting.
         this.tableGroup.add(this.nurburgringGroup);
         this.initNurburgringVortexAndSpray();
         console.log("[NurburgringMap] High-fidelity wider racetrack, line guides, and 3 detailed F1 racing cars initialized!");
@@ -8796,29 +8716,12 @@ export class DomainExpansionSystem extends createSystem({
         const car = new THREE.Group();
         const wheels: THREE.Mesh[] = [];
 
-        // Materials
-        const bodyMat = new THREE.MeshStandardMaterial({
-            color: bodyColor,
-            roughness: 0.1,
-            metalness: 0.8
-        });
-        const carbonMat = new THREE.MeshStandardMaterial({
-            color: 0x18181b, // Carbon chassis base
-            roughness: 0.5,
-            metalness: 0.9
-        });
-        const helmetMat = new THREE.MeshStandardMaterial({
-            color: helmetColor,
-            roughness: 0.2
-        });
-        const visorMat = new THREE.MeshBasicMaterial({
-            color: visorColor
-        });
-        const axleMat = new THREE.MeshStandardMaterial({
-            color: 0xd1d5db, // Silver metal axles
-            roughness: 0.2,
-            metalness: 0.8
-        });
+        // Materials — MeshBasicMaterial: no PBR shader compile stall in WebXR
+        const bodyMat = new THREE.MeshBasicMaterial({ color: bodyColor });
+        const carbonMat = new THREE.MeshBasicMaterial({ color: 0x18181b });
+        const helmetMat = new THREE.MeshBasicMaterial({ color: helmetColor });
+        const visorMat = new THREE.MeshBasicMaterial({ color: visorColor });
+        const axleMat = new THREE.MeshBasicMaterial({ color: 0xd1d5db });
 
         // 1. Carbon chassis base & Underbody Venturi Skirts
         const baseGeo = new THREE.BoxGeometry(0.004, 0.0008, 0.014);
@@ -8904,7 +8807,7 @@ export class DomainExpansionSystem extends createSystem({
 
         // Yellow T-Camera pod on top of the airbox
         const tCamGeo = new THREE.BoxGeometry(0.0004, 0.0003, 0.001);
-        const tCamMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.5 });
+        const tCamMat = new THREE.MeshBasicMaterial({ color: 0xeab308 });
         const tCam = new THREE.Mesh(tCamGeo, tCamMat);
         tCam.position.set(0, 0.0043, -0.0028);
         car.add(tCam);
@@ -9051,26 +8954,16 @@ export class DomainExpansionSystem extends createSystem({
         rimCoverGeo.rotateZ(Math.PI / 2);
 
         wheelOffsets.forEach((offset) => {
-            const wMat = new THREE.MeshStandardMaterial({
-                color: 0x09090b,
-                roughness: 0.9,
-                metalness: 0.1,
-                emissive: new THREE.Color(0x000000)
-            });
+            const wMat = new THREE.MeshBasicMaterial({ color: 0x09090b });
             if (colorType === 'merc') {
                 this.nurburgringF1WheelMats.push(wMat);
             }
             const wheel = new THREE.Mesh(wheelGeo, wMat);
             wheel.position.set(offset.x, 0.001, offset.z);
-            wheel.castShadow = true;
             car.add(wheel);
             wheels.push(wheel);
 
-            const rimMat = new THREE.MeshStandardMaterial({
-                color: bodyColor,
-                roughness: 0.3,
-                metalness: 0.7
-            });
+            const rimMat = new THREE.MeshBasicMaterial({ color: bodyColor });
             const rim = new THREE.Mesh(rimCoverGeo, rimMat);
             const rimOffsetX = offset.x > 0 ? 0.0005 : -0.0005;
             rim.position.set(offset.x + rimOffsetX, 0.001, offset.z);
@@ -9188,47 +9081,44 @@ export class DomainExpansionSystem extends createSystem({
     private drawF1Roster() {
         if (!this.f1RosterCtx) return;
         const ctx = this.f1RosterCtx;
-        ctx.clearRect(0, 0, 512, 384);
+        ctx.clearRect(0, 0, 512, 768);
 
-        // 1. Translucent slate backing panel
-        ctx.fillStyle = 'rgba(6, 10, 24, 0.88)';
-        ctx.fillRect(0, 0, 512, 384);
+        if (this.f1RosterBgImage && this.f1RosterBgImage.complete && this.f1RosterBgImage.naturalHeight > 0) {
+            ctx.drawImage(this.f1RosterBgImage, 0, 0, 512, 768);
+        } else {
+            // Fallback backing panel
+            ctx.fillStyle = 'rgba(6, 10, 24, 0.88)';
+            ctx.fillRect(0, 0, 512, 768);
+            ctx.strokeStyle = 'rgba(34, 211, 238, 0.8)';
+            ctx.lineWidth = 6;
+            ctx.strokeRect(6, 6, 500, 756);
+        }
 
-        // 2. High-tech glowing cyan border
-        ctx.strokeStyle = 'rgba(34, 211, 238, 0.8)';
-        ctx.lineWidth = 6;
-        ctx.strokeRect(6, 6, 500, 372);
-
-        // Inner frame border
-        ctx.strokeStyle = 'rgba(34, 211, 238, 0.2)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(12, 12, 488, 360);
-
-        // 3. Title Text
+        // 3. Title Text (adjusted for vertical layout and frame borders)
         ctx.font = 'bold 24px "Orbitron", "Courier New", monospace';
         ctx.fillStyle = '#22d3ee'; // Cyan
         ctx.textAlign = 'left';
-        ctx.fillText('JUGNU F1 LIVE ROSTER', 24, 42);
+        ctx.fillText('JUGNU F1 LIVE', 48, 120);
 
         // Current maximum lap count
-        const maxLap = Math.max(...Object.values(this.f1CarLaps));
+        const maxLap = Object.keys(this.f1CarLaps).length > 0 ? Math.max(...Object.values(this.f1CarLaps)) : 0;
         ctx.font = 'bold 16px "Courier New", monospace';
         ctx.fillStyle = '#f59e0b'; // Amber
         ctx.textAlign = 'right';
-        ctx.fillText(`LAP ${maxLap}`, 488, 42);
+        ctx.fillText(`LAP ${maxLap}`, 464, 120);
 
         // Separator line
         ctx.strokeStyle = 'rgba(34, 211, 238, 0.4)';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(12, 58);
-        ctx.lineTo(500, 58);
+        ctx.moveTo(32, 136);
+        ctx.lineTo(480, 136);
         ctx.stroke();
 
-        // 4. Draw Rows
+        // 4. Draw Rows vertically
         const sortedDrivers = this.getSortedDrivers();
-        const rowH = 54;
-        const startY = 60;
+        const rowH = 80;
+        const startY = 144;
 
         for (let i = 0; i < 6; i++) {
             const driver = sortedDrivers[i];
@@ -9239,27 +9129,29 @@ export class DomainExpansionSystem extends createSystem({
             // Hover state backing card highlight
             if (this.f1RosterHoveredRowIndex === i) {
                 ctx.fillStyle = 'rgba(34, 211, 238, 0.15)';
-                ctx.fillRect(16, rowTop + 4, 480, rowH - 8);
+                ctx.fillRect(32, rowTop + 4, 448, rowH - 8);
                 ctx.strokeStyle = 'rgba(34, 211, 238, 0.6)';
                 ctx.lineWidth = 2;
-                ctx.strokeRect(16, rowTop + 4, 480, rowH - 8);
-            } else {
-                // Subtle divider
-                ctx.strokeStyle = 'rgba(34, 211, 238, 0.15)';
+                ctx.strokeRect(32, rowTop + 4, 448, rowH - 8);
+            }
+
+            // Subtle divider
+            if (i < 5) {
+                ctx.strokeStyle = 'rgba(34, 211, 238, 0.1)';
                 ctx.lineWidth = 1;
                 ctx.beginPath();
-                ctx.moveTo(16, rowTop + rowH);
-                ctx.lineTo(496, rowTop + rowH);
+                ctx.moveTo(48, rowTop + rowH);
+                ctx.lineTo(464, rowTop + rowH);
                 ctx.stroke();
             }
 
             // A. Position number block
             ctx.fillStyle = i === 0 ? '#f59e0b' : (i === 1 ? '#cbd5e1' : (i === 2 ? '#b45309' : '#1e293b'));
-            ctx.fillRect(24, rowTop + 12, 30, 30);
+            ctx.fillRect(48, rowTop + 25, 30, 30);
             ctx.font = 'bold 18px monospace';
             ctx.fillStyle = i < 3 ? '#090d16' : '#9ca3af';
             ctx.textAlign = 'center';
-            ctx.fillText(`${i + 1}`, 39, rowTop + 32);
+            ctx.fillText(`${i + 1}`, 63, rowTop + 46);
 
             // B. Driver name & Jersey
             const rosterNurburgringRaw = [
@@ -9274,7 +9166,7 @@ export class DomainExpansionSystem extends createSystem({
             ctx.font = 'bold 18px "Courier New", monospace';
             ctx.fillStyle = '#ffffff';
             ctx.textAlign = 'left';
-            ctx.fillText(`${driver.name} #${jersey}`, 72, rowTop + 32);
+            ctx.fillText(`${driver.name} #${jersey}`, 96, rowTop + 40);
 
             // C. Team logo tag (color coded border)
             let teamColor = '#00ffff'; // Mercedes cyan
@@ -9283,22 +9175,22 @@ export class DomainExpansionSystem extends createSystem({
 
             ctx.strokeStyle = teamColor;
             ctx.lineWidth = 2;
-            ctx.strokeRect(230, rowTop + 14, 86, 26);
+            ctx.strokeRect(96, rowTop + 50, 86, 20);
             ctx.font = '11px monospace';
             ctx.fillStyle = teamColor;
             ctx.textAlign = 'center';
-            ctx.fillText(driver.team.toUpperCase(), 273, rowTop + 30);
+            ctx.fillText(driver.team.toUpperCase(), 139, rowTop + 64);
 
             // D. Telemetry Snippet: Lap and Live Speed
             const tel = this.getF1Telemetry(driver.progress);
-            ctx.font = 'bold 15px "Courier New", monospace';
+            ctx.font = 'bold 16px "Courier New", monospace';
             ctx.fillStyle = '#22d3ee';
             ctx.textAlign = 'right';
-            ctx.fillText(`${tel.speed} KM/H`, 440, rowTop + 32);
+            ctx.fillText(`${tel.speed} KM/H`, 464, rowTop + 40);
 
-            ctx.font = '13px "Courier New", monospace';
+            ctx.font = '14px "Courier New", monospace';
             ctx.fillStyle = '#a1a1aa';
-            ctx.fillText(`L${driver.lap}`, 480, rowTop + 32);
+            ctx.fillText(`LAP ${driver.lap}`, 464, rowTop + 64);
         }
 
         this.f1RosterTexture.needsUpdate = true;
