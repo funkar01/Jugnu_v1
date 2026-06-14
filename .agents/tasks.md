@@ -1391,5 +1391,6 @@
   - `[x]` **[Tilt Refinement]** Dynamically tilted the entire particle vortex galaxy (positions, targets, and initial velocities) to face the user's head position.
   - `[x]` **[Tilt Refinement]** Projected end-of-Phase-1 coordinates into the local tilted space using inverse rotation quaternions to prevent visual snapping.
   - `[x]` **[Tilt Refinement]** Leveraged pre-allocated scratch vectors and quaternions (`scratchQ`, `scratchQ_2`, `scratchV3_3`, `scratchV3_4`, `scratchV3_5`) to ensure zero-GC overhead.
+  - `[x]` **[Timeline Refinement]** Reduced the active duration of Phase 1 (slow drift & hand repulsion) from 5.0 seconds to 3.0 seconds, dynamically shifting the downstream thresholds.
   - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
 
