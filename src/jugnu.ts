@@ -232,6 +232,7 @@ export class JugnuSystem extends createSystem({
   private scratchQuat = new THREE.Quaternion();
 
   init() {
+    (window as any).jugnuSystem = this;
     this.chatHistory.push({ sender: 'System', text: 'Jugnu XR Core Engine v13.4 initialized.' });
     this.chatHistory.push({ sender: 'System', text: 'Haptic controllers online & calibrated.' });
     this.chatHistory.push({ sender: 'System', text: 'Dual-tip magnetic true north gyro active.' });
@@ -393,6 +394,41 @@ export class JugnuSystem extends createSystem({
           if (newIdx >= this.expressionList.length) newIdx = 0;
           this.setExpression(newIdx);
       }
+  }
+
+  public openCompass() {
+    if (this.isCompassOpen) return;
+    this.isCompassOpen = true;
+    this.indexPinchTimer = 0.0;
+    this.buttonCooldown = 0.5;
+
+    this.queries.jugnu.entities.forEach(e => {
+        if (e.getValue(Jugnu, "instructionStep") === 0) {
+            e.setValue(Jugnu, "instructionStep", 1);
+        }
+    });
+
+    console.log(`[Compass] Compass toggled! Open: ${this.isCompassOpen}`);
+    
+    this.compassGroup.visible = true;
+    this.activeCompassTileIndex = -1;
+    this.hoveredCellIndex = -1;
+
+    this.redrawCompassGrid(-1);
+    
+    let activeJugModel: any = null;
+    for (const e of this.queries.jugnu.entities) {
+        if (e.object3D) {
+            activeJugModel = e.object3D;
+            break;
+        }
+    }
+    if (activeJugModel && typeof activeJugModel.setMood === 'function') {
+        activeJugModel.setMood('happy');
+    }
+    if (activeJugModel && typeof activeJugModel.triggerPinchAnimation === 'function') {
+        activeJugModel.triggerPinchAnimation();
+    }
   }
 
   setExpression(index: number) {
@@ -666,7 +702,7 @@ export class JugnuSystem extends createSystem({
                     }
                 }
                 const onboardingState = (window as any).onboardingSystem?.state;
-                const isFormedPhase = onboardingState === 'revealing' || onboardingState === 'hello';
+                const isFormedPhase = onboardingState !== 'phase1' && onboardingState !== 'phase2';
                 if (!isFormedPhase) {
                     this.queries.jugnu.entities.forEach(e => { if (e.object3D) e.object3D.visible = false; });
                 } else {

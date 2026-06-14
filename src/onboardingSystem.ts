@@ -1,4 +1,4 @@
-import { createSystem } from "@iwsdk/core";
+import { createSystem, PhysicsBody, PhysicsShape, PhysicsShapeType, PhysicsState } from "@iwsdk/core";
 import * as THREE from "three";
 import { Jugnu } from "./jugnu.js";
 
@@ -130,6 +130,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
     // Void Mesh
     private voidMesh!: THREE.Mesh;
     private energySourceGroup!: THREE.Group;
+    private physicsRemoved = false;
     
     // Embers Particle System
     private readonly MAX_EMBERS = 1200;
@@ -175,7 +176,13 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
     
     // Onboarding duration & timing
     private onboardingTime = 0.0;
-    public state: 'phase1' | 'phase2' | 'revealing' | 'hello' | 'complete' = 'phase1';
+    public state: 'phase1' | 'phase2' | 'revealing' | 'hello' | 'phase5' | 'phase6' | 'phase7' | 'complete' = 'phase1';
+    
+    private phase5Time = 0.0;
+    private phase6Time = 0.0;
+    private phase7Time = 0.0;
+    private pinchHoldTimer = 0.0;
+    private keysPressed: { [key: string]: boolean } = {};
     
     // Durations (Exactly 5.0 seconds each, Phase 1 is 3.0s)
     private activeDuration = 3.0;     // 3s of slow drift and hand repulsion (Phase 1)
@@ -351,6 +358,14 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         this.testTimerDiv.style.zIndex = '99999';
         this.testTimerDiv.style.pointerEvents = 'none';
         document.body.appendChild(this.testTimerDiv);
+        
+        // Track keys for desktop testing pinch override
+        window.addEventListener('keydown', (e) => {
+            this.keysPressed[e.key.toLowerCase()] = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            this.keysPressed[e.key.toLowerCase()] = false;
+        });
     }
     
     private respawnEmber(p: EmberParticle) {
@@ -626,12 +641,31 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         const safeDt = Math.min(dt, 0.03);
         this.onboardingTime += safeDt;
 
+        // Strip physics components from Jugnu during onboarding to prevent the physics engine
+        // from overwriting the manual Three.js transform animations.
+        if (!this.physicsRemoved) {
+            let jugEntity: any = null;
+            for (const e of this.queries.jugnu.entities) {
+                jugEntity = e;
+                break;
+            }
+            if (jugEntity) {
+                if (jugEntity.hasComponent(PhysicsShape)) jugEntity.removeComponent(PhysicsShape);
+                if (jugEntity.hasComponent(PhysicsBody)) jugEntity.removeComponent(PhysicsBody);
+                this.physicsRemoved = true;
+                console.log("[OnboardingSystem] Stripped physics components from Jugnu for onboarding.");
+            }
+        }
+
         // Update the testing timer overlay
         if (this.testTimerDiv) {
             let phaseNum = 1;
             if (this.state === 'phase2') phaseNum = 2;
             else if (this.state === 'revealing') phaseNum = 3;
             else if (this.state === 'hello') phaseNum = 4;
+            else if (this.state === 'phase5') phaseNum = 5;
+            else if (this.state === 'phase6') phaseNum = 6;
+            else if (this.state === 'phase7') phaseNum = 7;
             this.testTimerDiv.textContent = `PHASE: ${phaseNum} (${this.state.toUpperCase()}) | TIME: ${this.onboardingTime.toFixed(2)}s`;
         }
         
@@ -643,6 +677,20 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         // Lock void sphere position to the player's head center
         if (this.voidMesh && this.player) {
             this.voidMesh.position.copy(this.player.head.position);
+        }
+        
+        // Reposition dialogue bubble dynamically above Jugnu
+        if (this.dialogueBubble && (this.state === 'hello' || this.state === 'phase5' || this.state === 'phase6' || this.state === 'phase7')) {
+            let jugEntity: any = null;
+            for (const e of this.queries.jugnu.entities) {
+                jugEntity = e;
+                break;
+            }
+            if (jugEntity && jugEntity.object3D) {
+                const jugModel = jugEntity.object3D;
+                this.dialogueBubble.position.copy(jugModel.position);
+                this.dialogueBubble.position.y += 0.37;
+            }
         }
         
         // Heartbeat triggering schedule
@@ -799,6 +847,176 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
             }
         } else if (this.state === 'hello') {
             if (this.onboardingTime >= this.activeDuration + this.gatheringDuration + this.transitionDuration + this.helloDuration) {
+                console.log("[OnboardingSystem] Transitioning to Phase 5: Pinch & Land...");
+                this.state = 'phase5';
+                this.phase5Time = 0.0;
+                
+                // Show dialogue bubble again if it was hidden or update its text
+                if (this.dialogueBubble) {
+                    this.dialogueBubble.setText("Pinch with your left hand to call me!");
+                    this.dialogueBubble.scale.setScalar(0.001); // trigger spring animation
+                }
+            }
+        } else if (this.state === 'phase5') {
+            this.phase5Time += safeDt;
+            // Spring animation for dialogue bubble
+            if (this.dialogueBubble) {
+                const bubbleScale = Math.min(1.0, this.phase5Time / 0.6);
+                const springScale = Math.max(0.001, bubbleScale * (1.0 - Math.cos(this.phase5Time * 12.0) * Math.exp(-this.phase5Time * 6.0)));
+                this.dialogueBubble.scale.setScalar(springScale);
+                
+                // Billboarding
+                if (this.world.camera) {
+                    this.dialogueBubble.lookAt(this.world.camera.position);
+                }
+            }
+            
+            // Check for left hand pinch
+            const leftTip = this.scratchV3;
+            let leftPinch = this.getPinchData('left', leftTip);
+            
+            // Keyboard / Desktop fallback: hold 'p' key (runs in both XR and non-XR modes for testing)
+            if (this.keysPressed['p']) {
+                leftPinch = true;
+                leftTip.set(0, 1.05, -0.8);
+            }
+            
+            let jugEntity: any = null;
+            for (const e of this.queries.jugnu.entities) {
+                jugEntity = e;
+                break;
+            }
+            
+            if (jugEntity && jugEntity.object3D) {
+                const jugModel = jugEntity.object3D;
+                if (leftPinch) {
+                    // Smoothly land Jugnu towards the left hand position
+                    jugModel.position.lerp(leftTip, safeDt * 8.0);
+                    
+                    // Trigger pinch animation on model if available
+                    if (typeof (jugModel as any).triggerPinchAnimation === 'function') {
+                        (jugModel as any).triggerPinchAnimation();
+                    }
+                    
+                    // Play landing sound/effect or sparks when very close
+                    const distToTarget = jugModel.position.distanceTo(leftTip);
+                    if (distToTarget < 0.05) {
+                        // Landed! Transition to Phase 6
+                        console.log("[OnboardingSystem] Landed on hand! Transitioning to Phase 6...");
+                        this.state = 'phase6';
+                        this.phase6Time = 0.0;
+                        this.pinchHoldTimer = 0.0;
+                        
+                        // Set dialogue text
+                        if (this.dialogueBubble) {
+                            this.dialogueBubble.setText("Pinch and hold to open the compass system!");
+                            this.dialogueBubble.scale.setScalar(0.001); // Trigger spring animation on next loop
+                        }
+                        
+                        // Play sound & spatial sparks
+                        const spatialFX = (window as any).spatialFX;
+                        if (spatialFX) {
+                            spatialFX.triggerSpark(jugModel.position, new THREE.Color(0xffaa33), 15);
+                            spatialFX.playPositionalSound('fireworkExplode', jugModel.position, 0.3);
+                        }
+                    }
+                }
+            }
+        } else if (this.state === 'phase6') {
+            this.phase6Time += safeDt;
+            // Spring animation for dialogue bubble
+            if (this.dialogueBubble) {
+                const bubbleScale = Math.min(1.0, this.phase6Time / 0.6);
+                const springScale = Math.max(0.001, bubbleScale * (1.0 - Math.cos(this.phase6Time * 12.0) * Math.exp(-this.phase6Time * 6.0)));
+                this.dialogueBubble.scale.setScalar(springScale);
+                
+                // Billboarding
+                if (this.world.camera) {
+                    this.dialogueBubble.lookAt(this.world.camera.position);
+                }
+            }
+            
+            // Check for left hand pinch near Jugnu
+            const leftTip = this.scratchV3;
+            let leftPinch = this.getPinchData('left', leftTip);
+            
+            // Keyboard / Desktop fallback: hold 'p' key (runs in both XR and non-XR modes for testing)
+            if (this.keysPressed['p']) {
+                leftPinch = true;
+                leftTip.set(0, 1.05, -0.8); // near Jugnu's landed position
+            }
+            
+            let jugEntity: any = null;
+            for (const e of this.queries.jugnu.entities) {
+                jugEntity = e;
+                break;
+            }
+            
+            if (jugEntity && jugEntity.object3D) {
+                const jugModel = jugEntity.object3D;
+                
+                // Allow controllers/keys to bypass hand proximity
+                const source = this.input.getPrimaryInputSource('left');
+                const isController = !!(source && source.gamepad);
+                const isKeyboard = this.keysPressed['p'] === true;
+                
+                let isPinchingNearJugnu = false;
+                if (leftPinch && (isController || isKeyboard || leftTip.distanceTo(jugModel.position) < 0.25)) {
+                    isPinchingNearJugnu = true;
+                }
+                
+                if (isPinchingNearJugnu) {
+                    // Move Jugnu with the hand while pinching/holding
+                    jugModel.position.lerp(leftTip, safeDt * 12.0);
+                    
+                    this.pinchHoldTimer += safeDt;
+                    // Trigger visual hint or sparks during pinch hold to guide the user
+                    if (this.pinchHoldTimer > 0.0 && Math.random() < 0.15) {
+                        const spatialFX = (window as any).spatialFX;
+                        if (spatialFX) {
+                            spatialFX.triggerSpark(jugModel.position, new THREE.Color(0xff7c25), 1);
+                        }
+                    }
+                    
+                    if (this.pinchHoldTimer >= 2.0) {
+                        this.pinchHoldTimer = 0.0;
+                        const jugnuSys = (window as any).jugnuSystem;
+                        if (jugnuSys && typeof jugnuSys.openCompass === 'function') {
+                            jugnuSys.openCompass();
+                        }
+                    }
+                } else {
+                    this.pinchHoldTimer = 0.0;
+                }
+            }
+            
+            // Monitor if the compass has been opened
+            const jugnuSys = (window as any).jugnuSystem;
+            if (jugnuSys && (jugnuSys.isCompassOpen === true || jugnuSys.compassGroup?.visible === true)) {
+                console.log("[OnboardingSystem] Compass system opened! Transitioning to Phase 7...");
+                this.state = 'phase7';
+                this.phase7Time = 0.0;
+                
+                if (this.dialogueBubble) {
+                    this.dialogueBubble.setText("Explore the Tutorials to know more!");
+                    this.dialogueBubble.scale.setScalar(0.001); // Trigger spring animation
+                }
+            }
+        } else if (this.state === 'phase7') {
+            this.phase7Time += safeDt;
+            // Spring animation for dialogue bubble
+            if (this.dialogueBubble) {
+                const bubbleScale = Math.min(1.0, this.phase7Time / 0.6);
+                const springScale = Math.max(0.001, bubbleScale * (1.0 - Math.cos(this.phase7Time * 12.0) * Math.exp(-this.phase7Time * 6.0)));
+                this.dialogueBubble.scale.setScalar(springScale);
+                
+                // Billboarding
+                if (this.world.camera) {
+                    this.dialogueBubble.lookAt(this.world.camera.position);
+                }
+            }
+            
+            if (this.phase7Time >= 5.0) {
                 this.completeOnboarding();
                 return;
             }
@@ -989,9 +1207,9 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         // --- Embers Particle Galaxy updates ---
         const revealTime = this.state === 'revealing' ? this.onboardingTime - (this.activeDuration + this.gatheringDuration) : 0;
         
-        // Hide embers if in hello, complete, or if revealing is past 0.8s
+        // Hide embers if in hello, phase5, phase6, phase7, complete, or if revealing is past 0.8s
         const stateStr = this.state as string;
-        if (stateStr === 'hello' || stateStr === 'complete' || (stateStr === 'revealing' && revealTime >= 0.8)) {
+        if (stateStr === 'hello' || stateStr === 'phase5' || stateStr === 'phase6' || stateStr === 'phase7' || stateStr === 'complete' || (stateStr === 'revealing' && revealTime >= 0.8)) {
             this.embersMesh.visible = false;
             return;
         } else {
@@ -1393,7 +1611,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
             this.testTimerDiv.remove();
             this.testTimerDiv = null;
         }
-        
+
         this.voidMesh.visible = false;
         this.embersMesh.visible = false;
         this.pointLight.visible = false;
@@ -1405,14 +1623,34 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
             jugEntity = e;
             break;
         }
-        if (jugEntity && jugEntity.object3D) {
-            const jugModel = jugEntity.object3D;
-            jugModel.scale.setScalar(0.2);
-            jugModel.rotation.x = 0;
-            jugModel.position.set(0, 1.45, -0.8);
-            if (typeof (jugModel as any).setFaceOpacity === 'function') {
-                (jugModel as any).setFaceOpacity(1.0);
+        if (jugEntity) {
+            if (jugEntity.object3D) {
+                const jugModel = jugEntity.object3D;
+                jugModel.scale.setScalar(0.2);
+                jugModel.rotation.x = 0;
+                jugModel.position.set(0, 1.45, -0.8);
+                if (typeof (jugModel as any).setFaceOpacity === 'function') {
+                    (jugModel as any).setFaceOpacity(1.0);
+                }
             }
+            
+            // Restore physics shape and body components to enable throw/flick interactions in the sandbox
+            if (!jugEntity.hasComponent(PhysicsShape)) {
+                jugEntity.addComponent(PhysicsShape, {
+                    shape: PhysicsShapeType.Sphere,
+                    dimensions: [0.15, 0.0, 0.0],
+                    restitution: 0.95,
+                    friction: 0.05,
+                    density: 1.0
+                });
+            }
+            if (!jugEntity.hasComponent(PhysicsBody)) {
+                jugEntity.addComponent(PhysicsBody, {
+                    state: PhysicsState.Kinematic,
+                    gravityFactor: 0.0
+                });
+            }
+            console.log("[OnboardingSystem] Restored physics components to Jugnu.");
         }
 
         if (this.dialogueBubble) {
@@ -1512,5 +1750,54 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
             try { this.audioCtx.close(); } catch (e) {}
             this.audioCtx = null;
         }
+    }
+
+    private getPinchData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
+        const source = this.input.getPrimaryInputSource(handedness);
+        const frame = this.xrFrame;
+        if (!source) return false;
+        
+        // 1. Hand tracking joint distance check
+        if (source.hand && frame) {
+            const indexTip = source.hand.get('index-finger-tip');
+            const thumbTip = source.hand.get('thumb-tip');
+            if (indexTip && thumbTip) {
+                const refSpace = this.renderer.xr.getReferenceSpace();
+                if (refSpace && typeof frame.getJointPose === 'function') {
+                    const indexPose = frame.getJointPose(indexTip, refSpace);
+                    const thumbPose = frame.getJointPose(thumbTip, refSpace);
+                    
+                    if (indexPose && thumbPose) {
+                       const ix = indexPose.transform.position.x;
+                       const iy = indexPose.transform.position.y;
+                       const iz = indexPose.transform.position.z;
+                       const tx = thumbPose.transform.position.x;
+                       const ty = thumbPose.transform.position.y;
+                       const tz = thumbPose.transform.position.z;
+                       
+                       const distSq = (ix - tx)**2 + (iy - ty)**2 + (iz - tz)**2;
+                       const isPinching = distSq < 0.02 * 0.02;
+
+                       tipPosOut.set(ix, iy, iz);
+                       tipPosOut.applyMatrix4(this.player.matrixWorld);
+
+                       return isPinching;
+                    }
+                }
+            }
+        }
+        
+        // 2. Controller trigger fallback
+        if (source.gamepad) {
+            const trigger = source.gamepad.buttons[0];
+            if (trigger && trigger.pressed) {
+                if (this.player && this.player.raySpaces[handedness]) {
+                    this.player.raySpaces[handedness].getWorldPosition(tipPosOut);
+                    return true;
+                }
+            }
+        }
+        
+        return false;
     }
 }

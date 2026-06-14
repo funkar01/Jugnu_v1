@@ -1395,3 +1395,22 @@
   - `[x]` **[Audio Refinement]** Programmed a dynamic exponential gain fade-out (over 1.0 seconds) for the atmospheric drone synth at the start of Phase 3, and scheduled its oscillators to stop.
   - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
 
+- `[x]` Onboarding Phases 5, 6, and 7 Extension (Current Run)
+  - `[x]` Exposed `JugnuSystem` globally as `(window as any).jugnuSystem = this;` in `src/jugnu.ts`.
+  - `[x]` Updated companion visibility logic (`isFormedPhase` check) in `src/jugnu.ts` to keep the model visible during Phases 5, 6, and 7.
+  - `[x]` Implemented public `openCompass()` helper on `JugnuSystem` to programmatically open the Compass UI.
+  - `[x]` Removed target landing plane (`targetMesh`) completely per user feedback, leaving the desk surface clean.
+  - `[x]` Dynamic Dialogue Bubble Tracking: Repositioned the speech bubble dynamically to follow Jugnu's position (remaining exactly `0.37m` above it).
+  - `[x]` Replicated WebXR `getPinchData('left', tipPosOut)` joint distance tracking in `OnboardingSystem` to support left hand pinch.
+  - `[x]` **[Failsafe Trigger]** Integrated VR controller gamepad trigger button (`buttons[0]`) press inside `getPinchData()` as a fallback for hand tracking.
+  - `[x]` **[Failsafe Trigger]** Enabled the window `keydown`/`keyup` keyboard listener for desktop override fallback (holding **'P'** key simulates left hand pinch) in both XR and non-XR modes, enabling it inside emulator sessions.
+  - `[x]` **[Failsafe Proximity]** Relaxed the hand proximity distance constraint in Phase 6 for controllers and keyboard inputs (allowing trigger presses/keys to summon the compass from anywhere).
+  - `[x]` **[Phase 5: Pinch & Land]** Programmed Jugnu to fly down and land directly on the user's left hand (`leftTip`) when a left hand pinch/trigger is active. Triggered spatial sparks and chimes upon landing and transitioned to Phase 6.
+  - `[x]` **[Phase 6: Pinch & Hold Compass]** Programmed left-hand proximity pinch-and-hold check near Jugnu for 2.0 seconds. While the pinch is held, Jugnu follows the hand (handling the grab). Accumulated hold time triggers `openCompass()`. Monitored `isCompassOpen` to transition to Phase 7.
+  - `[x]` **[Phase 7: Explore Tutorials]** Prompted user to explore tutorials for 5.0 seconds before completing onboarding and cleaning up all visual assets.
+  - `[x]` **[Visual Cleanup]** Updated embers particle visibility criteria to hide the embers mesh during Phases 5, 6, and 7, preventing the circular particle ring from lingering around Jugnu.
+- `[x]` Onboarding Physics Override Lock Fix (Current Run)
+  - `[x]` Discovered that the kinematic `PhysicsBody` and `PhysicsShape` components on the Jugnu entity were causing the `PhysicsSystem` (running at priority `-2`) to continuously overwrite `jugModel.position` with its initial coordinates.
+  - `[x]` Programmed dynamic stripping of `PhysicsShape` and `PhysicsBody` components from the Jugnu entity at the start of onboarding to grant Three.js direct positioning control.
+  - `[x]` Programmed dynamic restoration of `PhysicsShape` and `PhysicsBody` (Sphere shape, kinematic body) on onboarding completion in `completeOnboarding()` to restore sandbox physics throw/flick interactions.
+  - `[x]` Verified zero static compile errors (`npx tsc --noEmit`) and compiled client bundle (`npm run build`) successfully.
