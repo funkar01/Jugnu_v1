@@ -327,6 +327,7 @@ export class DomainExpansionSystem extends createSystem({
     private nurburgringOvertakePhase = 0.0;
     private nurburgringF1Speed = 0.052;
     private nurburgringTrackMat!: THREE.MeshBasicMaterial;
+    private f1Markers: THREE.Mesh[] = [];
 
     // --- F1 Live Roster and Spawning Player Cards ---
     private f1RosterMesh!: THREE.Mesh;
@@ -2252,54 +2253,12 @@ export class DomainExpansionSystem extends createSystem({
                 }
 
                 // ── 2. SPEED, GEAR, RPM, THROTTLE, BRAKE PROFILING ──
-                const fProgress = this.nurburgringF1Progress;
-                let speed = 220;
-                let gear = 5;
-                let rpm = 11500;
-                let throttle = 1.0;
-                let brake = 0.0;
-
-                if (fProgress >= 0.85 && fProgress < 0.98) {
-                    // Main straight
-                    const ratio = (fProgress - 0.85) / 0.13;
-                    speed = Math.floor(290 + ratio * 55); // 290 to 345 km/h
-                    gear = 8;
-                    rpm = Math.floor(11500 + ratio * 1600);
-                    throttle = 1.0;
-                    brake = 0.0;
-                } else if (fProgress >= 0.98 || fProgress < 0.04) {
-                    // Heavy braking into T1
-                    const ratio = fProgress >= 0.98 ? (fProgress - 0.98) / 0.06 : (fProgress + 0.02) / 0.06;
-                    speed = Math.floor(345 - ratio * 230); // 345 down to 115 km/h
-                    gear = Math.max(2, Math.floor(8 - ratio * 6));
-                    rpm = Math.floor(13100 - ratio * 3900);
-                    throttle = 0.0;
-                    brake = Math.sin(ratio * Math.PI) * 1.0; // spikes up
-                } else if (fProgress >= 0.04 && fProgress < 0.35) {
-                    // Hatzenbach twisty curves
-                    const ratio = (fProgress - 0.04) / 0.31;
-                    speed = Math.floor(130 + Math.sin(ratio * Math.PI * 4) * 40 + ratio * 80);
-                    gear = Math.floor(3 + ratio * 3);
-                    rpm = Math.floor(9500 + Math.sin(ratio * Math.PI * 6) * 1500);
-                    throttle = 0.6 + Math.sin(ratio * Math.PI * 4) * 0.3;
-                    brake = Math.max(0.0, -Math.sin(ratio * Math.PI * 4) * 0.4);
-                } else if (fProgress >= 0.35 && fProgress < 0.60) {
-                    // Adenauer Forst & Wehrseifen corners
-                    const ratio = (fProgress - 0.35) / 0.25;
-                    speed = Math.floor(180 - ratio * 90);
-                    gear = Math.max(2, Math.floor(5 - ratio * 3));
-                    rpm = Math.floor(11000 - ratio * 2000);
-                    throttle = 0.2 + ratio * 0.3;
-                    brake = Math.max(0.0, Math.sin(ratio * Math.PI * 2) * 0.7);
-                } else {
-                    // Preparing and entering Döttinger straight
-                    const ratio = (fProgress - 0.60) / 0.25;
-                    speed = Math.floor(90 + ratio * 200);
-                    gear = Math.floor(2 + ratio * 6);
-                    rpm = Math.floor(8500 + ratio * 3000);
-                    throttle = 1.0;
-                    brake = 0.0;
-                }
+                const tel = this.getF1Telemetry(this.nurburgringF1Progress);
+                const speed = tel.speed;
+                const gear = tel.gear;
+                const rpm = tel.rpm;
+                const throttle = tel.throttle;
+                const brake = tel.brake;
 
                 // ── 3. DYNAMIC TELEMETRY HUD CANVAS DRAW ──
                 if (this.f1HudCtx) {
@@ -2580,7 +2539,7 @@ export class DomainExpansionSystem extends createSystem({
                                         this.f1SprayData[offset + 2]
                                     );
                                     this.f1SprayDummy.scale.set(scale, scale, scale);
-                                    this.f1SprayDummy.updateMatrix();
+                        this.f1SprayDummy.updateMatrix();
                                     this.f1SprayMesh.setMatrixAt(i, this.f1SprayDummy.matrix);
                                 }
                             } else {
@@ -2595,10 +2554,20 @@ export class DomainExpansionSystem extends createSystem({
                     }
                 }
 
+                // Hide floating markers if stadium not active
+                if (this.f1Markers && this.f1Markers.length > 0) {
+                    this.f1Markers.forEach(m => { m.visible = false; });
+                }
+
             } else {
                 // Hide F1 car
                 this.nurburgringF1Car.visible = false;
                 if (this.f1HudMesh) this.f1HudMesh.visible = false;
+                
+                // Hide floating markers if stadium not active
+                if (this.f1Markers && this.f1Markers.length > 0) {
+                    this.f1Markers.forEach(m => { m.visible = false; });
+                }
                 this.f1VortexInitialized = false;
                 if (this.f1VortexLeft) {
                     this.f1VortexLeft.visible = false;
@@ -2806,6 +2775,22 @@ export class DomainExpansionSystem extends createSystem({
                 }
 
                 if (this.f1SprayMesh) this.f1SprayMesh.visible = false;
+            }
+
+            // Billboard all floating markers in this.f1Markers dynamically
+            if (this.f1Markers && this.f1Markers.length > 0) {
+                const headPos = this.scratchVector3;
+                if (this.player && this.player.head) {
+                    this.player.head.getWorldPosition(headPos);
+                } else if (this.camera) {
+                    this.camera.getWorldPosition(headPos);
+                } else {
+                    headPos.set(0, 1.45, 0.4);
+                }
+                this.f1Markers.forEach(marker => {
+                    marker.visible = true;
+                    marker.lookAt(headPos);
+                });
             }
 
             // Spectator particle effects removed — keep the map clean
@@ -8575,22 +8560,29 @@ export class DomainExpansionSystem extends createSystem({
 
         // 4. Closed winding 3D Spline representing Monaco GP with topography elevations
         const points = [
-            new THREE.Vector3(-0.06, 0.003, -0.06), // Turn 1 (01 - Sainte Devote)
-            new THREE.Vector3(-0.02, 0.008, -0.05), // Beau Rivage uphill (02)
-            new THREE.Vector3( 0.02, 0.012, -0.03), // Massenet (03)
-            new THREE.Vector3( 0.05, 0.012, -0.02), // Casino Square (04)
-            new THREE.Vector3( 0.08, 0.009, -0.01), // Mirabeau Haute (05)
-            new THREE.Vector3( 0.06, 0.006,  0.01), // Grand Hotel Hairpin (06)
-            new THREE.Vector3( 0.08, 0.003,  0.03), // Portier (07/08)
-            new THREE.Vector3( 0.05, 0.003,  0.05), // Tunnel Entry (09)
-            new THREE.Vector3( 0.00, 0.003,  0.06), // Tunnel Mid (09)
-            new THREE.Vector3(-0.05, 0.003,  0.05), // Chicane (10/11)
-            new THREE.Vector3(-0.08, 0.003,  0.02), // Tabac (12)
-            new THREE.Vector3(-0.07, 0.003, -0.01), // Swimming Pool 1 (13/14)
-            new THREE.Vector3(-0.06, 0.003, -0.03), // Swimming Pool 2 (15/16)
-            new THREE.Vector3(-0.07, 0.003, -0.05), // Rascasse (17/18)
-            new THREE.Vector3(-0.09, 0.003, -0.02), // Anthony Noghes (19)
-            new THREE.Vector3(-0.08, 0.003, -0.04)  // Pit straight
+            new THREE.Vector3(-0.065, 0.005, -0.085), // Turn 1 (01 - Sainte Devote)
+            new THREE.Vector3(-0.010, 0.010, -0.070), // Beau Rivage (02)
+            new THREE.Vector3( 0.050, 0.015, -0.042), // Massenet (03)
+            new THREE.Vector3( 0.085, 0.013, -0.048), // Casino Square (04)
+            new THREE.Vector3( 0.125, 0.008, -0.018), // Mirabeau Haute (05)
+            new THREE.Vector3( 0.078, 0.0045, 0.008), // Grand Hotel Hairpin (06)
+            new THREE.Vector3( 0.105, 0.0035, 0.022), // Mirabeau Bas (07)
+            new THREE.Vector3( 0.130, 0.003,  0.046), // Portier (08)
+            new THREE.Vector3( 0.090, 0.003,  0.082), // Tunnel entry (09)
+            new THREE.Vector3( 0.000, 0.003,  0.105), // Tunnel mid / Speed Trap
+            new THREE.Vector3(-0.050, 0.003,  0.095), // Tunnel exit
+            new THREE.Vector3(-0.082, 0.003,  0.074), // Nouvelle Chicane Left (10)
+            new THREE.Vector3(-0.074, 0.003,  0.066), // Nouvelle Chicane Right (11)
+            new THREE.Vector3(-0.100, 0.003,  0.042), // Tabac (12)
+            new THREE.Vector3(-0.085, 0.003,  0.016), // Swimming Pool 1 (13)
+            new THREE.Vector3(-0.095, 0.003,  0.002), // Swimming Pool 2 (14)
+            new THREE.Vector3(-0.085, 0.003, -0.014), // Swimming Pool 3 (15)
+            new THREE.Vector3(-0.095, 0.003, -0.026), // Swimming Pool 4 (16)
+            new THREE.Vector3(-0.075, 0.003, -0.050), // Rascasse Entry / DRS Detection (17)
+            new THREE.Vector3(-0.080, 0.003, -0.065), // Rascasse Apex (18)
+            new THREE.Vector3(-0.100, 0.003, -0.046), // Anthony Noghes (19)
+            new THREE.Vector3(-0.095, 0.003, -0.028), // Main Straight Start
+            new THREE.Vector3(-0.078, 0.004, -0.055)  // Main Straight Mid
         ];
         this.nurburgringCurve = new THREE.CatmullRomCurve3(points, true);
         (this.nurburgringCurve as any).isNurburgring = true;
@@ -8638,10 +8630,10 @@ export class DomainExpansionSystem extends createSystem({
             return { tangents, normals, binormals };
         };
 
-        this.nurburgringFrenetFrames = (this.nurburgringCurve as any).computeFrenetFrames(250, true);
+        const segments = 800;
+        this.nurburgringFrenetFrames = (this.nurburgringCurve as any).computeFrenetFrames(segments, true);
 
         // 5. Build 3D flat road geometry using InstancedMesh along the spline
-        const segments = 300;
         const roadWidth = 0.016;
         const roadThickness = 0.0005;
         const roadGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
@@ -8654,33 +8646,32 @@ export class DomainExpansionSystem extends createSystem({
         const xAxis = new THREE.Vector3();
         const yAxis = new THREE.Vector3();
         const zAxis = new THREE.Vector3();
-        const center = new THREE.Vector3();
         const scale = new THREE.Vector3();
-        const up = new THREE.Vector3(0, 1, 0);
 
         for (let i = 0; i < segments; i++) {
-            const u1 = i / segments;
-            const u2 = (i + 1) / segments;
-            const p1 = this.nurburgringCurve.getPointAt(u1);
-            const p2 = this.nurburgringCurve.getPointAt(u2 % 1.0);
+            const u = i / segments;
+            const p = this.nurburgringCurve.getPointAt(u);
             
-            center.addVectors(p1, p2).multiplyScalar(0.5);
-            zAxis.subVectors(p2, p1);
-            const len = zAxis.length();
-            zAxis.normalize();
+            // Extract Frenet frame vectors
+            const tangent = this.nurburgringFrenetFrames.tangents[i];
+            const normal = this.nurburgringFrenetFrames.normals[i];
+            const binormal = this.nurburgringFrenetFrames.binormals[i];
             
-            xAxis.crossVectors(up, zAxis);
-            if (xAxis.lengthSq() < 0.0001) {
-                xAxis.set(1, 0, 0);
-            } else {
-                xAxis.normalize();
-            }
-            yAxis.crossVectors(zAxis, xAxis).normalize();
+            // Align: width is along binormal, normal is along normal, length is along tangent
+            xAxis.copy(binormal);
+            yAxis.copy(normal);
+            zAxis.copy(tangent);
             
             tempMatrix.makeBasis(xAxis, yAxis, zAxis);
-            tempMatrix.setPosition(center);
+            tempMatrix.setPosition(p);
             
-            scale.set(roadWidth, roadThickness, len);
+            // Segment length is distance to the next point along the spline
+            const nextP = this.nurburgringCurve.getPointAt((i + 1) / segments % 1.0);
+            const len = p.distanceTo(nextP);
+            
+            // Scale geometry (unit box) to correct width, thickness and length
+            // 1.8x overlap on length (z-axis) removes step-ladder gaps on curves completely
+            scale.set(roadWidth, roadThickness, len * 1.8);
             tempMatrix.scale(scale);
             
             roadMesh.setMatrixAt(i, tempMatrix);
@@ -8688,17 +8679,162 @@ export class DomainExpansionSystem extends createSystem({
         roadMesh.instanceMatrix.needsUpdate = true;
         this.nurburgringGroup.add(roadMesh);
 
-        // 6. Overlay glowing neon racing outline guide line
-        const linePoints = this.nurburgringCurve.getPoints(200);
-        const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
-        const lineMat = new THREE.LineBasicMaterial({
-            color: 0x22d3ee, // Cyberpunk neon cyan
+        // 6. Overlay glowing neon racing outline guide lines for Sectors (Red/Cyan/Yellow)
+        // Sector 1: [0.95, 1.0] and [0.0, 0.35]
+        const sec1Points: THREE.Vector3[] = [];
+        for (let u = 0.95; u <= 1.0; u += 0.005) {
+            const p = this.nurburgringCurve.getPointAt(u).clone();
+            p.y += 0.0006;
+            sec1Points.push(p);
+        }
+        for (let u = 0.0; u <= 0.35; u += 0.005) {
+            const p = this.nurburgringCurve.getPointAt(u).clone();
+            p.y += 0.0006;
+            sec1Points.push(p);
+        }
+        const sec1Geo = new THREE.BufferGeometry().setFromPoints(sec1Points);
+        const sec1Mat = new THREE.LineBasicMaterial({
+            color: 0xef4444, // Sector 1 Red
             linewidth: 2,
             transparent: true,
-            opacity: 0.75
+            opacity: 0.85
         });
-        const lineMesh = new THREE.Line(lineGeo, lineMat);
-        this.nurburgringGroup.add(lineMesh);
+        const sec1Line = new THREE.Line(sec1Geo, sec1Mat);
+        this.nurburgringGroup.add(sec1Line);
+
+        // Sector 2: [0.35, 0.68]
+        const sec2Points: THREE.Vector3[] = [];
+        for (let u = 0.35; u <= 0.68; u += 0.005) {
+            const p = this.nurburgringCurve.getPointAt(u).clone();
+            p.y += 0.0006;
+            sec2Points.push(p);
+        }
+        const sec2Geo = new THREE.BufferGeometry().setFromPoints(sec2Points);
+        const sec2Mat = new THREE.LineBasicMaterial({
+            color: 0x06b6d4, // Sector 2 Cyan
+            linewidth: 2,
+            transparent: true,
+            opacity: 0.85
+        });
+        const sec2Line = new THREE.Line(sec2Geo, sec2Mat);
+        this.nurburgringGroup.add(sec2Line);
+
+        // Sector 3: [0.68, 0.95]
+        const sec3Points: THREE.Vector3[] = [];
+        for (let u = 0.68; u <= 0.95; u += 0.005) {
+            const p = this.nurburgringCurve.getPointAt(u).clone();
+            p.y += 0.0006;
+            sec3Points.push(p);
+        }
+        const sec3Geo = new THREE.BufferGeometry().setFromPoints(sec3Points);
+        const sec3Mat = new THREE.LineBasicMaterial({
+            color: 0xeab308, // Sector 3 Yellow
+            linewidth: 2,
+            transparent: true,
+            opacity: 0.85
+        });
+        const sec3Line = new THREE.Line(sec3Geo, sec3Mat);
+        this.nurburgringGroup.add(sec3Line);
+
+        // Clear any old markers
+        this.f1Markers.forEach(m => {
+            if (m.geometry) m.geometry.dispose();
+            if (Array.isArray(m.material)) {
+                m.material.forEach(mat => mat.dispose());
+            } else if (m.material) {
+                m.material.dispose();
+            }
+        });
+        this.f1Markers = [];
+
+        // Helper text marker definitions:
+        // Turn numbers
+        const turns = [
+            { text: "01", pos: points[0] },
+            { text: "02", pos: points[1] },
+            { text: "03", pos: points[2] },
+            { text: "04", pos: points[3] },
+            { text: "05", pos: points[4] },
+            { text: "06", pos: points[5] },
+            { text: "07", pos: points[6] },
+            { text: "08", pos: points[7] },
+            { text: "09", pos: points[8] },
+            { text: "10", pos: points[11] },
+            { text: "11", pos: points[12] },
+            { text: "12", pos: points[13] },
+            { text: "13", pos: points[14] },
+            { text: "14", pos: points[15] },
+            { text: "15", pos: points[16] },
+            { text: "16", pos: points[17] },
+            { text: "17", pos: points[18] },
+            { text: "18", pos: points[19] },
+            { text: "19", pos: points[20] }
+        ];
+
+        turns.forEach(t => {
+            // White text on dark slate circle
+            const mesh = this.createTextMarker(t.text, "#1e293b", "#ffffff", 0.010, 0.010, true);
+            // Position above the track
+            mesh.position.copy(t.pos);
+            mesh.position.y += 0.015;
+            this.nurburgringGroup!.add(mesh);
+            this.f1Markers.push(mesh);
+        });
+
+        // Sector Badges
+        // Sector 1: Red
+        const s1Pos = this.nurburgringCurve.getPointAt(0.18);
+        const s1Badge = this.createTextMarker("SECTOR 1", "#ef4444", "#ffffff", 0.026, 0.0075, false);
+        s1Badge.position.copy(s1Pos);
+        s1Badge.position.y += 0.020;
+        this.nurburgringGroup.add(s1Badge);
+        this.f1Markers.push(s1Badge);
+
+        // Sector 2: Cyan
+        const s2Pos = this.nurburgringCurve.getPointAt(0.50);
+        const s2Badge = this.createTextMarker("SECTOR 2", "#06b6d4", "#ffffff", 0.026, 0.0075, false);
+        s2Badge.position.copy(s2Pos);
+        s2Badge.position.y += 0.020;
+        this.nurburgringGroup.add(s2Badge);
+        this.f1Markers.push(s2Badge);
+
+        // Sector 3: Yellow
+        const s3Pos = this.nurburgringCurve.getPointAt(0.81);
+        const s3Badge = this.createTextMarker("SECTOR 3", "#eab308", "#111111", 0.026, 0.0075, false);
+        s3Badge.position.copy(s3Pos);
+        s3Badge.position.y += 0.020;
+        this.nurburgringGroup.add(s3Badge);
+        this.f1Markers.push(s3Badge);
+
+        // Speed Trap (Magenta badge + track dot)
+        const stPos = this.nurburgringCurve.getPointAt(0.50); // mid tunnel
+        const stDotGeo = new THREE.SphereGeometry(0.002, 8, 8);
+        const stDotMat = new THREE.MeshBasicMaterial({ color: 0xff00ff });
+        const stDot = new THREE.Mesh(stDotGeo, stDotMat);
+        stDot.position.copy(stPos);
+        stDot.position.y += 0.0005;
+        this.nurburgringGroup.add(stDot);
+
+        const stBadge = this.createTextMarker("SPEED TRAP", "#d946ef", "#ffffff", 0.030, 0.0075, false);
+        stBadge.position.copy(stPos);
+        stBadge.position.y += 0.026;
+        this.nurburgringGroup.add(stBadge);
+        this.f1Markers.push(stBadge);
+
+        // DRS Detection Zone 1 (Green badge + track dot)
+        const drsPos = this.nurburgringCurve.getPointAt(0.86); // near T17 entry
+        const drsDotGeo = new THREE.SphereGeometry(0.002, 8, 8);
+        const drsDotMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const drsDot = new THREE.Mesh(drsDotGeo, drsDotMat);
+        drsDot.position.copy(drsPos);
+        drsDot.position.y += 0.0005;
+        this.nurburgringGroup.add(drsDot);
+
+        const drsBadge = this.createTextMarker("DRS DETECTION 1", "#22c55e", "#ffffff", 0.038, 0.0075, false);
+        drsBadge.position.copy(drsPos);
+        drsBadge.position.y += 0.026;
+        this.nurburgringGroup.add(drsBadge);
+        this.f1Markers.push(drsBadge);
 
         // 7. Spawn the 1 detailed F1 car (George Russell)
         this.nurburgringCars = [];
@@ -8816,6 +8952,81 @@ export class DomainExpansionSystem extends createSystem({
         this.tableGroup.add(this.nurburgringGroup);
         this.initNurburgringVortexAndSpray();
         console.log("[NurburgringMap] High-fidelity wider racetrack, line guides, and 3 detailed F1 racing cars initialized!");
+    }
+
+    private createTextMarker(text: string, bgColor: string, textColor: string, width: number, height: number, isCircle: boolean = true): THREE.Mesh {
+        const canvas = document.createElement('canvas');
+        canvas.width = isCircle ? 256 : 512;
+        canvas.height = isCircle ? 256 : 128;
+        const ctx = canvas.getContext('2d')!;
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        if (isCircle) {
+            // Draw circle background
+            ctx.fillStyle = bgColor;
+            ctx.beginPath();
+            ctx.arc(128, 128, 110, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Draw border
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 10;
+            ctx.stroke();
+            
+            // Draw text
+            ctx.fillStyle = textColor;
+            ctx.font = 'bold 110px Arial, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 128, 128);
+        } else {
+            // Draw rounded rectangle background
+            ctx.fillStyle = bgColor;
+            ctx.beginPath();
+            const radius = 24;
+            const padX = 12;
+            const padY = 12;
+            const w = canvas.width - padX * 2;
+            const h = canvas.height - padY * 2;
+            ctx.moveTo(padX + radius, padY);
+            ctx.lineTo(padX + w - radius, padY);
+            ctx.quadraticCurveTo(padX + w, padY, padX + w, padY + radius);
+            ctx.lineTo(padX + w, padY + h - radius);
+            ctx.quadraticCurveTo(padX + w, padY + h, padX + w - radius, padY + h);
+            ctx.lineTo(padX + radius, padY + h);
+            ctx.quadraticCurveTo(padX, padY + h, padX, padY + h - radius);
+            ctx.lineTo(padX, padY + radius);
+            ctx.quadraticCurveTo(padX, padY, padX + radius, padY);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Draw border
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 6;
+            ctx.stroke();
+            
+            // Draw text
+            ctx.fillStyle = textColor;
+            ctx.font = 'bold 50px Arial, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+        }
+        
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        
+        const mat = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        
+        const geo = new THREE.PlaneGeometry(width, height);
+        const mesh = new THREE.Mesh(geo, mat);
+        return mesh;
     }
 
     private createDetailedF1Car(bodyColor: number, helmetColor: number, visorColor: number, colorType: 'merc' | 'ferrari' | 'mclaren') {
@@ -9101,46 +9312,109 @@ export class DomainExpansionSystem extends createSystem({
         let throttle = 1.0;
         let brake = 0.0;
 
-        if (fProgress >= 0.85 && fProgress < 0.98) {
-            // Main straight
-            const ratio = (fProgress - 0.85) / 0.13;
-            speed = Math.floor(290 + ratio * 55); // 290 to 345 km/h
-            gear = 8;
-            rpm = Math.floor(11500 + ratio * 1600);
+        if (fProgress >= 0.94 || fProgress < 0.05) {
+            // Main straight & DRS Zone
+            const ratio = fProgress >= 0.94 ? (fProgress - 0.94) / 0.11 : (fProgress + 0.06) / 0.11;
+            speed = Math.floor(150 + ratio * 140); // 150 to 290 km/h
+            gear = Math.floor(3 + ratio * 5); // 3 to 8
+            rpm = Math.floor(9000 + ratio * 3800);
             throttle = 1.0;
             brake = 0.0;
-        } else if (fProgress >= 0.98 || fProgress < 0.04) {
-            // Heavy braking into T1
-            const ratio = fProgress >= 0.98 ? (fProgress - 0.98) / 0.06 : (fProgress + 0.02) / 0.06;
-            speed = Math.floor(345 - ratio * 230); // 345 down to 115 km/h
+        } else if (fProgress >= 0.05 && fProgress < 0.09) {
+            // Sainte Devote (Turn 1) braking
+            const ratio = (fProgress - 0.05) / 0.04;
+            speed = Math.floor(290 - ratio * 180); // 290 down to 110 km/h
             gear = Math.max(2, Math.floor(8 - ratio * 6));
-            rpm = Math.floor(13100 - ratio * 3900);
+            rpm = Math.floor(12800 - ratio * 4300);
             throttle = 0.0;
-            brake = Math.sin(ratio * Math.PI) * 1.0; // spikes up
-        } else if (fProgress >= 0.04 && fProgress < 0.35) {
-            // Hatzenbach twisty curves
-            const ratio = (fProgress - 0.04) / 0.31;
-            speed = Math.floor(130 + Math.sin(ratio * Math.PI * 4) * 40 + ratio * 80);
-            gear = Math.floor(3 + ratio * 3);
-            rpm = Math.floor(9500 + Math.sin(ratio * Math.PI * 6) * 1500);
-            throttle = 0.6 + Math.sin(ratio * Math.PI * 4) * 0.3;
-            brake = Math.max(0.0, -Math.sin(ratio * Math.PI * 4) * 0.4);
-        } else if (fProgress >= 0.35 && fProgress < 0.60) {
-            // Adenauer Forst & Wehrseifen corners
-            const ratio = (fProgress - 0.35) / 0.25;
-            speed = Math.floor(180 - ratio * 90);
-            gear = Math.max(2, Math.floor(5 - ratio * 3));
-            rpm = Math.floor(11000 - ratio * 2000);
-            throttle = 0.2 + ratio * 0.3;
-            brake = Math.max(0.0, Math.sin(ratio * Math.PI * 2) * 0.7);
-        } else {
-            // Preparing and entering Döttinger straight
-            const ratio = (fProgress - 0.60) / 0.25;
-            speed = Math.floor(90 + ratio * 200);
-            gear = Math.floor(2 + ratio * 6);
-            rpm = Math.floor(8500 + ratio * 3000);
+            brake = Math.sin(ratio * Math.PI) * 1.0;
+        } else if (fProgress >= 0.09 && fProgress < 0.26) {
+            // Beau Rivage uphill & Massenet/Casino curves
+            const ratio = (fProgress - 0.09) / 0.17;
+            if (ratio < 0.5) {
+                // uphill accelerate
+                speed = Math.floor(110 + ratio * 2 * 110); // 110 to 220 km/h
+                gear = Math.floor(2 + ratio * 2 * 3);
+                throttle = 1.0;
+                brake = 0.0;
+            } else {
+                // slow down for Massenet/Casino
+                speed = Math.floor(220 - (ratio - 0.5) * 2 * 80); // 220 down to 140 km/h
+                gear = Math.floor(5 - (ratio - 0.5) * 2 * 2);
+                throttle = 0.3;
+                brake = 0.4;
+            }
+            rpm = Math.floor(8500 + Math.sin(ratio * Math.PI * 2) * 2500 + 1000);
+        } else if (fProgress >= 0.26 && fProgress < 0.38) {
+            // Mirabeau Haute and Fairmont Hairpin (slowest corner in F1)
+            const ratio = (fProgress - 0.26) / 0.12;
+            if (ratio < 0.7) {
+                // braking for hairpin
+                speed = Math.floor(140 - (ratio / 0.7) * 95); // 140 to 45 km/h
+                gear = Math.max(1, Math.floor(3 - (ratio / 0.7) * 2));
+                brake = 0.8;
+                throttle = 0.1;
+                rpm = Math.floor(10000 - (ratio / 0.7) * 3000);
+            } else {
+                // exit hairpin
+                speed = Math.floor(45 + ((ratio - 0.7) / 0.3) * 25); // 45 to 70 km/h
+                gear = 1;
+                brake = 0.0;
+                throttle = 0.5;
+                rpm = Math.floor(7000 + ((ratio - 0.7) / 0.3) * 2000);
+            }
+        } else if (fProgress >= 0.38 && fProgress < 0.58) {
+            // Portier and Tunnel acceleration
+            const ratio = (fProgress - 0.38) / 0.20;
+            speed = Math.floor(70 + ratio * 220); // 70 to 290 km/h (tunnel top speed)
+            gear = Math.floor(2 + ratio * 6); // 2 to 8
+            rpm = Math.floor(8000 + ratio * 4800);
             throttle = 1.0;
             brake = 0.0;
+        } else if (fProgress >= 0.58 && fProgress < 0.65) {
+            // Nouvelle Chicane braking
+            const ratio = (fProgress - 0.58) / 0.07;
+            speed = Math.floor(290 - ratio * 210); // 290 down to 80 km/h
+            gear = Math.max(2, Math.floor(8 - ratio * 6));
+            rpm = Math.floor(12800 - ratio * 4000);
+            throttle = 0.0;
+            brake = Math.sin(ratio * Math.PI) * 1.0;
+        } else if (fProgress >= 0.65 && fProgress < 0.82) {
+            // Tabac and Swimming Pool
+            const ratio = (fProgress - 0.65) / 0.17;
+            if (ratio < 0.3) {
+                speed = Math.floor(80 + (ratio / 0.3) * 80); // 80 to 160 km/h (Tabac)
+                gear = 4;
+                throttle = 0.8;
+                brake = 0.0;
+            } else if (ratio < 0.75) {
+                speed = Math.floor(160 + ((ratio - 0.3) / 0.45) * 40); // 160 to 200 km/h (Swimming Pool entry)
+                gear = 5;
+                throttle = 0.8;
+                brake = 0.0;
+            } else {
+                speed = Math.floor(200 - ((ratio - 0.75) / 0.25) * 80); // 200 down to 120 km/h (chicane exit)
+                gear = 3;
+                throttle = 0.0;
+                brake = 0.7;
+            }
+            rpm = Math.floor(9000 + Math.sin(ratio * Math.PI * 3) * 1500 + 1000);
+        } else {
+            // Rascasse and Anthony Noghes
+            const ratio = (fProgress - 0.82) / 0.12;
+            if (ratio < 0.5) {
+                speed = Math.floor(120 - (ratio / 0.5) * 65); // 120 down to 55 km/h (Rascasse hairpin)
+                gear = Math.max(1, Math.floor(3 - (ratio / 0.5) * 2));
+                brake = 0.9;
+                throttle = 0.1;
+                rpm = Math.floor(9500 - (ratio / 0.5) * 3500);
+            } else {
+                speed = Math.floor(55 + ((ratio - 0.5) / 0.5) * 95); // 55 to 150 km/h (Antony Noghes exit)
+                gear = 3;
+                brake = 0.0;
+                throttle = 1.0;
+                rpm = Math.floor(7000 + ((ratio - 0.5) / 0.5) * 2500);
+            }
         }
 
         return { speed, gear, rpm, throttle, brake };
