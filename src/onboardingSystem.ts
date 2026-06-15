@@ -176,6 +176,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
     
     // Onboarding duration & timing
     private onboardingTime = 0.0;
+    private onboardingStarted = false;
     public state: 'phase1' | 'phase2' | 'revealing' | 'hello' | 'phase5' | 'phase6' | 'phase7' | 'complete' = 'phase1';
     
     private phase5Time = 0.0;
@@ -217,6 +218,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         
         // Expose trigger to start audio on user interaction
         (window as any).startOnboardingAudio = () => this.startAudio();
+        (window as any).startOnboarding = () => this.startOnboarding();
         
         // Create void mesh - massive sphere blocking out surroundings in both AR and VR
         const voidGeo = new THREE.SphereGeometry(15, 32, 16);
@@ -337,9 +339,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         // Register mouse move listener for 2D desktop preview interaction
         window.addEventListener('mousemove', (e) => this.handleMouseMove(e));
         
-        // Fallback triggers for Web Audio API permissions
-        window.addEventListener('pointerdown', () => this.startAudio(), { once: true });
-        window.addEventListener('keydown', () => this.startAudio(), { once: true });
+        // Fallback triggers for Web Audio API permissions (triggered on Enter XR button)
 
         // Create testing timer overlay in top right corner
         this.testTimerDiv = document.createElement('div');
@@ -472,6 +472,14 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         return false;
     }
     
+    public startOnboarding() {
+        if (this.onboardingStarted) return;
+        console.log("[OnboardingSystem] Starting Cinematic Onboarding...");
+        this.onboardingStarted = true;
+        this.onboardingTime = 0.0;
+        this.startAudio();
+    }
+
     // Audio synthesis setup
     startAudio() {
         if (this.audioCtx) return;
@@ -640,7 +648,9 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         if (this.state === 'complete') return;
         
         const safeDt = Math.min(dt, 0.03);
-        this.onboardingTime += safeDt;
+        if (this.onboardingStarted) {
+            this.onboardingTime += safeDt;
+        }
 
         // Strip physics components from Jugnu during onboarding to prevent the physics engine
         // from overwriting the manual Three.js transform animations.
@@ -667,11 +677,11 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
             else if (this.state === 'phase5') phaseNum = 5;
             else if (this.state === 'phase6') phaseNum = 6;
             else if (this.state === 'phase7') phaseNum = 7;
-            this.testTimerDiv.textContent = `PHASE: ${phaseNum} (${this.state.toUpperCase()}) | TIME: ${this.onboardingTime.toFixed(2)}s`;
+            this.testTimerDiv.textContent = `PHASE: ${phaseNum} (${this.state.toUpperCase()}) | TIME: ${this.onboardingTime.toFixed(2)}s${this.onboardingStarted ? '' : ' (WAITING)'}`;
         }
         
         // Dim lights initially
-        if (this.onboardingTime > 0.01) {
+        if (this.onboardingStarted && this.onboardingTime > 0.01) {
             this.captureAndDimLights();
         }
         
@@ -681,7 +691,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         }
         
         // Reposition dialogue bubble dynamically above Jugnu
-        if (this.dialogueBubble && (this.state === 'hello' || this.state === 'phase5' || this.state === 'phase6' || this.state === 'phase7')) {
+        if (this.onboardingStarted && this.dialogueBubble && (this.state === 'hello' || this.state === 'phase5' || this.state === 'phase6' || this.state === 'phase7')) {
             let jugEntity: any = null;
             for (const e of this.queries.jugnu.entities) {
                 jugEntity = e;
@@ -695,29 +705,31 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         }
         
         // Heartbeat triggering schedule
-        this.heartbeatTimer += safeDt;
-        if (this.heartbeatTimer >= this.heartbeatInterval) {
-            this.heartbeatTimer = 0.0;
-            this.playHeartbeat();
-        }
-        
-        // Orbit the heartbeat panner around the player's head (8D spatial panning)
-        if (this.audioCtx && this.heartbeatPanner && this.player) {
-            const time = this.onboardingTime;
-            const radius = 1.6;
-            const px = radius * Math.sin(time * 0.85);
-            const py = 1.45 + 0.2 * Math.sin(time * 1.2);
-            const pz = radius * Math.cos(time * 0.85);
+        if (this.onboardingStarted) {
+            this.heartbeatTimer += safeDt;
+            if (this.heartbeatTimer >= this.heartbeatInterval) {
+                this.heartbeatTimer = 0.0;
+                this.playHeartbeat();
+            }
             
-            // Convert to head relative coordinates
-            this.scratchV3.set(px, py, pz);
-            const headMat = this.player.head.matrixWorld;
-            this.scratchV3.applyMatrix4(this.scratchMatrix.copy(headMat).invert());
-            
-            const now = this.audioCtx.currentTime;
-            this.heartbeatPanner.positionX.setValueAtTime(this.scratchV3.x, now);
-            this.heartbeatPanner.positionY.setValueAtTime(this.scratchV3.y, now);
-            this.heartbeatPanner.positionZ.setValueAtTime(this.scratchV3.z, now);
+            // Orbit the heartbeat panner around the player's head (8D spatial panning)
+            if (this.audioCtx && this.heartbeatPanner && this.player) {
+                const time = this.onboardingTime;
+                const radius = 1.6;
+                const px = radius * Math.sin(time * 0.85);
+                const py = 1.45 + 0.2 * Math.sin(time * 1.2);
+                const pz = radius * Math.cos(time * 0.85);
+                
+                // Convert to head relative coordinates
+                this.scratchV3.set(px, py, pz);
+                const headMat = this.player.head.matrixWorld;
+                this.scratchV3.applyMatrix4(this.scratchMatrix.copy(headMat).invert());
+                
+                const now = this.audioCtx.currentTime;
+                this.heartbeatPanner.positionX.setValueAtTime(this.scratchV3.x, now);
+                this.heartbeatPanner.positionY.setValueAtTime(this.scratchV3.y, now);
+                this.heartbeatPanner.positionZ.setValueAtTime(this.scratchV3.z, now);
+            }
         }
         
         // Query hand tracking/controller data
@@ -742,7 +754,8 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         }
         
         // --- State Machine Transitions ---
-        if (this.state === 'phase1') {
+        if (this.onboardingStarted) {
+            if (this.state === 'phase1') {
             if (this.onboardingTime >= this.activeDuration) {
                 console.log("[OnboardingSystem] Transitioning to Phase 2: The Gathering...");
                 this.state = 'phase2';
@@ -1026,6 +1039,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                 this.completeOnboarding();
                 return;
             }
+        }
         }
         
         // --- Phase 2: Audio Modulations, Chimes Swell & Energy Source ---

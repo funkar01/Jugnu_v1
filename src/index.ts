@@ -396,6 +396,9 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       if (typeof (window as any).startOnboardingAudio === "function") {
         (window as any).startOnboardingAudio();
       }
+      if (typeof (window as any).startOnboarding === "function") {
+        (window as any).startOnboarding();
+      }
       world.launchXR();
     });
   }

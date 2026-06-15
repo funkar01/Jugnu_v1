@@ -1425,4 +1425,9 @@
   - `[x]` Pre-warmed energy source group (`energySourceGroup`) shaders in `src/onboardingSystem.ts` by initializing with `visible = true` and `scale = 0.0001`.
   - `[x]` Replaced visibility toggles on `energySourceGroup` with `scale` updates (setting scale to `0.0001` when hidden, and scaling up to `0.2` when materializing).
   - `[x]` Verified compilation safety (`npx tsc --noEmit`) and built client production bundle successfully (`npm run build`).
+- `[x]` Onboarding EnterXR Delay and Audio Trigger Separation (Current Run)
+  - `[x]` Added `onboardingStarted` member flag in `OnboardingSystem` to prevent phase transitions and timer ticking prior to button activation.
+  - `[x]` Wired `startOnboarding()` inside "Enter XR" button click listener in `src/index.ts`.
+  - `[x]` Removed window-level pointerdown/keydown auto-start fallback listeners for `startAudio` to prevent premature ambient audio loops on the loading screen.
+  - `[x]` Verified type compilation safety (`npx tsc --noEmit`) and built client production bundle successfully (`npm run build`).
 
