@@ -1413,4 +1413,16 @@
   - `[x]` Discovered that the kinematic `PhysicsBody` and `PhysicsShape` components on the Jugnu entity were causing the `PhysicsSystem` (running at priority `-2`) to continuously overwrite `jugModel.position` with its initial coordinates.
   - `[x]` Programmed dynamic stripping of `PhysicsShape` and `PhysicsBody` components from the Jugnu entity at the start of onboarding to grant Three.js direct positioning control.
   - `[x]` Programmed dynamic restoration of `PhysicsShape` and `PhysicsBody` (Sphere shape, kinematic body) on onboarding completion in `completeOnboarding()` to restore sandbox physics throw/flick interactions.
-  - `[x]` Verified zero static compile errors (`npx tsc --noEmit`) and compiled client bundle (`npm run build`) successfully.
+- `[x]` Onboarding Phase 6 Compass Summon & Proximity Jitter Fix (Current Run)
+  - `[x]` Refactored the massive inline compass update block in `src/jugnu.ts` into a self-contained helper method `updateCompassUI(safeDt, instructionStep, activeJugnuPos, activeJugnuModel)`.
+  - `[x]` Declared `safeDt` at the very beginning of the `update(dt)` loop in `src/jugnu.ts` so it is globally available.
+  - `[x]` Modified the onboarding early-return block in `src/jugnu.ts` to capture the current active Jugnu position, scale, and tutorial step, and then run `updateCompassUI()` before returning.
+  - `[x]` Replaced the original inline compass code block in `JugnuSystem.update(dt)` with a direct call to `updateCompassUI()`.
+  - `[x]` Resolved the pinch-and-hold grab cutoff issue in `src/onboardingSystem.ts` Phase 6 by implementing a relaxed proximity check once the grab is initiated, preventing timer resets from hand movement jitter or lerp lag.
+  - `[x]` Verified zero static compilation errors (`npx tsc --noEmit`) and compiled client bundle (`npm run build`) successfully.
+- `[x]` Onboarding Phase 2/3 Shader Pre-Warming (Current Run)
+  - `[x]` Pre-warmed companion model (`JugnuV3Model`) shaders during onboarding by keeping `visible = true` and setting `scale = 0.0001` in `src/jugnu.ts`.
+  - `[x]` Pre-warmed energy source group (`energySourceGroup`) shaders in `src/onboardingSystem.ts` by initializing with `visible = true` and `scale = 0.0001`.
+  - `[x]` Replaced visibility toggles on `energySourceGroup` with `scale` updates (setting scale to `0.0001` when hidden, and scaling up to `0.2` when materializing).
+  - `[x]` Verified compilation safety (`npx tsc --noEmit`) and built client production bundle successfully (`npm run build`).
+

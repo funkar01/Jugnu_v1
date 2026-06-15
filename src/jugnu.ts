@@ -601,6 +601,499 @@ export class JugnuSystem extends createSystem({
       });
   }
 
+  private updateCompassUI(safeDt: number, instructionStep: number, activeJugnuPos: THREE.Vector3, activeJugnuModel: any) {
+    const isMapScaledMax = !!((window as any).minimapTableVisible && (window as any).minimapTableScale >= 2.0);
+    const isMinimapSpawned = !!(window as any).isMinimapSpawned;
+
+    if (this.compassGroup) {
+        if (this.isCompassOpen) {
+            this.compassGroup.scale.lerp(new THREE.Vector3(1.3, 1.3, 1.3), safeDt * 30.0);
+        } else {
+            this.compassGroup.scale.lerp(new THREE.Vector3(0, 0, 0), safeDt * 30.0);
+            if (this.compassGroup.scale.x < 0.01 && this.compassGroup.visible) {
+                this.compassGroup.visible = false;
+            }
+            this.isChatOpen = false;
+            this.isTutorialOpen = false;
+            this.isStadiumMenuOpen = false;
+            this.isDebugOpen = false;
+            this.lastOpenedTab = null;
+        }
+
+        if (this.compassGroup.visible && activeJugnuPos.lengthSq() > 0) {
+            // Check if active expression / mood color shifted, and animate transition
+            const currentMood = this.expressionList[this.currentExpressionIndex];
+            const targetColor = MoodColors[currentMood] || new THREE.Color(0xffffff);
+            const targetCompColor = MoodCompColors[currentMood] || new THREE.Color(0xffffff);
+
+            const dist1 = Math.pow(this.animatedMoodColor.r - targetColor.r, 2) +
+                          Math.pow(this.animatedMoodColor.g - targetColor.g, 2) +
+                          Math.pow(this.animatedMoodColor.b - targetColor.b, 2);
+            const dist2 = Math.pow(this.animatedCompColor.r - targetCompColor.r, 2) +
+                          Math.pow(this.animatedCompColor.g - targetCompColor.g, 2) +
+                          Math.pow(this.animatedCompColor.b - targetCompColor.b, 2);
+
+            let needsRedraw = (dist1 > 0.00001 || dist2 > 0.00001);
+            if (needsRedraw) {
+                this.animatedMoodColor.lerp(targetColor, safeDt * 5.0);
+                this.animatedCompColor.lerp(targetCompColor, safeDt * 5.0);
+            }
+
+            if (this.hoveredCellIndex !== -1) {
+                needsRedraw = true;
+            }
+
+            if (needsRedraw) {
+                this.redrawCompassGrid(this.hoveredCellIndex);
+            }
+
+            // Calculate dynamic 'userRight' vector based on player head perspective
+            this.player.head.getWorldPosition(this.headPos);
+            const forward = this.scratchV3_1.subVectors(activeJugnuPos, this.headPos);
+            forward.y = 0;
+            forward.normalize();
+            const userRight = this.scratchV3_2.crossVectors(forward, this.scratchV3_3.set(0, 1, 0)).normalize();
+
+            if (this.isGridLocked) {
+                if (!this.lockedCompassPos) {
+                    this.lockedCompassPos = new THREE.Vector3().copy(activeJugnuPos);
+                    this.lockedCompassPos.addScaledVector(userRight, 0.12);
+                    this.lockedCompassPos.y += 0.5 * activeJugnuModel!.scale.y; // Vertically center with Jugnu's body
+                }
+                this.compassGroup.position.copy(this.lockedCompassPos);
+            } else {
+                this.lockedCompassPos = null;
+                this.lockedCompassQuat = null;
+                this.compassGroup.position.copy(activeJugnuPos);
+                this.compassGroup.position.addScaledVector(userRight, 0.12);
+                this.compassGroup.position.y += 0.5 * activeJugnuModel!.scale.y; // Vertically center with Jugnu's body
+            }
+            this.compassGroup.lookAt(this.headPos);
+
+            if (this.compassNeedle) {
+                const worldNorth = this.scratchV3_1.set(0, 0, -1);
+                const localNorth = worldNorth.applyQuaternion(this.scratchQuat.copy(this.compassGroup.quaternion).invert());
+                const angle = Math.atan2(localNorth.x, localNorth.y);
+                this.compassNeedle.rotation.z = -angle;
+            }
+
+            if (this.compassRing) {
+                this.compassRing.rotation.z += safeDt * 0.5; // Slow diagnostic spin
+            }
+
+
+            // Query index finger positions at the top of the interaction block
+            const leftIndexTip = new THREE.Vector3();
+            const rightIndexTip = new THREE.Vector3();
+            const hasLeft = this.getIndexData('left', leftIndexTip);
+            const hasRight = this.getIndexData('right', rightIndexTip);
+
+            // Position targets for open tabs (shifted 50cm to the right: X = 0.71, centered vertically: Y = 0.0)
+            let targetTranscriptX = 0.0;
+            let targetTranscriptY = -0.02;
+            let targetTutorialX = 0.0;
+            let targetTutorialY = -0.02;
+            let targetStadiumMenuX = 0.0;
+            let targetStadiumMenuY = -0.02;
+            let targetDebugX = 0.0;
+            let targetDebugY = -0.02;
+
+            if (this.isChatOpen) {
+                targetTranscriptX = 0.0;
+                targetTranscriptY = 0.23;
+            }
+            if (this.isTutorialOpen) {
+                targetTutorialX = 0.0;
+                targetTutorialY = 0.23;
+            }
+            if (this.isDebugOpen) {
+                targetDebugX = 0.0;
+                targetDebugY = 0.23;
+            }
+            if (this.isStadiumMenuOpen) {
+                targetStadiumMenuX = 0.0;
+                targetStadiumMenuY = 0.0; // Curved Venue selector concentric with compass at center
+            }
+
+            // Smooth scaling & sliding transition for the Transcript card (slides vertically on the right side of the board)
+            if (this.compassChatCard) {
+                if (this.isChatOpen) {
+                    this.compassChatMat.opacity = THREE.MathUtils.lerp(this.compassChatMat.opacity, 0.95, safeDt * 30.0);
+                    this.compassChatCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
+                    this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, targetTranscriptX, safeDt * 30.0);
+                    this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, targetTranscriptY, safeDt * 30.0);
+                    this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassChatCard.rotation.x = THREE.MathUtils.lerp(this.compassChatCard.rotation.x, 0.3, safeDt * 30.0);
+                } else {
+                    this.compassChatMat.opacity = THREE.MathUtils.lerp(this.compassChatMat.opacity, 0.0, safeDt * 30.0);
+                    this.compassChatCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
+                    this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, 0.0, safeDt * 30.0);
+                    this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, -0.02, safeDt * 30.0);
+                    this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassChatCard.rotation.x = THREE.MathUtils.lerp(this.compassChatCard.rotation.x, 0.0, safeDt * 30.0);
+                }
+            }
+
+            // Smooth scaling & sliding transition for the Tutorial card (slides vertically on the right side of the board)
+            if (this.compassTutorialCard) {
+                if (this.isTutorialOpen) {
+                    this.compassTutorialMat.opacity = THREE.MathUtils.lerp(this.compassTutorialMat.opacity, 0.95, safeDt * 30.0);
+                    this.compassTutorialCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
+                    this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, targetTutorialX, safeDt * 30.0);
+                    this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, targetTutorialY, safeDt * 30.0);
+                    this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassTutorialCard.rotation.x = THREE.MathUtils.lerp(this.compassTutorialCard.rotation.x, 0.3, safeDt * 30.0);
+                    
+                    // Reactive dynamic update matching user instructionStep
+                    this.redrawCompassTutorial(instructionStep);
+                } else {
+                    this.compassTutorialMat.opacity = THREE.MathUtils.lerp(this.compassTutorialMat.opacity, 0.0, safeDt * 30.0);
+                    this.compassTutorialCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
+                    this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, 0.0, safeDt * 30.0);
+                    this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, -0.02, safeDt * 30.0);
+                    this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassTutorialCard.rotation.x = THREE.MathUtils.lerp(this.compassTutorialCard.rotation.x, 0.0, safeDt * 30.0);
+                }
+            }
+
+            // Smooth scaling & sliding transition for the Debug Console card (slides vertically on the right side of the board)
+            if (this.compassDebugCard) {
+                if (this.isDebugOpen) {
+                    this.compassDebugMat.opacity = THREE.MathUtils.lerp(this.compassDebugMat.opacity, 0.95, safeDt * 30.0);
+                    this.compassDebugCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
+                    this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, targetDebugX, safeDt * 30.0);
+                    this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, targetDebugY, safeDt * 30.0);
+                    this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassDebugCard.rotation.x = THREE.MathUtils.lerp(this.compassDebugCard.rotation.x, 0.3, safeDt * 30.0);
+                } else {
+                    this.compassDebugMat.opacity = THREE.MathUtils.lerp(this.compassDebugMat.opacity, 0.0, safeDt * 30.0);
+                    this.compassDebugCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
+                    this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, 0.0, safeDt * 30.0);
+                    this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, -0.02, safeDt * 30.0);
+                    this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 30.0);
+                    this.compassDebugCard.rotation.x = THREE.MathUtils.lerp(this.compassDebugCard.rotation.x, 0.0, safeDt * 30.0);
+                }
+            }
+
+            // Smooth scaling & sliding transition for the Stadium Selector card — sits at a distinct Z depth to prevent mistouch
+            if (this.compassStadiumCard) {
+                if (this.isStadiumMenuOpen) {
+                    this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.95, safeDt * 30.0);
+                    this.compassStadiumCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
+                    this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, targetStadiumMenuX, safeDt * 30.0);
+                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, targetStadiumMenuY, safeDt * 30.0);
+                    this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, 0.03, safeDt * 30.0);
+                } else {
+                    this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.0, safeDt * 30.0);
+                    this.compassStadiumCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
+                    this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, 0.0, safeDt * 30.0);
+                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, 0.0, safeDt * 30.0);
+                    this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 30.0);
+                }
+            }
+
+            let activeTip: THREE.Vector3 | null = null;
+            if (hasLeft && hasRight) {
+                const boardWorldPos = new THREE.Vector3();
+                this.compassBackingBoard.getWorldPosition(boardWorldPos);
+                activeTip = leftIndexTip.distanceTo(boardWorldPos) < rightIndexTip.distanceTo(boardWorldPos) ? leftIndexTip : rightIndexTip;
+            } else if (hasLeft) {
+                activeTip = leftIndexTip;
+            } else if (hasRight) {
+                activeTip = rightIndexTip;
+            }
+
+            let currentHoverIdx = -1;
+
+            if (activeTip) {
+                const localTip = this.scratchV3_1.copy(activeTip).applyMatrix4(this.scratchMatrix.copy(this.compassGroup.matrixWorld).invert());
+                const isWithinHoverZ = Math.abs(localTip.z) < 0.025;
+                const isWithinBoundsX = localTip.x > -0.075 && localTip.x < 0.075;
+                const isWithinBoundsY = localTip.y > -0.075 && localTip.y < 0.075;
+
+                if (isWithinHoverZ && isWithinBoundsX && isWithinBoundsY) {
+                    const d = Math.sqrt(localTip.x * localTip.x + localTip.y * localTip.y);
+                    if (d >= 0.032 && d <= 0.078) {
+                        // We are in the active spoke ring range
+                        // Align local coordinate system angle: local Y is UP, local X is RIGHT.
+                        // Canvas coordinates Y goes DOWN, so reflect Y: -localTip.y
+                        const angle = Math.atan2(-localTip.y, localTip.x);
+                        
+                        let bestIdx = -1;
+                        let minDiff = Infinity;
+                        for (let i = 0; i < JugnuSystem.SPOKES.length; i++) {
+                            let diff = Math.abs(angle - JugnuSystem.SPOKES[i].angle);
+                            if (diff > Math.PI) {
+                                diff = 2 * Math.PI - diff;
+                            }
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                bestIdx = i;
+                            }
+                        }
+                        
+                        currentHoverIdx = bestIdx;
+                    }
+                    
+                    const isPressed = Math.abs(localTip.z) < 0.014;
+
+                    if (isPressed && currentHoverIdx !== -1 && this.buttonCooldown <= 0.0) {
+                        this.buttonCooldown = 0.8;
+                        const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
+                        const source = this.input.getPrimaryInputSource(activeHand);
+                        if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
+                            source.gamepad.hapticActuators[0].pulse(0.8, 50);
+                        }
+                        this.activeCompassTileIndex = currentHoverIdx;
+                        this.handleCompassTileClick(currentHoverIdx);
+
+                        // Trigger click audio & sparks
+                        const spatialFX = (window as any).spatialFX;
+                        if (spatialFX) {
+                            spatialFX.playPositionalSound('click', activeTip);
+                            spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 10);
+                        }
+                    }
+                }
+            }
+
+            let hoveredStadiumOption = -1;
+            if (this.isStadiumMenuOpen && activeTip && this.compassStadiumCard) {
+                const cardLocalTip = this.scratchV3_1.copy(activeTip).applyMatrix4(this.scratchMatrix.copy(this.compassStadiumCard.matrixWorld).invert());
+                
+                // Concentric PlaneGeometry(0.30, 0.30): x±0.15, y±0.15
+                const isWithinCardHoverZ = cardLocalTip.z > -0.04 && cardLocalTip.z < 0.025;
+                const d = Math.sqrt(cardLocalTip.x * cardLocalTip.x + cardLocalTip.y * cardLocalTip.y);
+                const angle = Math.atan2(cardLocalTip.y, cardLocalTip.x); // Cartesian: top semi-circle has y > 0 -> angle in [0, Math.PI]
+
+                // Hover check: radial distance [0.08, 0.13] and top semi-circle
+                if (isWithinCardHoverZ && d >= 0.08 && d <= 0.13 && cardLocalTip.y > 0.0) {
+                    // Match closest venue angle (160°, 125°, 90°, 55°, 20°)
+                    const targetAngles = [
+                        160 * Math.PI / 180,
+                        125 * Math.PI / 180,
+                        Math.PI / 2,
+                        55 * Math.PI / 180,
+                        20 * Math.PI / 180
+                    ];
+                    let bestIdx = -1;
+                    let minDiff = Infinity;
+                    for (let i = 0; i < 5; i++) {
+                        const diff = Math.abs(angle - targetAngles[i]);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            bestIdx = i;
+                        }
+                    }
+                    if (minDiff < 0.26) { // ~15 degrees tolerance
+                        hoveredStadiumOption = bestIdx;
+                    }
+
+                    const isPressed = cardLocalTip.z > -0.04 && cardLocalTip.z < 0.014;
+                    if (isPressed && hoveredStadiumOption !== -1 && this.buttonCooldown <= 0.0) {
+                        this.buttonCooldown = 0.8;
+                        const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
+                        const source = this.input.getPrimaryInputSource(activeHand);
+                        if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
+                            source.gamepad.hapticActuators[0].pulse(0.85, 50);
+                        }
+
+                        const choices: ('default' | 'berlin' | 'inuit' | 'butterflies' | 'nurburgring')[] = ['default', 'berlin', 'inuit', 'butterflies', 'nurburgring'];
+                        this.selectedStadium = choices[hoveredStadiumOption];
+                        (window as any).selectedStadiumType = this.selectedStadium;
+                        console.log(`[StadiumSelector] Selected: ${this.selectedStadium}`);
+
+                        // Advance tutorial step 3 -> 4 when a stadium domain is selected/loaded
+                        this.queries.jugnu.entities.forEach(e => {
+                            if (e.getValue(Jugnu, "instructionStep") === 3) {
+                                e.setValue(Jugnu, "instructionStep", 4);
+                            }
+                        });
+
+                        // Trigger click audio & sparks
+                        const spatialFX = (window as any).spatialFX;
+                        if (spatialFX) {
+                            spatialFX.playPositionalSound('click', activeTip);
+                            spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 10);
+                        }
+                    }
+                }
+            }
+
+            if (this.isStadiumMenuOpen) {
+                this.redrawCompassStadiumMenu(hoveredStadiumOption);
+            }
+
+            let hoveredTutorialTab = -1;
+            if (this.isTutorialOpen && activeTip && this.compassTutorialCard) {
+                const cardLocalTip = this.scratchV3_1.copy(activeTip).applyMatrix4(this.scratchMatrix.copy(this.compassTutorialCard.matrixWorld).invert());
+                const isWithinCardHoverZ = Math.abs(cardLocalTip.z) < 0.025;
+                if (isWithinCardHoverZ) {
+                    for (let i = 0; i < this.tutorialTabs.length; i++) {
+                        const tab = this.tutorialTabs[i];
+                        const dx = Math.abs(cardLocalTip.x - tab.x);
+                        const dy = Math.abs(cardLocalTip.y - tab.y);
+                        if (dx < 0.07 && dy < 0.025) { // Tab size is 0.14 x 0.05
+                            hoveredTutorialTab = i;
+                            break;
+                        }
+                    }
+                }
+
+                // Query hand pinch for pointing & pinch selection gesture support
+                const leftTipTemp = new THREE.Vector3();
+                const rightTipTemp = new THREE.Vector3();
+                const isLeftPinching = this.getPinchData('left', leftTipTemp);
+                const isRightPinching = this.getPinchData('right', rightTipTemp);
+                const isPinching = (activeTip === leftIndexTip) ? isLeftPinching : isRightPinching;
+                const isPressed = (Math.abs(cardLocalTip.z) < 0.014) || (isPinching && Math.abs(cardLocalTip.z) < 0.035);
+
+                if (isPressed && hoveredTutorialTab !== -1 && this.buttonCooldown <= 0.0) {
+                    this.buttonCooldown = 0.8;
+                    const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
+                    const source = this.input.getPrimaryInputSource(activeHand);
+                    if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
+                        source.gamepad.hapticActuators[0].pulse(0.85, 50);
+                    }
+
+                    this.queries.jugnu.entities.forEach(entity => {
+                        entity.setValue(Jugnu, "instructionStep", hoveredTutorialTab);
+                    });
+                    instructionStep = hoveredTutorialTab;
+
+                    console.log(`[TutorialTab] Selected step: ${hoveredTutorialTab}`);
+
+                    const spatialFX = (window as any).spatialFX;
+                    if (spatialFX) {
+                        spatialFX.playPositionalSound('click', activeTip);
+                        spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 10);
+                    }
+                }
+            }
+
+            // Always update tab hover & selected visual states when tutorial is open
+            if (this.isTutorialOpen) {
+                this.tutorialTabs.forEach((tab, i) => {
+                    const isSelected = (instructionStep === i);
+                    const isHovered = (hoveredTutorialTab === i);
+                    this.redrawTutorialTabMesh(i, isHovered, isSelected);
+                });
+            }
+
+            // Play sparkle sound & micro sparks on hover change
+            if (currentHoverIdx !== this.hoveredCellIndex) {
+                this.hoveredCellIndex = currentHoverIdx;
+                this.redrawCompassGrid(currentHoverIdx);
+                if (currentHoverIdx !== -1) {
+                    const spatialFX = (window as any).spatialFX;
+                    if (spatialFX && activeTip) {
+                        spatialFX.playPositionalSound('sparkle', activeTip);
+                        spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 2);
+                    }
+                }
+            }
+
+            if (hoveredStadiumOption !== this.lastHoveredStadiumOption) {
+                this.lastHoveredStadiumOption = hoveredStadiumOption;
+                if (hoveredStadiumOption !== -1) {
+                    const spatialFX = (window as any).spatialFX;
+                    if (spatialFX && activeTip) {
+                        spatialFX.playPositionalSound('sparkle', activeTip);
+                        spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 2);
+                    }
+                }
+            }
+
+            // ─── Action Compass Update Subsystem ───
+            if (this.actionCompassGroup) {
+                const isMinimapSpawned = !!(window as any).isMinimapSpawned;
+                const isSportSeqActive = !!(window as any).isSportSequenceActive;
+                const showActionCompass = this.isCompassOpen && isMinimapSpawned && !isSportSeqActive;
+
+                if (showActionCompass) {
+                    if (!this.actionCompassGroup.visible) {
+                        this.actionCompassGroup.visible = true;
+                        this.actionCompassGroup.scale.setScalar(0.001);
+                    }
+                    this.actionCompassGroup.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 10.0);
+                    
+                    const targetActionX = 0.11;
+                    const targetActionY = this.isStadiumMenuOpen ? -0.16 : -0.06;
+                    this.actionCompassGroup.position.x = THREE.MathUtils.lerp(this.actionCompassGroup.position.x, targetActionX, safeDt * 15.0);
+                    this.actionCompassGroup.position.y = THREE.MathUtils.lerp(this.actionCompassGroup.position.y, targetActionY, safeDt * 15.0);
+                    
+                    let activeActionTip: THREE.Vector3 | null = null;
+                    if (hasLeft && hasRight) {
+                        const boardWorldPos = new THREE.Vector3();
+                        this.actionBackingBoard.getWorldPosition(boardWorldPos);
+                        activeActionTip = leftIndexTip.distanceTo(boardWorldPos) < rightIndexTip.distanceTo(boardWorldPos) ? leftIndexTip : rightIndexTip;
+                    } else if (hasLeft) {
+                        activeActionTip = leftIndexTip;
+                    } else if (hasRight) {
+                        activeActionTip = rightIndexTip;
+                    }
+
+                    let currentActionHoverIdx = -1;
+                    if (activeActionTip) {
+                        const localTip = this.scratchV3_1.copy(activeActionTip).applyMatrix4(this.scratchMatrix.copy(this.actionCompassGroup.matrixWorld).invert());
+                        const isWithinHoverZ = Math.abs(localTip.z) < 0.025;
+                        const isWithinBoundsX = localTip.x > -0.05 && localTip.x < 0.05;
+                        const isWithinBoundsY = localTip.y > -0.05 && localTip.y < 0.05;
+
+                        if (isWithinHoverZ && isWithinBoundsX && isWithinBoundsY) {
+                            const d = Math.sqrt(localTip.x * localTip.x + localTip.y * localTip.y);
+                            if (d >= 0.020 && d <= 0.052) {
+                                const angle = Math.atan2(-localTip.y, localTip.x);
+                                let bestIdx = -1;
+                                let minDiff = Infinity;
+                                for (let i = 0; i < JugnuSystem.ACTION_SPOKES.length; i++) {
+                                    let diff = Math.abs(angle - JugnuSystem.ACTION_SPOKES[i].angle);
+                                    if (diff > Math.PI) {
+                                        diff = 2 * Math.PI - diff;
+                                    }
+                                    if (diff < minDiff) {
+                                        minDiff = diff;
+                                        bestIdx = i;
+                                    }
+                                }
+                                currentActionHoverIdx = bestIdx;
+                            }
+
+                            const isPressed = Math.abs(localTip.z) < 0.012;
+                            if (isPressed && currentActionHoverIdx !== -1 && this.buttonCooldown <= 0.0) {
+                                this.buttonCooldown = 0.8;
+                                const spokeType = JugnuSystem.ACTION_SPOKES[currentActionHoverIdx].type;
+                                this.executeActionSpoke(spokeType, activeActionTip);
+                            }
+                        }
+                    }
+
+                    this.actionFloatTime += safeDt;
+                    if (currentActionHoverIdx !== this.actionHoveredSpokeIndex) {
+                        this.actionHoveredSpokeIndex = currentActionHoverIdx;
+                        this.redrawActionCompass(currentActionHoverIdx);
+                        if (currentActionHoverIdx !== -1 && activeActionTip) {
+                            const spatialFX = (window as any).spatialFX;
+                            if (spatialFX) {
+                                spatialFX.playPositionalSound('sparkle', activeActionTip);
+                                spatialFX.triggerSpark(activeActionTip, new THREE.Color(0x00ffff), 2);
+                            }
+                        }
+                    } else if (currentActionHoverIdx !== -1) {
+                        this.redrawActionCompass(currentActionHoverIdx);
+                    }
+                } else {
+                    this.actionCompassGroup.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 10.0);
+                    if (this.actionCompassGroup.scale.x < 0.01 && this.actionCompassGroup.visible) {
+                        this.actionCompassGroup.visible = false;
+                    }
+                    this.actionHoveredSpokeIndex = -1;
+                }
+            }
+        }
+    }
+  }
+
   private noise(t: number, seed: number): number {
     const t0 = Math.floor(t);
     const t1 = t0 + 1;
@@ -649,6 +1142,7 @@ export class JugnuSystem extends createSystem({
 
   update(dt: number) {
     this.floatTime += dt;
+    const safeDt = Math.min(dt, 0.03);
     
     // Room Loading Block
     const isOnboardingActive = (window as any).onboardingActive === true;
@@ -704,14 +1198,32 @@ export class JugnuSystem extends createSystem({
                 const onboardingState = (window as any).onboardingSystem?.state;
                 const isFormedPhase = onboardingState !== 'phase1' && onboardingState !== 'phase2';
                 if (!isFormedPhase) {
-                    this.queries.jugnu.entities.forEach(e => { if (e.object3D) e.object3D.visible = false; });
-                } else {
                     this.queries.jugnu.entities.forEach(e => {
-                        const jugModel = e.object3D as JugnuV3Model;
-                        if (jugModel && typeof jugModel.update === 'function') {
-                            jugModel.update(dt);
+                        if (e.object3D) {
+                            e.object3D.visible = true;
+                            e.object3D.scale.setScalar(0.0001); // Pre-warm: keep visible but microscopic
                         }
                     });
+                } else {
+                    let activeJugModel: any = null;
+                    let activeJugPos = new THREE.Vector3();
+                    let step = 0;
+                    this.queries.jugnu.entities.forEach(e => {
+                        step = e.getValue(Jugnu, "instructionStep") as number;
+                        const jugModel = e.object3D as JugnuV3Model;
+                        if (jugModel) {
+                            activeJugModel = jugModel;
+                            activeJugPos.copy(jugModel.position);
+                            if (typeof jugModel.update === 'function') {
+                                jugModel.update(dt);
+                            }
+                        }
+                    });
+                    
+                    // Run compass UI update loop even during onboarding
+                    if (this.compassGroup && activeJugModel) {
+                        this.updateCompassUI(safeDt, step, activeJugPos, activeJugModel);
+                    }
                 }
                 return; 
             }
@@ -722,7 +1234,7 @@ export class JugnuSystem extends createSystem({
       this.interactDecay -= dt;
     }
 
-    const safeDt = Math.min(dt, 0.03);
+    // safeDt declared at top of update loop
 
     // --- Pinch State Machine ---
     let isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
@@ -1475,492 +1987,8 @@ export class JugnuSystem extends createSystem({
         }
     }
 
-    if (this.compassGroup) {
-        if (this.isCompassOpen) {
-            this.compassGroup.scale.lerp(new THREE.Vector3(1.3, 1.3, 1.3), safeDt * 30.0);
-        } else {
-            this.compassGroup.scale.lerp(new THREE.Vector3(0, 0, 0), safeDt * 30.0);
-            if (this.compassGroup.scale.x < 0.01 && this.compassGroup.visible) {
-                this.compassGroup.visible = false;
-            }
-            this.isChatOpen = false;
-            this.isTutorialOpen = false;
-            this.isStadiumMenuOpen = false;
-            this.isDebugOpen = false;
-            this.lastOpenedTab = null;
-        }
-
-        if (this.compassGroup.visible && activeJugnuPos.lengthSq() > 0) {
-            // Check if active expression / mood color shifted, and animate transition
-            const currentMood = this.expressionList[this.currentExpressionIndex];
-            const targetColor = MoodColors[currentMood] || new THREE.Color(0xffffff);
-            const targetCompColor = MoodCompColors[currentMood] || new THREE.Color(0xffffff);
-
-            const dist1 = Math.pow(this.animatedMoodColor.r - targetColor.r, 2) +
-                          Math.pow(this.animatedMoodColor.g - targetColor.g, 2) +
-                          Math.pow(this.animatedMoodColor.b - targetColor.b, 2);
-            const dist2 = Math.pow(this.animatedCompColor.r - targetCompColor.r, 2) +
-                          Math.pow(this.animatedCompColor.g - targetCompColor.g, 2) +
-                          Math.pow(this.animatedCompColor.b - targetCompColor.b, 2);
-
-            let needsRedraw = (dist1 > 0.00001 || dist2 > 0.00001);
-            if (needsRedraw) {
-                this.animatedMoodColor.lerp(targetColor, safeDt * 5.0);
-                this.animatedCompColor.lerp(targetCompColor, safeDt * 5.0);
-            }
-
-            if (this.hoveredCellIndex !== -1) {
-                needsRedraw = true;
-            }
-
-            if (needsRedraw) {
-                this.redrawCompassGrid(this.hoveredCellIndex);
-            }
-
-            // Calculate dynamic 'userRight' vector based on player head perspective
-            this.player.head.getWorldPosition(this.headPos);
-            const forward = this.scratchV3_1.subVectors(activeJugnuPos, this.headPos);
-            forward.y = 0;
-            forward.normalize();
-            const userRight = this.scratchV3_2.crossVectors(forward, this.scratchV3_3.set(0, 1, 0)).normalize();
-
-            if (this.isGridLocked) {
-                if (!this.lockedCompassPos) {
-                    this.lockedCompassPos = new THREE.Vector3().copy(activeJugnuPos);
-                    this.lockedCompassPos.addScaledVector(userRight, 0.12);
-                    this.lockedCompassPos.y += 0.5 * activeJugnuModel!.scale.y; // Vertically center with Jugnu's body
-                }
-                this.compassGroup.position.copy(this.lockedCompassPos);
-            } else {
-                this.lockedCompassPos = null;
-                this.lockedCompassQuat = null;
-                this.compassGroup.position.copy(activeJugnuPos);
-                this.compassGroup.position.addScaledVector(userRight, 0.12);
-                this.compassGroup.position.y += 0.5 * activeJugnuModel!.scale.y; // Vertically center with Jugnu's body
-            }
-            this.compassGroup.lookAt(this.headPos);
-
-            if (this.compassNeedle) {
-                const worldNorth = this.scratchV3_1.set(0, 0, -1);
-                const localNorth = worldNorth.applyQuaternion(this.scratchQuat.copy(this.compassGroup.quaternion).invert());
-                const angle = Math.atan2(localNorth.x, localNorth.y);
-                this.compassNeedle.rotation.z = -angle;
-            }
-
-            if (this.compassRing) {
-                this.compassRing.rotation.z += safeDt * 0.5; // Slow diagnostic spin
-            }
-
-
-            // Query index finger positions at the top of the interaction block
-            const leftIndexTip = new THREE.Vector3();
-            const rightIndexTip = new THREE.Vector3();
-            const hasLeft = this.getIndexData('left', leftIndexTip);
-            const hasRight = this.getIndexData('right', rightIndexTip);
-
-            // Position targets for open tabs (shifted 50cm to the right: X = 0.71, centered vertically: Y = 0.0)
-            let targetTranscriptX = 0.0;
-            let targetTranscriptY = -0.02;
-            let targetTutorialX = 0.0;
-            let targetTutorialY = -0.02;
-            let targetStadiumMenuX = 0.0;
-            let targetStadiumMenuY = -0.02;
-            let targetDebugX = 0.0;
-            let targetDebugY = -0.02;
-
-            if (this.isChatOpen) {
-                targetTranscriptX = 0.0;
-                targetTranscriptY = 0.23;
-            }
-            if (this.isTutorialOpen) {
-                targetTutorialX = 0.0;
-                targetTutorialY = 0.23;
-            }
-            if (this.isDebugOpen) {
-                targetDebugX = 0.0;
-                targetDebugY = 0.23;
-            }
-            if (this.isStadiumMenuOpen) {
-                targetStadiumMenuX = 0.0;
-                targetStadiumMenuY = 0.0; // Curved Venue selector concentric with compass at center
-            }
-
-            // Smooth scaling & sliding transition for the Transcript card (slides vertically on the right side of the board)
-            if (this.compassChatCard) {
-                if (this.isChatOpen) {
-                    this.compassChatMat.opacity = THREE.MathUtils.lerp(this.compassChatMat.opacity, 0.95, safeDt * 30.0);
-                    this.compassChatCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
-                    this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, targetTranscriptX, safeDt * 30.0);
-                    this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, targetTranscriptY, safeDt * 30.0);
-                    this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 30.0);
-                    this.compassChatCard.rotation.x = THREE.MathUtils.lerp(this.compassChatCard.rotation.x, 0.3, safeDt * 30.0);
-                } else {
-                    this.compassChatMat.opacity = THREE.MathUtils.lerp(this.compassChatMat.opacity, 0.0, safeDt * 30.0);
-                    this.compassChatCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
-                    this.compassChatCard.position.x = THREE.MathUtils.lerp(this.compassChatCard.position.x, 0.0, safeDt * 30.0);
-                    this.compassChatCard.position.y = THREE.MathUtils.lerp(this.compassChatCard.position.y, -0.02, safeDt * 30.0);
-                    this.compassChatCard.position.z = THREE.MathUtils.lerp(this.compassChatCard.position.z, -0.01, safeDt * 30.0);
-                    this.compassChatCard.rotation.x = THREE.MathUtils.lerp(this.compassChatCard.rotation.x, 0.0, safeDt * 30.0);
-                }
-            }
-
-            // Smooth scaling & sliding transition for the Tutorial card (slides vertically on the right side of the board)
-            if (this.compassTutorialCard) {
-                if (this.isTutorialOpen) {
-                    this.compassTutorialMat.opacity = THREE.MathUtils.lerp(this.compassTutorialMat.opacity, 0.95, safeDt * 30.0);
-                    this.compassTutorialCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
-                    this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, targetTutorialX, safeDt * 30.0);
-                    this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, targetTutorialY, safeDt * 30.0);
-                    this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 30.0);
-                    this.compassTutorialCard.rotation.x = THREE.MathUtils.lerp(this.compassTutorialCard.rotation.x, 0.3, safeDt * 30.0);
-                    
-                    // Reactive dynamic update matching user instructionStep
-                    this.redrawCompassTutorial(instructionStep);
-                } else {
-                    this.compassTutorialMat.opacity = THREE.MathUtils.lerp(this.compassTutorialMat.opacity, 0.0, safeDt * 30.0);
-                    this.compassTutorialCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
-                    this.compassTutorialCard.position.x = THREE.MathUtils.lerp(this.compassTutorialCard.position.x, 0.0, safeDt * 30.0);
-                    this.compassTutorialCard.position.y = THREE.MathUtils.lerp(this.compassTutorialCard.position.y, -0.02, safeDt * 30.0);
-                    this.compassTutorialCard.position.z = THREE.MathUtils.lerp(this.compassTutorialCard.position.z, -0.01, safeDt * 30.0);
-                    this.compassTutorialCard.rotation.x = THREE.MathUtils.lerp(this.compassTutorialCard.rotation.x, 0.0, safeDt * 30.0);
-                }
-            }
-
-            // Smooth scaling & sliding transition for the Debug Console card (slides vertically on the right side of the board)
-            if (this.compassDebugCard) {
-                if (this.isDebugOpen) {
-                    this.compassDebugMat.opacity = THREE.MathUtils.lerp(this.compassDebugMat.opacity, 0.95, safeDt * 30.0);
-                    this.compassDebugCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
-                    this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, targetDebugX, safeDt * 30.0);
-                    this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, targetDebugY, safeDt * 30.0);
-                    this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 30.0);
-                    this.compassDebugCard.rotation.x = THREE.MathUtils.lerp(this.compassDebugCard.rotation.x, 0.3, safeDt * 30.0);
-                } else {
-                    this.compassDebugMat.opacity = THREE.MathUtils.lerp(this.compassDebugMat.opacity, 0.0, safeDt * 30.0);
-                    this.compassDebugCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
-                    this.compassDebugCard.position.x = THREE.MathUtils.lerp(this.compassDebugCard.position.x, 0.0, safeDt * 30.0);
-                    this.compassDebugCard.position.y = THREE.MathUtils.lerp(this.compassDebugCard.position.y, -0.02, safeDt * 30.0);
-                    this.compassDebugCard.position.z = THREE.MathUtils.lerp(this.compassDebugCard.position.z, -0.01, safeDt * 30.0);
-                    this.compassDebugCard.rotation.x = THREE.MathUtils.lerp(this.compassDebugCard.rotation.x, 0.0, safeDt * 30.0);
-                }
-            }
-
-            // Smooth scaling & sliding transition for the Stadium Selector card — sits at a distinct Z depth to prevent mistouch
-            if (this.compassStadiumCard) {
-                if (this.isStadiumMenuOpen) {
-                    this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.95, safeDt * 30.0);
-                    this.compassStadiumCard.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 30.0);
-                    this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, targetStadiumMenuX, safeDt * 30.0);
-                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, targetStadiumMenuY, safeDt * 30.0);
-                    this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, 0.03, safeDt * 30.0);
-                } else {
-                    this.compassStadiumMat.opacity = THREE.MathUtils.lerp(this.compassStadiumMat.opacity, 0.0, safeDt * 30.0);
-                    this.compassStadiumCard.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 30.0);
-                    this.compassStadiumCard.position.x = THREE.MathUtils.lerp(this.compassStadiumCard.position.x, 0.0, safeDt * 30.0);
-                    this.compassStadiumCard.position.y = THREE.MathUtils.lerp(this.compassStadiumCard.position.y, 0.0, safeDt * 30.0);
-                    this.compassStadiumCard.position.z = THREE.MathUtils.lerp(this.compassStadiumCard.position.z, -0.01, safeDt * 30.0);
-                }
-            }
-
-            let activeTip: THREE.Vector3 | null = null;
-            if (hasLeft && hasRight) {
-                const boardWorldPos = new THREE.Vector3();
-                this.compassBackingBoard.getWorldPosition(boardWorldPos);
-                activeTip = leftIndexTip.distanceTo(boardWorldPos) < rightIndexTip.distanceTo(boardWorldPos) ? leftIndexTip : rightIndexTip;
-            } else if (hasLeft) {
-                activeTip = leftIndexTip;
-            } else if (hasRight) {
-                activeTip = rightIndexTip;
-            }
-
-            let currentHoverIdx = -1;
-
-            if (activeTip) {
-                const localTip = this.scratchV3_1.copy(activeTip).applyMatrix4(this.scratchMatrix.copy(this.compassGroup.matrixWorld).invert());
-                const isWithinHoverZ = Math.abs(localTip.z) < 0.025;
-                const isWithinBoundsX = localTip.x > -0.075 && localTip.x < 0.075;
-                const isWithinBoundsY = localTip.y > -0.075 && localTip.y < 0.075;
-
-                if (isWithinHoverZ && isWithinBoundsX && isWithinBoundsY) {
-                    const d = Math.sqrt(localTip.x * localTip.x + localTip.y * localTip.y);
-                    if (d >= 0.032 && d <= 0.078) {
-                        // We are in the active spoke ring range
-                        // Align local coordinate system angle: local Y is UP, local X is RIGHT.
-                        // Canvas coordinates Y goes DOWN, so reflect Y: -localTip.y
-                        const angle = Math.atan2(-localTip.y, localTip.x);
-                        
-                        let bestIdx = -1;
-                        let minDiff = Infinity;
-                        for (let i = 0; i < JugnuSystem.SPOKES.length; i++) {
-                            let diff = Math.abs(angle - JugnuSystem.SPOKES[i].angle);
-                            if (diff > Math.PI) {
-                                diff = 2 * Math.PI - diff;
-                            }
-                            if (diff < minDiff) {
-                                minDiff = diff;
-                                bestIdx = i;
-                            }
-                        }
-                        
-                        currentHoverIdx = bestIdx;
-                    }
-                    
-                    const isPressed = Math.abs(localTip.z) < 0.014;
-
-                    if (isPressed && currentHoverIdx !== -1 && this.buttonCooldown <= 0.0) {
-                        this.buttonCooldown = 0.8;
-                        const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
-                        const source = this.input.getPrimaryInputSource(activeHand);
-                        if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
-                            source.gamepad.hapticActuators[0].pulse(0.8, 50);
-                        }
-                        this.activeCompassTileIndex = currentHoverIdx;
-                        this.handleCompassTileClick(currentHoverIdx);
-
-                        // Trigger click audio & sparks
-                        const spatialFX = (window as any).spatialFX;
-                        if (spatialFX) {
-                            spatialFX.playPositionalSound('click', activeTip);
-                            spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 10);
-                        }
-                    }
-                }
-            }
-
-            let hoveredStadiumOption = -1;
-            if (this.isStadiumMenuOpen && activeTip && this.compassStadiumCard) {
-                const cardLocalTip = this.scratchV3_1.copy(activeTip).applyMatrix4(this.scratchMatrix.copy(this.compassStadiumCard.matrixWorld).invert());
-                
-                // Concentric PlaneGeometry(0.30, 0.30): x±0.15, y±0.15
-                const isWithinCardHoverZ = cardLocalTip.z > -0.04 && cardLocalTip.z < 0.025;
-                const d = Math.sqrt(cardLocalTip.x * cardLocalTip.x + cardLocalTip.y * cardLocalTip.y);
-                const angle = Math.atan2(cardLocalTip.y, cardLocalTip.x); // Cartesian: top semi-circle has y > 0 -> angle in [0, Math.PI]
-
-                // Hover check: radial distance [0.08, 0.13] and top semi-circle
-                if (isWithinCardHoverZ && d >= 0.08 && d <= 0.13 && cardLocalTip.y > 0.0) {
-                    // Match closest venue angle (160°, 125°, 90°, 55°, 20°)
-                    const targetAngles = [
-                        160 * Math.PI / 180,
-                        125 * Math.PI / 180,
-                        Math.PI / 2,
-                        55 * Math.PI / 180,
-                        20 * Math.PI / 180
-                    ];
-                    let bestIdx = -1;
-                    let minDiff = Infinity;
-                    for (let i = 0; i < 5; i++) {
-                        const diff = Math.abs(angle - targetAngles[i]);
-                        if (diff < minDiff) {
-                            minDiff = diff;
-                            bestIdx = i;
-                        }
-                    }
-                    if (minDiff < 0.26) { // ~15 degrees tolerance
-                        hoveredStadiumOption = bestIdx;
-                    }
-
-                    const isPressed = cardLocalTip.z > -0.04 && cardLocalTip.z < 0.014;
-                    if (isPressed && hoveredStadiumOption !== -1 && this.buttonCooldown <= 0.0) {
-                        this.buttonCooldown = 0.8;
-                        const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
-                        const source = this.input.getPrimaryInputSource(activeHand);
-                        if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
-                            source.gamepad.hapticActuators[0].pulse(0.85, 50);
-                        }
-
-                        const choices: ('default' | 'berlin' | 'inuit' | 'butterflies' | 'nurburgring')[] = ['default', 'berlin', 'inuit', 'butterflies', 'nurburgring'];
-                        this.selectedStadium = choices[hoveredStadiumOption];
-                        (window as any).selectedStadiumType = this.selectedStadium;
-                        console.log(`[StadiumSelector] Selected: ${this.selectedStadium}`);
-
-                        // Advance tutorial step 3 -> 4 when a stadium domain is selected/loaded
-                        this.queries.jugnu.entities.forEach(e => {
-                            if (e.getValue(Jugnu, "instructionStep") === 3) {
-                                e.setValue(Jugnu, "instructionStep", 4);
-                            }
-                        });
-
-                        // Trigger click audio & sparks
-                        const spatialFX = (window as any).spatialFX;
-                        if (spatialFX) {
-                            spatialFX.playPositionalSound('click', activeTip);
-                            spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 10);
-                        }
-                    }
-                }
-            }
-
-            if (this.isStadiumMenuOpen) {
-                this.redrawCompassStadiumMenu(hoveredStadiumOption);
-            }
-
-            let hoveredTutorialTab = -1;
-            if (this.isTutorialOpen && activeTip && this.compassTutorialCard) {
-                const cardLocalTip = this.scratchV3_1.copy(activeTip).applyMatrix4(this.scratchMatrix.copy(this.compassTutorialCard.matrixWorld).invert());
-                const isWithinCardHoverZ = Math.abs(cardLocalTip.z) < 0.025;
-                if (isWithinCardHoverZ) {
-                    for (let i = 0; i < this.tutorialTabs.length; i++) {
-                        const tab = this.tutorialTabs[i];
-                        const dx = Math.abs(cardLocalTip.x - tab.x);
-                        const dy = Math.abs(cardLocalTip.y - tab.y);
-                        if (dx < 0.07 && dy < 0.025) { // Tab size is 0.14 x 0.05
-                            hoveredTutorialTab = i;
-                            break;
-                        }
-                    }
-                }
-
-                // Query hand pinch for pointing & pinch selection gesture support
-                const leftTipTemp = new THREE.Vector3();
-                const rightTipTemp = new THREE.Vector3();
-                const isLeftPinching = this.getPinchData('left', leftTipTemp);
-                const isRightPinching = this.getPinchData('right', rightTipTemp);
-                const isPinching = (activeTip === leftIndexTip) ? isLeftPinching : isRightPinching;
-                const isPressed = (Math.abs(cardLocalTip.z) < 0.014) || (isPinching && Math.abs(cardLocalTip.z) < 0.035);
-
-                if (isPressed && hoveredTutorialTab !== -1 && this.buttonCooldown <= 0.0) {
-                    this.buttonCooldown = 0.8;
-                    const activeHand = activeTip === leftIndexTip ? 'left' : 'right';
-                    const source = this.input.getPrimaryInputSource(activeHand);
-                    if (source && source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators[0]) {
-                        source.gamepad.hapticActuators[0].pulse(0.85, 50);
-                    }
-
-                    this.queries.jugnu.entities.forEach(entity => {
-                        entity.setValue(Jugnu, "instructionStep", hoveredTutorialTab);
-                    });
-                    instructionStep = hoveredTutorialTab;
-
-                    console.log(`[TutorialTab] Selected step: ${hoveredTutorialTab}`);
-
-                    const spatialFX = (window as any).spatialFX;
-                    if (spatialFX) {
-                        spatialFX.playPositionalSound('click', activeTip);
-                        spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 10);
-                    }
-                }
-            }
-
-            // Always update tab hover & selected visual states when tutorial is open
-            if (this.isTutorialOpen) {
-                this.tutorialTabs.forEach((tab, i) => {
-                    const isSelected = (instructionStep === i);
-                    const isHovered = (hoveredTutorialTab === i);
-                    this.redrawTutorialTabMesh(i, isHovered, isSelected);
-                });
-            }
-
-            // Play sparkle sound & micro sparks on hover change
-            if (currentHoverIdx !== this.hoveredCellIndex) {
-                this.hoveredCellIndex = currentHoverIdx;
-                this.redrawCompassGrid(currentHoverIdx);
-                if (currentHoverIdx !== -1) {
-                    const spatialFX = (window as any).spatialFX;
-                    if (spatialFX && activeTip) {
-                        spatialFX.playPositionalSound('sparkle', activeTip);
-                        spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 2);
-                    }
-                }
-            }
-
-            if (hoveredStadiumOption !== this.lastHoveredStadiumOption) {
-                this.lastHoveredStadiumOption = hoveredStadiumOption;
-                if (hoveredStadiumOption !== -1) {
-                    const spatialFX = (window as any).spatialFX;
-                    if (spatialFX && activeTip) {
-                        spatialFX.playPositionalSound('sparkle', activeTip);
-                        spatialFX.triggerSpark(activeTip, new THREE.Color(0x00ffcc), 2);
-                    }
-                }
-            }
-
-            // ─── Action Compass Update Subsystem ───
-            if (this.actionCompassGroup) {
-                const isMinimapSpawned = !!(window as any).isMinimapSpawned;
-                const isSportSeqActive = !!(window as any).isSportSequenceActive;
-                const showActionCompass = this.isCompassOpen && isMinimapSpawned && !isSportSeqActive;
-
-                if (showActionCompass) {
-                    if (!this.actionCompassGroup.visible) {
-                        this.actionCompassGroup.visible = true;
-                        this.actionCompassGroup.scale.setScalar(0.001);
-                    }
-                    this.actionCompassGroup.scale.lerp(new THREE.Vector3(1, 1, 1), safeDt * 10.0);
-                    
-                    const targetActionX = 0.11;
-                    const targetActionY = this.isStadiumMenuOpen ? -0.16 : -0.06;
-                    this.actionCompassGroup.position.x = THREE.MathUtils.lerp(this.actionCompassGroup.position.x, targetActionX, safeDt * 15.0);
-                    this.actionCompassGroup.position.y = THREE.MathUtils.lerp(this.actionCompassGroup.position.y, targetActionY, safeDt * 15.0);
-                    
-                    let activeActionTip: THREE.Vector3 | null = null;
-                    if (hasLeft && hasRight) {
-                        const boardWorldPos = new THREE.Vector3();
-                        this.actionBackingBoard.getWorldPosition(boardWorldPos);
-                        activeActionTip = leftIndexTip.distanceTo(boardWorldPos) < rightIndexTip.distanceTo(boardWorldPos) ? leftIndexTip : rightIndexTip;
-                    } else if (hasLeft) {
-                        activeActionTip = leftIndexTip;
-                    } else if (hasRight) {
-                        activeActionTip = rightIndexTip;
-                    }
-
-                    let currentActionHoverIdx = -1;
-                    if (activeActionTip) {
-                        const localTip = this.scratchV3_1.copy(activeActionTip).applyMatrix4(this.scratchMatrix.copy(this.actionCompassGroup.matrixWorld).invert());
-                        const isWithinHoverZ = Math.abs(localTip.z) < 0.025;
-                        const isWithinBoundsX = localTip.x > -0.05 && localTip.x < 0.05;
-                        const isWithinBoundsY = localTip.y > -0.05 && localTip.y < 0.05;
-
-                        if (isWithinHoverZ && isWithinBoundsX && isWithinBoundsY) {
-                            const d = Math.sqrt(localTip.x * localTip.x + localTip.y * localTip.y);
-                            if (d >= 0.020 && d <= 0.052) {
-                                const angle = Math.atan2(-localTip.y, localTip.x);
-                                let bestIdx = -1;
-                                let minDiff = Infinity;
-                                for (let i = 0; i < JugnuSystem.ACTION_SPOKES.length; i++) {
-                                    let diff = Math.abs(angle - JugnuSystem.ACTION_SPOKES[i].angle);
-                                    if (diff > Math.PI) {
-                                        diff = 2 * Math.PI - diff;
-                                    }
-                                    if (diff < minDiff) {
-                                        minDiff = diff;
-                                        bestIdx = i;
-                                    }
-                                }
-                                currentActionHoverIdx = bestIdx;
-                            }
-
-                            const isPressed = Math.abs(localTip.z) < 0.012;
-                            if (isPressed && currentActionHoverIdx !== -1 && this.buttonCooldown <= 0.0) {
-                                this.buttonCooldown = 0.8;
-                                const spokeType = JugnuSystem.ACTION_SPOKES[currentActionHoverIdx].type;
-                                this.executeActionSpoke(spokeType, activeActionTip);
-                            }
-                        }
-                    }
-
-                    this.actionFloatTime += safeDt;
-                    if (currentActionHoverIdx !== this.actionHoveredSpokeIndex) {
-                        this.actionHoveredSpokeIndex = currentActionHoverIdx;
-                        this.redrawActionCompass(currentActionHoverIdx);
-                        if (currentActionHoverIdx !== -1 && activeActionTip) {
-                            const spatialFX = (window as any).spatialFX;
-                            if (spatialFX) {
-                                spatialFX.playPositionalSound('sparkle', activeActionTip);
-                                spatialFX.triggerSpark(activeActionTip, new THREE.Color(0x00ffff), 2);
-                            }
-                        }
-                    } else if (currentActionHoverIdx !== -1) {
-                        this.redrawActionCompass(currentActionHoverIdx);
-                    }
-                } else {
-                    this.actionCompassGroup.scale.lerp(new THREE.Vector3(0.001, 0.001, 0.001), safeDt * 10.0);
-                    if (this.actionCompassGroup.scale.x < 0.01 && this.actionCompassGroup.visible) {
-                        this.actionCompassGroup.visible = false;
-                    }
-                    this.actionHoveredSpokeIndex = -1;
-                }
-            }
-        }
+    if (this.compassGroup && activeJugnuModel) {
+        this.updateCompassUI(safeDt, instructionStep, activeJugnuPos, activeJugnuModel);
     }
     
     this.updateLeftHandTutorialThread(safeDt);

@@ -240,7 +240,8 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         // Create the energy source group (glassy star shell + glowing core) for Phase 2 -> Phase 3 transition
         this.energySourceGroup = new THREE.Group();
         this.energySourceGroup.position.set(0, 1.45, -0.8);
-        this.energySourceGroup.visible = false;
+        this.energySourceGroup.visible = true;
+        this.energySourceGroup.scale.setScalar(0.0001); // Pre-warm: keep visible but microscopic
         
         // 1. Glowing Core Sphere
         const coreGeo = new THREE.SphereGeometry(0.045, 32, 32);
@@ -778,7 +779,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                 console.log("[OnboardingSystem] Transitioning to Phase 3: Ignition & Formation...");
                 this.state = 'revealing';
                 
-                this.energySourceGroup.visible = false;
+                this.energySourceGroup.scale.setScalar(0.0001); // Keep compiled but microscopic
                 
                 // Keep embersMesh visible to perform the supernova expansion explosion and fade-out
                 // this.embersMesh.visible = false;
@@ -961,8 +962,13 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                 const isKeyboard = this.keysPressed['p'] === true;
                 
                 let isPinchingNearJugnu = false;
-                if (leftPinch && (isController || isKeyboard || leftTip.distanceTo(jugModel.position) < 0.25)) {
-                    isPinchingNearJugnu = true;
+                if (leftPinch) {
+                    if (this.pinchHoldTimer > 0.0) {
+                        // Already grabbed: bypass strict proximity check to handle hand movements and lerp lag smoothly
+                        isPinchingNearJugnu = true;
+                    } else if (isController || isKeyboard || leftTip.distanceTo(jugModel.position) < 0.25) {
+                        isPinchingNearJugnu = true;
+                    }
                 }
                 
                 if (isPinchingNearJugnu) {
@@ -1071,10 +1077,10 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                     (coreMesh.material as THREE.MeshBasicMaterial).opacity = 0.5 + 0.4 * materializationRatio;
                 }
             } else {
-                this.energySourceGroup.visible = false;
+                this.energySourceGroup.scale.setScalar(0.0001); // Keep compiled but microscopic
             }
         } else if (this.state === 'revealing') {
-            this.energySourceGroup.visible = false;
+            this.energySourceGroup.scale.setScalar(0.0001); // Keep compiled but microscopic
             const revealTime = this.onboardingTime - (this.activeDuration + this.gatheringDuration);
             
             // Underdamped spring jelly bounce scale animation
