@@ -327,6 +327,9 @@ export class DomainExpansionSystem extends createSystem({
     private nurburgringOvertakePhase = 0.0;
     private nurburgringF1Speed = 0.052;
     private nurburgringTrackMat!: THREE.MeshBasicMaterial;
+    private monacoRoadMesh: THREE.Group | null = null;
+    private carRaycaster = new THREE.Raycaster();
+    private carRayDirection = new THREE.Vector3(0, -1, 0);
     private f1Markers: THREE.Mesh[] = [];
 
     // --- F1 Live Roster and Spawning Player Cards ---
@@ -2079,6 +2082,7 @@ export class DomainExpansionSystem extends createSystem({
 
         // --- Update Nürburgring in the Minimap ---
         if (this.currentStadiumType === 'nurburgring' && this.nurburgringGroup && this.tableGroup.visible) {
+            this.nurburgringGroup.updateMatrixWorld(true);
 
             // Update base race progress (75s Monaco lap time)
             const isImmersive = this.currentTableScale >= 2.5;
@@ -2198,6 +2202,25 @@ export class DomainExpansionSystem extends createSystem({
 
                 // Apply lateral lane offsets to positions
                 this.f1Pos.addScaledVector(this.f1xAxis, lateralOffset);
+
+                // Project car Y position onto the loaded MonacoRoad mesh if available
+                if (this.monacoRoadMesh) {
+                    // Convert local position to world position for raycasting
+                    // We start the raycast from 10cm above the track surface to ensure it always intersects from above
+                    const raycastOrigin = this.scratchVector3.set(this.f1Pos.x, 0.1, this.f1Pos.z);
+                    this.nurburgringGroup!.localToWorld(raycastOrigin);
+
+                    this.carRaycaster.set(raycastOrigin, this.carRayDirection);
+                    const intersects = this.carRaycaster.intersectObject(this.monacoRoadMesh, true);
+                    if (intersects.length > 0) {
+                        const hitPoint = intersects[0].point;
+                        this.nurburgringGroup!.worldToLocal(hitPoint);
+                        this.f1Pos.y = hitPoint.y;
+                    } else {
+                        // Fallback to average flat road level
+                        this.f1Pos.y = 0.0005;
+                    }
+                }
 
                 // Set car position and scale-adjusted height (using 0.64 scale factor)
                 car.group.position.copy(this.f1Pos);
@@ -8559,31 +8582,238 @@ export class DomainExpansionSystem extends createSystem({
         this.nurburgringGroup.add(border);
 
         // 4. Closed winding 3D Spline representing Monaco GP with topography elevations
-        const points = [
-            new THREE.Vector3(-0.065, 0.005, -0.085), // Turn 1 (01 - Sainte Devote)
-            new THREE.Vector3(-0.010, 0.010, -0.070), // Beau Rivage (02)
-            new THREE.Vector3( 0.050, 0.015, -0.042), // Massenet (03)
-            new THREE.Vector3( 0.085, 0.013, -0.048), // Casino Square (04)
-            new THREE.Vector3( 0.125, 0.008, -0.018), // Mirabeau Haute (05)
-            new THREE.Vector3( 0.078, 0.0045, 0.008), // Grand Hotel Hairpin (06)
-            new THREE.Vector3( 0.105, 0.0035, 0.022), // Mirabeau Bas (07)
-            new THREE.Vector3( 0.130, 0.003,  0.046), // Portier (08)
-            new THREE.Vector3( 0.090, 0.003,  0.082), // Tunnel entry (09)
-            new THREE.Vector3( 0.000, 0.003,  0.105), // Tunnel mid / Speed Trap
-            new THREE.Vector3(-0.050, 0.003,  0.095), // Tunnel exit
-            new THREE.Vector3(-0.082, 0.003,  0.074), // Nouvelle Chicane Left (10)
-            new THREE.Vector3(-0.074, 0.003,  0.066), // Nouvelle Chicane Right (11)
-            new THREE.Vector3(-0.100, 0.003,  0.042), // Tabac (12)
-            new THREE.Vector3(-0.085, 0.003,  0.016), // Swimming Pool 1 (13)
-            new THREE.Vector3(-0.095, 0.003,  0.002), // Swimming Pool 2 (14)
-            new THREE.Vector3(-0.085, 0.003, -0.014), // Swimming Pool 3 (15)
-            new THREE.Vector3(-0.095, 0.003, -0.026), // Swimming Pool 4 (16)
-            new THREE.Vector3(-0.075, 0.003, -0.050), // Rascasse Entry / DRS Detection (17)
-            new THREE.Vector3(-0.080, 0.003, -0.065), // Rascasse Apex (18)
-            new THREE.Vector3(-0.100, 0.003, -0.046), // Anthony Noghes (19)
-            new THREE.Vector3(-0.095, 0.003, -0.028), // Main Straight Start
-            new THREE.Vector3(-0.078, 0.004, -0.055)  // Main Straight Mid
+        const rawPoints = [
+            new THREE.Vector3(-1.098362, 0.003442, -0.827393),
+            new THREE.Vector3(-1.042356, 0.003439, -0.867433),
+            new THREE.Vector3(-0.991487, 0.003437, -0.869273),
+            new THREE.Vector3(-0.943858, 0.003434, -0.833286),
+            new THREE.Vector3(-0.878643, 0.003431, -0.779492),
+            new THREE.Vector3(-0.771075, 0.003429, -0.694079),
+            new THREE.Vector3(-0.663590, 0.003426, -0.608725),
+            new THREE.Vector3(-0.538708, 0.003423, -0.537602),
+            new THREE.Vector3(-0.413667, 0.003421, -0.466381),
+            new THREE.Vector3(-0.258569, 0.003418, -0.357189),
+            new THREE.Vector3(-0.103671, 0.003415, -0.248124),
+            new THREE.Vector3(0.054381, 0.003413, -0.181759),
+            new THREE.Vector3(0.212715, 0.003410, -0.115257),
+            new THREE.Vector3(0.323585, 0.003407, -0.040832),
+            new THREE.Vector3(0.434271, 0.003405, 0.033480),
+            new THREE.Vector3(0.537045, 0.003402, 0.090393),
+            new THREE.Vector3(0.639595, 0.003399, 0.147218),
+            new THREE.Vector3(0.734001, 0.003396, 0.157877),
+            new THREE.Vector3(0.831444, 0.003394, 0.137793),
+            new THREE.Vector3(0.883326, 0.003391, 0.095278),
+            new THREE.Vector3(0.935295, 0.003388, 0.052793),
+            new THREE.Vector3(0.978808, 0.003385, -0.033159),
+            new THREE.Vector3(1.004549, 0.003383, -0.129890),
+            new THREE.Vector3(1.000950, 0.003380, -0.200961),
+            new THREE.Vector3(1.004588, 0.003377, -0.285191),
+            new THREE.Vector3(1.035336, 0.003374, -0.340907),
+            new THREE.Vector3(1.087778, 0.003371, -0.374844),
+            new THREE.Vector3(1.189293, 0.003369, -0.397083),
+            new THREE.Vector3(1.290519, 0.003851, -0.419232),
+            new THREE.Vector3(1.383791, 0.007879, -0.433465),
+            new THREE.Vector3(1.477059, 0.014864, -0.447699),
+            new THREE.Vector3(1.592529, 0.025541, -0.463522),
+            new THREE.Vector3(1.708089, 0.036080, -0.479357),
+            new THREE.Vector3(1.787306, 0.041859, -0.485702),
+            new THREE.Vector3(1.866992, 0.045585, -0.491992),
+            new THREE.Vector3(1.919133, 0.046531, -0.460698),
+            new THREE.Vector3(1.934760, 0.045472, -0.398325),
+            new THREE.Vector3(1.906061, 0.042962, -0.348621),
+            new THREE.Vector3(1.877628, 0.039328, -0.299648),
+            new THREE.Vector3(1.853940, 0.033659, -0.234870),
+            new THREE.Vector3(1.830210, 0.027044, -0.169993),
+            new THREE.Vector3(1.811242, 0.021169, -0.114927),
+            new THREE.Vector3(1.788790, 0.016478, -0.073190),
+            new THREE.Vector3(1.785074, 0.011333, -0.031489),
+            new THREE.Vector3(1.813870, 0.008603, 0.001085),
+            new THREE.Vector3(1.853490, 0.007594, 0.009717),
+            new THREE.Vector3(1.890150, 0.004869, -0.006473),
+            new THREE.Vector3(1.910489, 0.003093, -0.038109),
+            new THREE.Vector3(1.914024, 0.001480, -0.084549),
+            new THREE.Vector3(1.904137, 0.000315, -0.144943),
+            new THREE.Vector3(1.900660, 0.000001, -0.199461),
+            new THREE.Vector3(1.913470, -0.000160, -0.237834),
+            new THREE.Vector3(1.948959, -0.000262, -0.264482),
+            new THREE.Vector3(1.975983, -0.000281, -0.265108),
+            new THREE.Vector3(2.025232, -0.000222, -0.253994),
+            new THREE.Vector3(2.083859, 0.000013, -0.225486),
+            new THREE.Vector3(2.142423, 0.000389, -0.197002),
+            new THREE.Vector3(2.203735, 0.000914, -0.160688),
+            new THREE.Vector3(2.230098, 0.001307, -0.120668),
+            new THREE.Vector3(2.238803, 0.001537, -0.094980),
+            new THREE.Vector3(2.223918, 0.001777, -0.071111),
+            new THREE.Vector3(2.177413, 0.002310, -0.027802),
+            new THREE.Vector3(2.107773, 0.002968, 0.026020),
+            new THREE.Vector3(2.038177, 0.003439, 0.079806),
+            new THREE.Vector3(1.968581, 0.003625, 0.138338),
+            new THREE.Vector3(1.898952, 0.003623, 0.196898),
+            new THREE.Vector3(1.808759, 0.003622, 0.263364),
+            new THREE.Vector3(1.718537, 0.003620, 0.329849),
+            new THREE.Vector3(1.631476, 0.003618, 0.377346),
+            new THREE.Vector3(1.544396, 0.003617, 0.424848),
+            new THREE.Vector3(1.446238, 0.003615, 0.458105),
+            new THREE.Vector3(1.348042, 0.003613, 0.491364),
+            new THREE.Vector3(1.249842, 0.003611, 0.499297),
+            new THREE.Vector3(1.151620, 0.003610, 0.507214),
+            new THREE.Vector3(1.067635, 0.003608, 0.489800),
+            new THREE.Vector3(0.983729, 0.003606, 0.472391),
+            new THREE.Vector3(0.811233, 0.003604, 0.413845),
+            new THREE.Vector3(0.638759, 0.003603, 0.355305),
+            new THREE.Vector3(0.494760, 0.003601, 0.293599),
+            new THREE.Vector3(0.350719, 0.003599, 0.231870),
+            new THREE.Vector3(0.170292, 0.003597, 0.114763),
+            new THREE.Vector3(0.035616, 0.003596, 0.026358),
+            new THREE.Vector3(-0.018691, 0.003594, -0.013853),
+            new THREE.Vector3(-0.057461, 0.003592, -0.028020),
+            new THREE.Vector3(-0.086694, 0.003590, -0.022725),
+            new THREE.Vector3(-0.120069, 0.003588, -0.007494),
+            new THREE.Vector3(-0.163597, 0.003586, -0.012932),
+            new THREE.Vector3(-0.190797, 0.003584, -0.043818),
+            new THREE.Vector3(-0.200266, 0.003583, -0.089908),
+            new THREE.Vector3(-0.226541, 0.003581, -0.128466),
+            new THREE.Vector3(-0.359788, 0.003579, -0.241190),
+            new THREE.Vector3(-0.522708, 0.003577, -0.362976),
+            new THREE.Vector3(-0.627121, 0.003575, -0.440487),
+            new THREE.Vector3(-0.731545, 0.003573, -0.518006),
+            new THREE.Vector3(-0.816982, 0.003571, -0.584449),
+            new THREE.Vector3(-0.881584, 0.003569, -0.633730),
+            new THREE.Vector3(-0.967099, 0.003567, -0.651493),
+            new THREE.Vector3(-1.077328, 0.003565, -0.616764),
+            new THREE.Vector3(-1.192269, 0.003563, -0.557436),
+            new THREE.Vector3(-1.283872, 0.003561, -0.505322),
+            new THREE.Vector3(-1.353359, 0.003559, -0.435811),
+            new THREE.Vector3(-1.422759, 0.003557, -0.366472),
+            new THREE.Vector3(-1.430548, 0.003555, -0.327241),
+            new THREE.Vector3(-1.438429, 0.003553, -0.287933),
+            new THREE.Vector3(-1.432123, 0.003551, -0.259700),
+            new THREE.Vector3(-1.425763, 0.003549, -0.230899),
+            new THREE.Vector3(-1.436895, 0.003547, -0.198936),
+            new THREE.Vector3(-1.448029, 0.003545, -0.167142),
+            new THREE.Vector3(-1.497151, 0.003543, -0.097390),
+            new THREE.Vector3(-1.546193, 0.003540, -0.027771),
+            new THREE.Vector3(-1.614205, 0.003538, 0.065558),
+            new THREE.Vector3(-1.660708, 0.003536, 0.134688),
+            new THREE.Vector3(-1.691523, 0.003534, 0.180201),
+            new THREE.Vector3(-1.731815, 0.003532, 0.209777),
+            new THREE.Vector3(-1.802534, 0.003530, 0.192447),
+            new THREE.Vector3(-1.847616, 0.003527, 0.210083),
+            new THREE.Vector3(-1.864531, 0.003525, 0.249184),
+            new THREE.Vector3(-1.894067, 0.003523, 0.312174),
+            new THREE.Vector3(-1.941485, 0.003521, 0.418085),
+            new THREE.Vector3(-1.973075, 0.003519, 0.522355),
+            new THREE.Vector3(-1.993024, 0.003516, 0.628274),
+            new THREE.Vector3(-1.977814, 0.003514, 0.724222),
+            new THREE.Vector3(-1.944171, 0.003512, 0.815053),
+            new THREE.Vector3(-1.937507, 0.003510, 0.862495),
+            new THREE.Vector3(-1.965578, 0.003507, 0.918007),
+            new THREE.Vector3(-2.019298, 0.003505, 0.929610),
+            new THREE.Vector3(-2.082517, 0.003503, 0.906044),
+            new THREE.Vector3(-2.141214, 0.003500, 0.861650),
+            new THREE.Vector3(-2.199903, 0.003498, 0.817224),
+            new THREE.Vector3(-2.227052, 0.003496, 0.778898),
+            new THREE.Vector3(-2.237483, 0.003493, 0.739353),
+            new THREE.Vector3(-2.228667, 0.003491, 0.700298),
+            new THREE.Vector3(-2.203359, 0.003489, 0.660742),
+            new THREE.Vector3(-2.181288, 0.003486, 0.566040),
+            new THREE.Vector3(-2.159117, 0.003484, 0.471014),
+            new THREE.Vector3(-2.117953, 0.003482, 0.371243),
+            new THREE.Vector3(-2.076795, 0.003479, 0.271502),
+            new THREE.Vector3(-2.015066, 0.003477, 0.160690),
+            new THREE.Vector3(-1.953389, 0.003474, 0.049975),
+            new THREE.Vector3(-1.923351, 0.003472, -0.010115),
+            new THREE.Vector3(-1.893262, 0.003469, -0.070302),
+            new THREE.Vector3(-1.855259, 0.003467, -0.128905),
+            new THREE.Vector3(-1.817274, 0.003464, -0.187476),
+            new THREE.Vector3(-1.747649, 0.003462, -0.282431),
+            new THREE.Vector3(-1.677966, 0.003460, -0.377453),
+            new THREE.Vector3(-1.586127, 0.003457, -0.464558),
+            new THREE.Vector3(-1.494324, 0.003455, -0.551619),
+            new THREE.Vector3(-1.388280, 0.003452, -0.633931),
+            new THREE.Vector3(-1.282213, 0.003449, -0.716255),
+            new THREE.Vector3(-1.195144, 0.003447, -0.766924),
+            new THREE.Vector3(-1.110327, 0.003444, -0.819696)
         ];
+        const s = 0.05;
+        const theta = 4.3633;
+        const tx = -0.022;
+        const tz = 0.0003;
+
+        // 5. Build 3D flat road geometry using InstancedMesh along the spline
+        this.nurburgringTrackMat = new THREE.MeshBasicMaterial({
+            color: 0x2a2a33
+        });
+
+        let points: THREE.Vector3[] = [];
+
+        // Load custom 3D track mesh from MonacoRoad.glb and auto-align spline points using its local transforms
+        const monacoAsset = AssetManager.getGLTF("monacoRoad");
+        if (monacoAsset) {
+            const mesh = monacoAsset.scene.clone();
+
+            const roadGroup = new THREE.Group();
+            roadGroup.add(mesh);
+
+            // Apply uniform scale parameters to preserve correct, un-stretched Monaco GP track proportions
+            roadGroup.scale.set(0.05, 0.05, 0.05);
+            
+            // Set rotation directly on the Y axis to -10 degrees as requested. The spline will automatically align!
+            roadGroup.rotation.y = -10 * Math.PI / 180; 
+            roadGroup.position.set(-0.022, 0.0005, 0.0003); // Align centers
+
+            mesh.traverse((child: any) => {
+                if (child instanceof THREE.Mesh) {
+                    child.material = this.nurburgringTrackMat;
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+
+            this.nurburgringGroup.add(roadGroup);
+            this.monacoRoadMesh = roadGroup;
+
+            // Find the child mesh containing the geometry to compute local relative transformation matrix
+            let roadMeshChild: THREE.Object3D = mesh;
+            mesh.traverse((child: any) => {
+                if (child instanceof THREE.Mesh) {
+                    roadMeshChild = child;
+                }
+            });
+
+            // Update all local matrices along the transform chain
+            roadMeshChild.updateMatrix();
+            let relativeMatrix = new THREE.Matrix4().copy(roadMeshChild.matrix);
+            let currentParent = roadMeshChild.parent;
+            while (currentParent && currentParent !== mesh) {
+                currentParent.updateMatrix();
+                relativeMatrix.premultiply(currentParent.matrix);
+                currentParent = currentParent.parent;
+            }
+            mesh.updateMatrix();
+            roadGroup.updateMatrix();
+            relativeMatrix.premultiply(mesh.matrix);
+            relativeMatrix.premultiply(roadGroup.matrix);
+
+            // Map raw points directly to the transformed geometry space
+            points = rawPoints.map(p => {
+                const pt = p.clone().applyMatrix4(relativeMatrix);
+                pt.y += 0.0005; // sit on surface
+                return pt;
+            });
+
+            console.log("[MonacoRoad] Custom 3D track model loaded, and spline points aligned dynamically!");
+        } else {
+            console.warn("[MonacoRoad] Asset not found in AssetManager! Falling back to baseline mapping.");
+            const cos = Math.cos(theta);
+            const sin = Math.sin(theta);
+            points = rawPoints.map(p => {
+                const rx = p.x * s * cos - p.z * s * sin + tx;
+                const rz = p.x * s * sin + p.z * s * cos + tz;
+                return new THREE.Vector3(rx, p.y * s + 0.0005, rz);
+            });
+        }
+
         this.nurburgringCurve = new THREE.CatmullRomCurve3(points, true);
         (this.nurburgringCurve as any).isNurburgring = true;
 
@@ -8633,51 +8863,50 @@ export class DomainExpansionSystem extends createSystem({
         const segments = 800;
         this.nurburgringFrenetFrames = (this.nurburgringCurve as any).computeFrenetFrames(segments, true);
 
-        // 5. Build 3D flat road geometry using InstancedMesh along the spline
-        const roadWidth = 0.016;
-        const roadThickness = 0.0005;
-        const roadGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
-        this.nurburgringTrackMat = new THREE.MeshBasicMaterial({
-            color: 0x2a2a33
-        });
-        const roadMesh = new THREE.InstancedMesh(roadGeo, this.nurburgringTrackMat, segments);
+        if (!monacoAsset) {
+            
+            const roadWidth = 0.016;
+            const roadThickness = 0.0005;
+            const roadGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
+            const roadMesh = new THREE.InstancedMesh(roadGeo, this.nurburgringTrackMat, segments);
 
-        const tempMatrix = new THREE.Matrix4();
-        const xAxis = new THREE.Vector3();
-        const yAxis = new THREE.Vector3();
-        const zAxis = new THREE.Vector3();
-        const scale = new THREE.Vector3();
+            const tempMatrix = new THREE.Matrix4();
+            const xAxis = new THREE.Vector3();
+            const yAxis = new THREE.Vector3();
+            const zAxis = new THREE.Vector3();
+            const scale = new THREE.Vector3();
 
-        for (let i = 0; i < segments; i++) {
-            const u = i / segments;
-            const p = this.nurburgringCurve.getPointAt(u);
-            
-            // Extract Frenet frame vectors
-            const tangent = this.nurburgringFrenetFrames.tangents[i];
-            const normal = this.nurburgringFrenetFrames.normals[i];
-            const binormal = this.nurburgringFrenetFrames.binormals[i];
-            
-            // Align: width is along binormal, normal is along normal, length is along tangent
-            xAxis.copy(binormal);
-            yAxis.copy(normal);
-            zAxis.copy(tangent);
-            
-            tempMatrix.makeBasis(xAxis, yAxis, zAxis);
-            tempMatrix.setPosition(p);
-            
-            // Segment length is distance to the next point along the spline
-            const nextP = this.nurburgringCurve.getPointAt((i + 1) / segments % 1.0);
-            const len = p.distanceTo(nextP);
-            
-            // Scale geometry (unit box) to correct width, thickness and length
-            // 1.8x overlap on length (z-axis) removes step-ladder gaps on curves completely
-            scale.set(roadWidth, roadThickness, len * 1.8);
-            tempMatrix.scale(scale);
-            
-            roadMesh.setMatrixAt(i, tempMatrix);
+            for (let i = 0; i < segments; i++) {
+                const u = i / segments;
+                const p = this.nurburgringCurve.getPointAt(u);
+                
+                // Extract Frenet frame vectors
+                const tangent = this.nurburgringFrenetFrames.tangents[i];
+                const normal = this.nurburgringFrenetFrames.normals[i];
+                const binormal = this.nurburgringFrenetFrames.binormals[i];
+                
+                // Align: width is along binormal, normal is along normal, length is along tangent
+                xAxis.copy(binormal);
+                yAxis.copy(normal);
+                zAxis.copy(tangent);
+                
+                tempMatrix.makeBasis(xAxis, yAxis, zAxis);
+                tempMatrix.setPosition(p);
+                
+                // Segment length is distance to the next point along the spline
+                const nextP = this.nurburgringCurve.getPointAt((i + 1) / segments % 1.0);
+                const len = p.distanceTo(nextP);
+                
+                // Scale geometry (unit box) to correct width, thickness and length
+                // 1.8x overlap on length (z-axis) removes step-ladder gaps on curves completely
+                scale.set(roadWidth, roadThickness, len * 1.8);
+                tempMatrix.scale(scale);
+                
+                roadMesh.setMatrixAt(i, tempMatrix);
+            }
+            roadMesh.instanceMatrix.needsUpdate = true;
+            this.nurburgringGroup.add(roadMesh);
         }
-        roadMesh.instanceMatrix.needsUpdate = true;
-        this.nurburgringGroup.add(roadMesh);
 
         // 6. Overlay glowing neon racing outline guide lines for Sectors (Red/Cyan/Yellow)
         // Sector 1: [0.95, 1.0] and [0.0, 0.35]
@@ -8750,25 +8979,25 @@ export class DomainExpansionSystem extends createSystem({
         // Helper text marker definitions:
         // Turn numbers
         const turns = [
-            { text: "01", pos: points[0] },
-            { text: "02", pos: points[1] },
-            { text: "03", pos: points[2] },
-            { text: "04", pos: points[3] },
-            { text: "05", pos: points[4] },
-            { text: "06", pos: points[5] },
-            { text: "07", pos: points[6] },
-            { text: "08", pos: points[7] },
-            { text: "09", pos: points[8] },
-            { text: "10", pos: points[11] },
-            { text: "11", pos: points[12] },
-            { text: "12", pos: points[13] },
-            { text: "13", pos: points[14] },
-            { text: "14", pos: points[15] },
-            { text: "15", pos: points[16] },
-            { text: "16", pos: points[17] },
-            { text: "17", pos: points[18] },
-            { text: "18", pos: points[19] },
-            { text: "19", pos: points[20] }
+            { text: "01", pos: this.nurburgringCurve.getPointAt(0.000) },
+            { text: "02", pos: this.nurburgringCurve.getPointAt(0.045) },
+            { text: "03", pos: this.nurburgringCurve.getPointAt(0.091) },
+            { text: "04", pos: this.nurburgringCurve.getPointAt(0.136) },
+            { text: "05", pos: this.nurburgringCurve.getPointAt(0.182) },
+            { text: "06", pos: this.nurburgringCurve.getPointAt(0.227) },
+            { text: "07", pos: this.nurburgringCurve.getPointAt(0.273) },
+            { text: "08", pos: this.nurburgringCurve.getPointAt(0.318) },
+            { text: "09", pos: this.nurburgringCurve.getPointAt(0.364) },
+            { text: "10", pos: this.nurburgringCurve.getPointAt(0.500) },
+            { text: "11", pos: this.nurburgringCurve.getPointAt(0.545) },
+            { text: "12", pos: this.nurburgringCurve.getPointAt(0.591) },
+            { text: "13", pos: this.nurburgringCurve.getPointAt(0.636) },
+            { text: "14", pos: this.nurburgringCurve.getPointAt(0.682) },
+            { text: "15", pos: this.nurburgringCurve.getPointAt(0.727) },
+            { text: "16", pos: this.nurburgringCurve.getPointAt(0.773) },
+            { text: "17", pos: this.nurburgringCurve.getPointAt(0.818) },
+            { text: "18", pos: this.nurburgringCurve.getPointAt(0.864) },
+            { text: "19", pos: this.nurburgringCurve.getPointAt(0.909) }
         ];
 
         turns.forEach(t => {

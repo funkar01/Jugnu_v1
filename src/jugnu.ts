@@ -211,6 +211,9 @@ export class JugnuSystem extends createSystem({
   private leftThumbTipWorld = new THREE.Vector3();
   private threadCooldownTimer = 0.0;
   private lockEscapeTimer = 0.0;
+  private leftPinchCount = 0;
+  private leftPinchTimer = 0.0;
+
 
   // Optimized Fireflies instanced particle system
   private firefliesMesh!: THREE.InstancedMesh;
@@ -680,112 +683,102 @@ export class JugnuSystem extends createSystem({
     let isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
     let isPinchingRight = this.getPinchData('right', this.rightPinchTip);
 
-
-
-    // ── LOCK ESCAPE: hold pinch for 1.5 seconds while locked → unlock + come to fingertips ──
-    if (this.isGridLocked) {
-        const pinchActive = isPinchingLeft; // Right pinch is completely ignored
-        
-        if (!pinchActive) {
-            this.lockPinchAllowed = true; // Once they release the pinch, they are allowed to breakout on next pinch
-        }
-
-        if (pinchActive && this.lockPinchAllowed) {
-            this.lockEscapeTimer += safeDt;
-
-            // Start/Update lock breakout grinding hum
-            let jugnuPos = new THREE.Vector3();
-            for (const entity of this.queries.jugnu.entities) {
-                if (entity.object3D) {
-                    jugnuPos.copy(entity.object3D.position);
-                    break;
-                }
-            }
-            const spatialFX = (window as any).spatialFX;
-            if (spatialFX) {
-                spatialFX.startLockVibrationSound(jugnuPos);
-                spatialFX.updateLockVibrationSound(jugnuPos, this.lockEscapeTimer / 1.5);
-            }
-
-            if (this.lockEscapeTimer >= 1.5) {
-                this.lockEscapeTimer = 0.0;
-                console.log('[Jugnu] Held lock escape pinch for 1.5s — unlocking and lerping to hand.');
-
-                // 1. Trigger Lock Breaking animation
-                this.isLockBreaking = true;
-                this.lockBreakAnimationTime = 0.0;
-
-                // Play lock break sound & sparks
-                if (spatialFX) {
-                    spatialFX.stopLockVibrationSound();
-                    spatialFX.playPositionalSound('lockBreak', jugnuPos);
-                    spatialFX.triggerSpark(jugnuPos, new THREE.Color(0x00ffcc), 30);
-                }
-
-                // Trigger 3-frame chromatic aberration glitch
-                this.glitchFrameCount = 3;
-
-                // 2. Unlock & reset mood to happy orange
-                this.isGridLocked = false;
-                this.lockedCompassPos = null;
-                this.lockedCompassQuat = null;
-                this.setExpression(2); // Happy orange expression!
-
-                // 3. Close compass UI so it respawns cleanly on next open
-                this.isCompassOpen = false;
-                this.isStadiumMenuOpen = false;
-                this.isChatOpen = false;
-                this.isTutorialOpen = false;
-                this.isDebugOpen = false;
-                this.indexPinchTimer = 0.0;
-                this.pinchReleasedTimer = 0.0;
-
-                // Determine which hand was pinching (always left here)
-                const targetHand = 'left';
-                const targetTip = this.leftPinchTip;
-
-                // 4. Pull Jugnu to fingertip
-                let lockedJugnuPos = this.scratchV3_1;
-                lockedJugnuPos.set(0, 0, 0);
-                for (const entity of this.queries.jugnu.entities) {
-                    if (!entity.object3D) continue;
-                    lockedJugnuPos.copy(entity.object3D.position);
-                    break;
-                }
-
-                this.interactionState = 'LerpingToHand';
-                this.attachedHand = targetHand;
-                this.startPos.copy(lockedJugnuPos);
-                this.targetPos.copy(targetTip);
-                this.previousHandPos.copy(targetTip);
-                this.handVelocity.set(0, 0, 0);
-                this.lerpTime = 0;
-                this.velocity.set(0, 0, 0);
-
-                this.queries.jugnu.entities.forEach(e => {
-                    const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
-                    if (currentState !== PhysicsState.Kinematic) {
-                        if (e.hasComponent(PhysicsShape)) e.removeComponent(PhysicsShape);
-                        if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
-                        e.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
-                        e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
-                    }
-                });
-            }
-        } else {
-            this.lockEscapeTimer = 0.0;
-            const spatialFX = (window as any).spatialFX;
-            if (spatialFX) {
-                spatialFX.stopLockVibrationSound();
-            }
-        }
-    } else {
-        this.lockEscapeTimer = 0.0;
-        const spatialFX = (window as any).spatialFX;
-        if (spatialFX) {
-            spatialFX.stopLockVibrationSound();
+    // Tick the double pinch timer
+    if (this.leftPinchCount > 0) {
+        this.leftPinchTimer += safeDt;
+        if (this.leftPinchTimer >= 1.0) {
+            this.leftPinchCount = 0;
+            this.leftPinchTimer = 0.0;
         }
     }
+
+    // ── LOCK ESCAPE: double left index pinch in under 1 second while locked → unlock + come to fingertips ──
+    if (this.isGridLocked) {
+        if (isPinchingLeft && !this.wasPinchingLeft) {
+            if (this.leftPinchCount === 0) {
+                this.leftPinchCount = 1;
+                this.leftPinchTimer = 0.0;
+                console.log('[Jugnu] Left hand pinch start. Waiting for second pinch to break lock...');
+            } else if (this.leftPinchCount === 1) {
+                if (this.leftPinchTimer < 1.0) {
+                    console.log('[Jugnu] Double left index pinch detected in under 1s — breaking lock!');
+                    this.leftPinchCount = 0;
+                    this.leftPinchTimer = 0.0;
+
+                    // 1. Trigger Lock Breaking animation
+                    this.isLockBreaking = true;
+                    this.lockBreakAnimationTime = 0.0;
+
+                    let jugnuPos = new THREE.Vector3();
+                    for (const entity of this.queries.jugnu.entities) {
+                        if (entity.object3D) {
+                            jugnuPos.copy(entity.object3D.position);
+                            break;
+                        }
+                    }
+                    const spatialFX = (window as any).spatialFX;
+                    if (spatialFX) {
+                        spatialFX.stopLockVibrationSound();
+                        spatialFX.playPositionalSound('lockBreak', jugnuPos);
+                        spatialFX.triggerSpark(jugnuPos, new THREE.Color(0x00ffcc), 30);
+                    }
+
+                    // Trigger 3-frame chromatic aberration glitch
+                    this.glitchFrameCount = 3;
+
+                    // 2. Unlock & reset mood to happy orange
+                    this.isGridLocked = false;
+                    this.lockedCompassPos = null;
+                    this.lockedCompassQuat = null;
+                    this.setExpression(2); // Happy orange expression!
+
+                    // 3. Close compass UI so it respawns cleanly on next open
+                    this.isCompassOpen = false;
+                    this.isStadiumMenuOpen = false;
+                    this.isChatOpen = false;
+                    this.isTutorialOpen = false;
+                    this.isDebugOpen = false;
+                    this.indexPinchTimer = 0.0;
+                    this.pinchReleasedTimer = 0.0;
+
+                    const targetHand = 'left';
+                    const targetTip = this.leftPinchTip;
+
+                    // 4. Pull Jugnu to fingertip
+                    let lockedJugnuPos = this.scratchV3_1;
+                    lockedJugnuPos.set(0, 0, 0);
+                    for (const entity of this.queries.jugnu.entities) {
+                        if (!entity.object3D) continue;
+                        lockedJugnuPos.copy(entity.object3D.position);
+                        break;
+                    }
+
+                    this.interactionState = 'LerpingToHand';
+                    this.attachedHand = targetHand;
+                    this.startPos.copy(lockedJugnuPos);
+                    this.targetPos.copy(targetTip);
+                    this.previousHandPos.copy(targetTip);
+                    this.handVelocity.set(0, 0, 0);
+                    this.lerpTime = 0;
+                    this.velocity.set(0, 0, 0);
+
+                    this.queries.jugnu.entities.forEach(e => {
+                        const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
+                        if (currentState !== PhysicsState.Kinematic) {
+                            if (e.hasComponent(PhysicsShape)) e.removeComponent(PhysicsShape);
+                            if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
+                            e.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
+                            e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+                        }
+                    });
+                } else {
+                    this.leftPinchCount = 1;
+                    this.leftPinchTimer = 0.0;
+                }
+            }
+        }
+    }
+
 
     if ((this.interactionState === 'Idle' || this.interactionState === 'Following' || this.interactionState === 'Anchored') && !this.isGridLocked) {
         let activeHand: 'left' | 'right' | null = null;
@@ -1047,9 +1040,9 @@ export class JugnuSystem extends createSystem({
           if (this.isGridLocked) {
               // Rigid Lock: perfectly frozen with zero floating/noise/drift
               obj.position.copy(this.centerPos);
-              if (this.lockEscapeTimer > 0.0) {
-                  // High-frequency vibration breakout effect
-                  const vibrationIntensity = 0.015 * (this.lockEscapeTimer / 1.5);
+              if (this.leftPinchCount === 1) {
+                  // High-frequency vibration breakout feedback on first pinch
+                  const vibrationIntensity = 0.003;
                   obj.position.x += (Math.random() - 0.5) * vibrationIntensity;
                   obj.position.y += (Math.random() - 0.5) * vibrationIntensity;
                   obj.position.z += (Math.random() - 0.5) * vibrationIntensity;
@@ -1163,7 +1156,7 @@ export class JugnuSystem extends createSystem({
 
     // Lock Icon Floating UI Update & Breakout Animation
     if (this.lockIconGroup && activeJugnuModel) {
-        if (this.isGridLocked || this.isLockBreaking) {
+        if ((this.isGridLocked || this.isLockBreaking) && !isMapScaledMax) {
             // Anchor to the active Jugnu model's local Y axis to ensure it sits directly on top of Jugnu's head even when tilted
             const localY = this.scratchV3_2.set(0, 1, 0).applyQuaternion(activeJugnuModel.quaternion);
             const lockYOffset = 1.15 * activeJugnuModel.scale.y + 0.02;

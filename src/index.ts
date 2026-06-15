@@ -208,6 +208,7 @@ const assets: AssetManifest = {
   f1LandoNorris:         { url: "./F1Cards/Lando Norris.png",         type: AssetType.Texture, priority: "background" },
   f1LewisHamilton:       { url: "./F1Cards/Lewis Hamilton.png",       type: AssetType.Texture, priority: "background" },
   f1OscarPiastri:        { url: "./F1Cards/Oscar Piastri.png",        type: AssetType.Texture, priority: "background" },
+  monacoRoad:            { url: "./gltf/MonacoRoad.glb",              type: AssetType.GLTF,    priority: "critical" },
 };
 
 World.create(document.getElementById("scene-container") as HTMLDivElement, {

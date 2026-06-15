@@ -1,3 +1,4 @@
+
 # Task List - Minimap & Gesture Refinements
 
 - `[x]` Step 1 -> 2 Tutorial progression in `src/jugnu.ts`
@@ -1360,3 +1361,56 @@
   - `[x]` Spawned exactly one Mercedes F1 car (George Russell) on the track, disabling the other 5 cars.
   - `[x]` Calibrated the car's update loop progress to take exactly 75 seconds to complete a full lap, matching the real-world Monaco lap time.
   - `[x]` Confirmed zero type errors and successful Vite build client asset bundles.
+
+- `[x]` Monaco GP Custom 3D Track Model Integration (Current Run)
+  - `[x]` Copied `MonacoRoad.glb` from `C:\Users\SSD\Pictures\Jugnu\F1\` to `public/gltf/MonacoRoad.glb`.
+  - `[x]` Registered `monacoRoad` in the `AssetManifest` inside `src/index.ts`.
+  - `[x]` Loaded the `monacoRoad` GLB scene clone in `createNurburgringGroup()` inside `src/domainExpansion.ts`.
+  - `[x]` Performed coordinate search math to determine optimal alignment parameters (`sX=0.00625`, `sY=0.005`, `sZ=0.02875`, `rotY=250°`, `pos=(-0.022, 0.0005, 0.0003)`) to map the realistic model to the squashed spline.
+  - `[x]` Applied custom materials recursively and added fallback procedural track generation.
+  - `[x]` Programmed zero-allocation raycast projection (`carRaycaster`) in the update loop to dynamically stick cars on top of the track mesh surface.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`).
+
+- `[x]` Monaco GP Custom 3D Track Model Scale & Raycast Alignment Fixes (Current Run)
+  - `[x]` Copied the user's updated `Monaco f1 maps.glb` mesh into the workspace as `public/gltf/MonacoRoad.glb`.
+  - `[x]` Detected that Blender scale (`0.172514`) had been applied directly to the model's vertices, making the raw coordinates 5.8x smaller.
+  - `[x]` Re-calibrated optimal non-uniform scale factors to `(0.0362, 0.029, 0.166)` (multiplying old values by `5.7966`) to perfectly preserve the physical deck scale.
+  - `[x]` Added `updateMatrixWorld(true)` call inside the main stadium update loop before F1 car movements are resolved, resolving matrix stale states and haptic checks when the minimap table is rotated/scaled by hand.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and compiled client bundle cleanly (`npm run build`) in 15.22s.
+
+- `[x]` Monaco GP Custom 3D Track Model Uniform Scale & Spline Alignment (Current Run)
+  - `[x]` Configured the `MonacoRoad.glb` mesh to scale uniformly by `(0.05, 0.05, 0.05)`. This fits the model (un-squashed, wide aspect ratio 2.39) perfectly inside the circular base of radius 18cm.
+  - `[x]` Re-mapped the 23 original spline coordinates by squashing their Z offsets relative to the spline center by a factor of `0.21739` and scaling/aligning them to match the uniform track dimensions.
+  - `[x]` Swapped the `points` array in `createNurburgringGroup()` with these corrected un-squashed coordinates. This automatically aligns the cars, sector lines, turn markers, speed trap, and DRS zones to the wide track shape.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production client build (`npm run build`) in 26.99s.
+
+- `[x]` Monaco GP 151-Point Spline Integration & Turn Marker Refinements (Current Run)
+  - `[x]` Pasted and integrated the 151-point raw coordinate list from Blender into `domainExpansion.ts` as `rawPoints`.
+  - `[x]` Re-positioned turn numbers `01` to `19` to use normalized curve progress (`this.nurburgringCurve.getPointAt(u)`) instead of old index offsets (`points[i]`), preventing all markers from clustering at the start of the 151-point track.
+  - `[x]` Verified compilation via `npx tsc --noEmit` and completed client production build (`npm run build`).
+
+- `[x]` Monaco GP Procedural Ribbon Road & Spline Sorting/Smoothing (Current Run)
+  - `[x]` Implemented greedy nearest-neighbor (TSP) sorting on the 151 coordinates to reconstruct sequential track order.
+  - `[x]` Programmed 3 passes of closed-loop moving average smoothing to eliminate digitizing jitter.
+  - `[x]` Constructed a smooth extruded 3D road ribbon mesh via `BufferGeometry` mapped to Frenet frames.
+  - `[x]` Set up glowing neon cyan boundary line loops on the left and right track borders.
+  - `[x]` Confirmed compilation safety (`npx tsc --noEmit`) and compiled client bundle (`npm run build`) successfully in 10.35s.
+
+- `[x]` Monaco GP GLB Map Restoration & New Spline Points (Current Run)
+  - `[x]` Restored the `MonacoRoad.glb` GLTF model loader block and assigned to `this.monacoRoadMesh`.
+  - `[x]` Pasted and integrated the new sequential Blender track points list as `rawPoints` in `src/domainExpansion.ts`.
+  - `[x]` Implemented uniform scaling (0.05), rotation (250 degrees / 4.3633 rad), and center offset translation to map the new points.
+  - `[x]` Removed the procedural road ribbon geometry and neon boundary line loops.
+  - `[x]` Maintained turn markers aligned dynamically using `this.nurburgringCurve.getPointAt(u)`.
+  - `[x]` Verified static type check (`npx tsc --noEmit`) and client production build (`npm run build`) successfully.
+
+- `[x]` Monaco GP Map Rotation & Spatial Lock Refinements (Current Run)
+  - `[x]` Implemented dynamic relative matrix transform chain calculation to map `rawPoints` directly to the `roadMeshChild` geometry's local space, auto-aligning spline and mesh perfectly.
+  - `[x]` Rotated the Monaco GP Track 3D mesh Y-axis rotation to absolute -10 degrees (`-10 * Math.PI / 180` rad).
+  - `[x]` Replaced long-press lock-escape with double left index finger pinch in under 1 second to prevent accidental summon escapes.
+  - `[x]` Programmed high-frequency visual vibration feedback on Jugnu during the first pinch of a double pinch sequence.
+  - `[x]` Linked lock icon visibility to check `!isMapScaledMax` to hide the lock icon dynamically when fully zoomed inside the minimap.
+  - `[x]` Verified static type checking (`npx tsc --noEmit`) and client production build (`npm run build`) successfully.
+
+
+
