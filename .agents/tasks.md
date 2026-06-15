@@ -1428,8 +1428,32 @@
   - `[x]` Added shortest-arc quaternion guard (manual component flip when dot < 0) to prevent 360° wrap-around during slerp.
   - `[x]` Corrected `makeBasis(xAxis, yAxis, forwardTangent)` — no negation — car nose (+Z local) correctly faces travel.
   - `[x]` Verified zero TypeScript errors (`npx tsc --noEmit`).
-
-
-
-
-
+- `[x]` F1 Scale, Roster Billboard, Multi-Car Spawning & Touches (Current Run)
+  - `[x]` Scaled down F1 cars by 40% (set scale to 0.384) and calibrated track y-offsets.
+  - `[x]` Spawned and simulated all 6 F1 cars (George Russell, Kimi Antonelli, Charles Leclerc, Lewis Hamilton, Lando Norris, Oscar Piastri) on the track spline.
+  - `[x]` Fixed F1 roster board parent hierarchy: added directly to scene root (tableGroup.parent) to isolate it from table scale and rotation.
+  - `[x]` Programmed dynamic billboard alignment: roster board floats 32cm above the table and 28cm toward the user, always facing the player front-on.
+  - `[x]` Fixed roster board index-finger touch boundaries: corrected Y bounds (from 0.09 to 0.18 for 0.36m height) and mapped Y properly to 768px height (with startY=144, rowH=80) to perfectly align index-finger touch detection with visual rows.
+  - `[x]` Bypassed and disabled wet spray instanced particles (f1SprayMesh.visible = false) to satisfy user request.
+  - `[x]` Verified zero static compilation errors (npx tsc --noEmit) and completed Vite client production bundle builds successfully.
+- `[x]` F1 Single File Lane Alignment & Roster Arm's Length Adjustments (Current Run)
+  - `[x]` Arranged all 6 cars to follow in a single centerline file (no lateral offset, staggered by 3% progress intervals) to prevent teammate clipping on Monaco's narrow street layout.
+  - `[x]` Calibrated initial starting progress positions of the cars (Russell at 0.00, Antonelli at 0.97, Leclerc at 0.94, Hamilton at 0.91, Norris at 0.88, Piastri at 0.85) to start sequential single-file.
+  - `[x]` Repositioned the F1 live roster billboard further from the user's face (offset `0.18m` along the horizontal look vector instead of `0.28m`), keeping it reachable at a comfortable arm's length.
+  - `[x]` Verified zero compiler errors (`npx tsc --noEmit`) and compiled client bundle cleanly (`npm run build`).
+- `[x]` F1 3-Car Reduction & Minimize/Maximize Roster Button (Current Run)
+  - `[x]` Reduced active F1 cars to exactly 3 (George Russell, Charles Leclerc, Lando Norris) staggered sequentially behind each other along the centerline lane.
+  - `[x]` Implemented interactive roster billboard state variable `f1RosterMinimized` and dynamically resized plane geometry (`0.24m x 0.28m` maximized, `0.24m x 0.08m` minimized) and canvas texture aspect ratios (`512x600 px` maximized, `512x170 px` minimized).
+  - `[x]` Rendered a high-contrast red "[-] HIDE ROSTER" button at the bottom of the maximized roster, and a compact cyan "[+] SHOW F1 ROSTER" panel when minimized.
+  - `[x]` Integrated hand index-finger tap coordinate checks on the custom button areas to toggle minimized/maximized layout, resizing textures and playing click audio and haptic feedback.
+  - `[x]` Lowered minimized panel location offset to `0.16m` height (sitting neatly at the base of the table) and maximized height to `0.28m` height above table.
+  - `[x]` Verified zero compile errors (`npx tsc --noEmit`) and successful production bundling (`npm run build`).
+- `[x]` F1 3-Player Restriction & Monaco Y-axis Height Calibrations (Current Run)
+  - `[x]` Restricted rosterNurburgring inside initPlayerMarkers() to only contain the 3 active F1 players (Leclerc, Norris, Russell), resolving the ghost teammate player models stuck at the center of the table.
+  - `[x]` Raised the Monaco GP track, cars, and spline Y-axis position by 2cm (increasing parent nurburgringGroup.position.y from 0.01 to 0.03).
+  - `[x]` Lowered the radial hologram circle (ground base and border ring) on the Y-axis by 2cm relative to their original world coordinates (ground.position.y changed to -0.039, border.position.y changed to -0.03795).
+  - `[x]` Verified compile-time type safety via npx tsc --noEmit and built client bundle cleanly via npm run build.
+- `[x]` F1 Mercedes HUD Removal & Active Player Card 30s Timeout (Current Run)
+  - `[x]` Commented out createNurburgringF1HUD() call in createNurburgringGroup(), cleanly removing the permanent Mercedes telemetry HUD.
+  - `[x]` Updated active player card group timer threshold inside the update loop from 7.0s to 30.0s, keeping spawned cards visible for 30 seconds.
+  - `[x]` Verified typecheck safety via npx tsc --noEmit and built client bundle cleanly via npm run build.

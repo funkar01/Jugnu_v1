@@ -339,6 +339,7 @@ export class DomainExpansionSystem extends createSystem({
     private f1RosterTexture!: THREE.CanvasTexture;
     private f1RosterMat!: THREE.MeshBasicMaterial;
     private f1RosterHoveredRowIndex = -1;
+    private f1RosterMinimized = false;
     private f1TouchCooldown = 0.0;
 
     private f1ActiveCardGroup!: THREE.Group;
@@ -2161,12 +2162,16 @@ export class DomainExpansionSystem extends createSystem({
                     sign = -1.0;
                 }
 
-                // Gap between cars: small fixed progress offsets keep cars staggered on the spline
-                // (no oscillating cosine progressDiff - that was pulling cars off-center)
-                const baseLag = (car.driverId === 'f1_cl' || car.driverId === 'f1_lh') ? -0.05 : ((car.driverId === 'f1_ln' || car.driverId === 'f1_op') ? -0.10 : 0.0);
-                // Tiny lateral lane offset (±2 mm max) — large values cause the 'floating off track' look
-                const rawLateral = sign * Math.sin(this.nurburgringOvertakePhase + phaseOffset) * 0.002;
-                lateralOffset = rawLateral;
+                // Gap between cars: sequential 0.03 progress offsets to keep cars staggered in a single file line
+                const baseLag = 
+                    car.driverId === 'f1_gr' ? 0.00 :
+                    car.driverId === 'f1_ka' ? -0.03 :
+                    car.driverId === 'f1_cl' ? -0.06 :
+                    car.driverId === 'f1_lh' ? -0.09 :
+                    car.driverId === 'f1_ln' ? -0.12 :
+                    car.driverId === 'f1_op' ? -0.15 : 0.0;
+                // Force zero lateral offset so all cars run in a single centerline lane
+                lateralOffset = 0.0;
                 carProgress = (this.nurburgringF1Progress + baseLag + 1.0) % 1.0;
 
                 car.progress = carProgress;
@@ -2209,7 +2214,7 @@ export class DomainExpansionSystem extends createSystem({
 
                 // ── SET POSITION ──
                 car.group.position.copy(this.f1Pos);
-                car.group.position.y += 0.0011 * 0.64;
+                car.group.position.y += 0.0011 * 0.384;
 
                 // ── SET ORIENTATION: car nose is at local +Z, travel direction is f1zAxis ──
                 // makeBasis columns = local X, Y, Z axes expressed in world space.
@@ -2485,89 +2490,9 @@ export class DomainExpansionSystem extends createSystem({
                     (this.f1VortexRight_FE.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
                 }
 
-                // ── 6. WET SPRAY INSTANCED PARTICLES ──
+                // ── 6. WET SPRAY INSTANCED PARTICLES (DISABLED BY USER REQUEST) ──
                 if (this.f1SprayMesh) {
-                    if (this.weatherMode === 'rain') {
-                        this.f1SprayMesh.visible = true;
-                        (this.f1SprayMesh.material as THREE.MeshBasicMaterial).opacity = 0.45;
-
-                        const heading = this.f1zAxis;
-
-                        // Emit spray for all 6 cars
-                        this.nurburgringCars.forEach((car, carIdx) => {
-                            car.group.updateMatrix();
-                            const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(car.group.matrix);
-                            const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(car.group.matrix);
-
-                            let emitSlot = this.f1SprayEmitSlots[carIdx];
-
-                            let idx = (carIdx * 60 + emitSlot) * 8;
-                            this.f1SprayData[idx + 0] = lRearPos.x;
-                            this.f1SprayData[idx + 1] = lRearPos.y;
-                            this.f1SprayData[idx + 2] = lRearPos.z;
-                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
-                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
-                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
-                            this.f1SprayData[idx + 6] = 0.0;
-                            this.f1SprayData[idx + 7] = 1.0;
-
-                            idx = (carIdx * 60 + ((emitSlot + 1) % 60)) * 8;
-                            this.f1SprayData[idx + 0] = rRearPos.x;
-                            this.f1SprayData[idx + 1] = rRearPos.y;
-                            this.f1SprayData[idx + 2] = rRearPos.z;
-                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
-                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
-                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
-                            this.f1SprayData[idx + 6] = 0.0;
-                            this.f1SprayData[idx + 7] = 1.0;
-
-                            this.f1SprayEmitSlots[carIdx] = (emitSlot + 2) % 60;
-                        });
-
-                        // Update all 360 spray particles
-                        for (let i = 0; i < 360; i++) {
-                            const offset = i * 8;
-                            if (this.f1SprayData[offset + 7] === 1.0) {
-                                // move
-                                this.f1SprayData[offset + 0] += this.f1SprayData[offset + 3];
-                                this.f1SprayData[offset + 1] += this.f1SprayData[offset + 4];
-                                this.f1SprayData[offset + 2] += this.f1SprayData[offset + 5];
-
-                                // apply gravity / drag
-                                this.f1SprayData[offset + 4] -= 0.005 * dt;
-                                this.f1SprayData[offset + 3] *= 0.94;
-                                this.f1SprayData[offset + 5] *= 0.94;
-
-                                this.f1SprayData[offset + 6] += dt; // age
-                                if (this.f1SprayData[offset + 6] > 0.35) {
-                                    this.f1SprayData[offset + 7] = 0.0; // deactivate
-                                    this.f1SprayDummy.position.set(0, -999, 0); // hide
-                                    this.f1SprayDummy.updateMatrix();
-                                    this.f1SprayMesh.setMatrixAt(i, this.f1SprayDummy.matrix);
-                                } else {
-                                    // Scale down as it ages
-                                    const ageRatio = this.f1SprayData[offset + 6] / 0.35;
-                                    const scale = 1.0 - ageRatio;
-
-                                    this.f1SprayDummy.position.set(
-                                        this.f1SprayData[offset + 0],
-                                        this.f1SprayData[offset + 1],
-                                        this.f1SprayData[offset + 2]
-                                    );
-                                    this.f1SprayDummy.scale.set(scale, scale, scale);
-                                    this.f1SprayDummy.updateMatrix();
-                                    this.f1SprayMesh.setMatrixAt(i, this.f1SprayDummy.matrix);
-                                }
-                            } else {
-                                this.f1SprayDummy.position.set(0, -999, 0);
-                                this.f1SprayDummy.updateMatrix();
-                                this.f1SprayMesh.setMatrixAt(i, this.f1SprayDummy.matrix);
-                            }
-                        }
-                        this.f1SprayMesh.instanceMatrix.needsUpdate = true;
-                    } else {
-                        this.f1SprayMesh.visible = false;
-                    }
+                    this.f1SprayMesh.visible = false;
                 }
 
                 // Hide floating markers if stadium not active
@@ -2609,36 +2534,33 @@ export class DomainExpansionSystem extends createSystem({
                     // A. Draw/refresh roster list
                     this.drawF1Roster();
 
-                    // B. Roster Billboarding (always face user)
+                    // B. Roster World-Space Position & Billboarding
+                    // The mesh is a scene-root child (NOT inside nurburgringGroup) so it never
+                    // scales with the table. We anchor it to the table's world position each frame.
                     if (this.player && this.player.head) {
-                        this.nurburgringGroup.updateMatrixWorld(true);
-
                         const headPos = this.scratchVector3;
                         this.player.head.getWorldPosition(headPos);
 
-                        const rosterWorldPos = this.scratchVector1;
-                        this.f1RosterMesh.getWorldPosition(rosterWorldPos);
+                        // World position of the table center
+                        const tableWorldPos = this.scratchVector1;
+                        this.tableGroup.getWorldPosition(tableWorldPos);
 
-                        // Look at the player's head in world space and convert to parent local space
-                        const m = this.scratchMatrix;
-                        const worldUp = this.scratchVector2;
-                        worldUp.set(0, 1, 0);
-                        m.lookAt(rosterWorldPos, headPos, worldUp);
+                        // Direction from table to player (horizontal only)
+                        const toPlayer = this.scratchVector2.subVectors(headPos, tableWorldPos);
+                        toPlayer.y = 0;
+                        const distH = toPlayer.length();
+                        if (distH > 0.001) toPlayer.normalize(); else toPlayer.set(0, 0, 1);
 
-                        const targetWorldQuat = this.scratchQuat1;
-                        targetWorldQuat.setFromRotationMatrix(m);
+                        // Place roster: if minimized, sit lower near the base (Y offset 0.16m).
+                        // If maximized, sit at normal height (Y offset 0.28m).
+                        const rosterYOffset = this.f1RosterMinimized ? 0.16 : 0.28;
+                        this.f1RosterMesh.position.copy(tableWorldPos);
+                        this.f1RosterMesh.position.y += rosterYOffset;
+                        this.f1RosterMesh.position.addScaledVector(toPlayer, 0.18);
 
-                        // Flip 180° so PlaneGeometry front (+Z) faces user
-                        const flipQuat = this.scratchQuat2;
-                        flipQuat.setFromAxisAngle(worldUp, Math.PI);
-                        targetWorldQuat.multiply(flipQuat);
-
-                        const parentWorldQuat = this.scratchQuat2; // reuse scratchQuat2
-                        this.nurburgringGroup.getWorldQuaternion(parentWorldQuat);
-
-                        const localQuat = this.scratchQuat1; // reuse scratchQuat1
-                        localQuat.copy(parentWorldQuat).invert().multiply(targetWorldQuat);
-                        this.f1RosterMesh.quaternion.copy(localQuat);
+                        // LookAt: front face (+Z of PlaneGeometry) → player
+                        // lookAt(headPos) points the local +Z toward the target, which IS the front face.
+                        this.f1RosterMesh.lookAt(headPos);
                     }
 
                     // C. Index Finger Touch Checking on Roster
@@ -2654,36 +2576,112 @@ export class DomainExpansionSystem extends createSystem({
 
                         const inv = this.scratchMatrix2.copy(this.f1RosterMesh.matrixWorld).invert();
                         let touchedRow = -1;
+                        let touchedMinimize = false;
+                        let touchedMaximize = false;
                         let isTouchingRoster = false;
                         let touchTipUsed = leftIndexTip;
 
                         for (const tip of tipsToCheck) {
                             const localTip = tip.clone().applyMatrix4(inv);
-                            // Roster size: 0.24m wide by 0.18m high. localTip coords: x: -0.12 to 0.12, y: -0.09 to 0.09, z: -0.015 to 0.015
-                            if (Math.abs(localTip.z) < 0.015 && Math.abs(localTip.x) < 0.12 && Math.abs(localTip.y) < 0.09) {
-                                isTouchingRoster = true;
-                                touchTipUsed = tip;
-
-                                // Map touch position to Canvas space (512 x 384)
-                                const cx = (localTip.x + 0.12) / 0.24 * 512;
-                                const cy = (0.09 - localTip.y) / 0.18 * 384; // 0 is top, 384 is bottom
-
-                                if (cy >= 60 && cy <= 380) {
-                                    const rowIndex = Math.floor((cy - 60) / 53.3);
-                                    if (rowIndex >= 0 && rowIndex < 6) {
-                                        touchedRow = rowIndex;
-                                    }
+                            
+                            if (this.f1RosterMinimized) {
+                                // Minimized size: 0.24m wide by 0.08m high. localTip Y range: -0.04 to 0.04
+                                if (Math.abs(localTip.z) < 0.015 && Math.abs(localTip.x) < 0.12 && Math.abs(localTip.y) < 0.04) {
+                                    isTouchingRoster = true;
+                                    touchTipUsed = tip;
+                                    touchedMaximize = true;
+                                    break;
                                 }
-                                break;
+                            } else {
+                                // Maximized size: 0.24m wide by 0.28m high. localTip Y range: -0.14 to 0.14
+                                if (Math.abs(localTip.z) < 0.015 && Math.abs(localTip.x) < 0.12 && Math.abs(localTip.y) < 0.14) {
+                                    isTouchingRoster = true;
+                                    touchTipUsed = tip;
+
+                                    // Map local coordinates to Canvas space (512 x 600)
+                                    const cx = (localTip.x + 0.12) / 0.24 * 512;
+                                    const cy = (0.14 - localTip.y) / 0.28 * 600;
+
+                                    // Check rows 0, 1, 2
+                                    if (cy >= 144 && cy <= 384) {
+                                        const rowIndex = Math.floor((cy - 144) / 80);
+                                        if (rowIndex >= 0 && rowIndex < 3) {
+                                            touchedRow = rowIndex;
+                                        }
+                                    }
+                                    // Check Minimize button at Y = 430 to 510
+                                    else if (cy >= 430 && cy <= 510 && cx >= 32 && cx <= 480) {
+                                        touchedMinimize = true;
+                                    }
+                                    break;
+                                }
                             }
                         }
 
-                        if (touchedRow !== this.f1RosterHoveredRowIndex) {
-                            this.f1RosterHoveredRowIndex = touchedRow;
-                            this.drawF1Roster();
+                        if (!this.f1RosterMinimized) {
+                            if (touchedRow !== this.f1RosterHoveredRowIndex) {
+                                this.f1RosterHoveredRowIndex = touchedRow;
+                                this.drawF1Roster();
+                            }
                         }
 
-                        if (touchedRow !== -1 && isTouchingRoster && this.f1TouchCooldown <= 0.0) {
+                        if (touchedMaximize && this.f1TouchCooldown <= 0.0) {
+                            this.f1TouchCooldown = 0.5;
+                            this.f1RosterMinimized = false;
+                            
+                            // Recreate PlaneGeometry for maximized state
+                            this.f1RosterMesh.geometry.dispose();
+                            this.f1RosterMesh.geometry = new THREE.PlaneGeometry(0.24, 0.28);
+                            
+                            // Resize Canvas
+                            this.f1RosterCanvas.width = 512;
+                            this.f1RosterCanvas.height = 600;
+                            
+                            this.drawF1Roster();
+
+                            // Trigger click sound and sparks right at the finger tip!
+                            const spatialFX = (window as any).spatialFX;
+                            if (spatialFX) {
+                                spatialFX.playPositionalSound('click', touchTipUsed);
+                                spatialFX.triggerSpark(touchTipUsed, new THREE.Color(0x00ffff), 12);
+                            }
+
+                            // Trigger physical controller haptics
+                            const activeHand = (touchTipUsed === rightIndexTip && hasRight) ? 'right' : 'left';
+                            const source = this.input.getPrimaryInputSource(activeHand);
+                            if (source?.gamepad?.hapticActuators?.[0]) {
+                                source.gamepad.hapticActuators[0].pulse(0.8, 40);
+                            }
+                        }
+                        else if (touchedMinimize && this.f1TouchCooldown <= 0.0) {
+                            this.f1TouchCooldown = 0.5;
+                            this.f1RosterMinimized = true;
+                            
+                            // Recreate PlaneGeometry for minimized state
+                            this.f1RosterMesh.geometry.dispose();
+                            this.f1RosterMesh.geometry = new THREE.PlaneGeometry(0.24, 0.08);
+                            
+                            // Resize Canvas
+                            this.f1RosterCanvas.width = 512;
+                            this.f1RosterCanvas.height = 170;
+                            
+                            this.drawF1Roster();
+
+                            // Trigger click sound and sparks right at the finger tip!
+                            const spatialFX = (window as any).spatialFX;
+                            if (spatialFX) {
+                                spatialFX.playPositionalSound('click', touchTipUsed);
+                                spatialFX.triggerSpark(touchTipUsed, new THREE.Color(0x00ffff), 12);
+                            }
+
+                            // Trigger physical controller haptics
+                            const activeHand = (touchTipUsed === rightIndexTip && hasRight) ? 'right' : 'left';
+                            const source = this.input.getPrimaryInputSource(activeHand);
+                            if (source?.gamepad?.hapticActuators?.[0]) {
+                                source.gamepad.hapticActuators[0].pulse(0.8, 40);
+                            }
+                        }
+                        else if (touchedRow !== -1 && isTouchingRoster && this.f1TouchCooldown <= 0.0) {
                             const sortedDrivers = this.getSortedDrivers();
                             const selectedDriver = sortedDrivers[touchedRow];
                             if (selectedDriver) {
@@ -2725,8 +2723,8 @@ export class DomainExpansionSystem extends createSystem({
                         // Update timer
                         this.f1ActiveCardTimer += dt;
 
-                        if (this.f1ActiveCardTimer >= 7.0) {
-                            // Collapse completely after 7 seconds
+                        if (this.f1ActiveCardTimer >= 30.0) {
+                            // Collapse completely after 30 seconds
                             this.f1ActiveCardGroup.visible = false;
                             this.f1ActiveCardDriverId = null;
                         } else {
@@ -5495,12 +5493,9 @@ export class DomainExpansionSystem extends createSystem({
         ];
 
         const rosterNurburgring: PlayerEntry[] = [
-            { id: "f1_lh", name: "L. Hamilton", role: "fielder", jersey: "44", team: "yellow", x: 0, z: 0, primary: "Lewis Hamilton", secondary: "Ferrari", rcbCardKey: "f1LewisHamilton" },
             { id: "f1_cl", name: "C. Leclerc", role: "fielder", jersey: "16", team: "yellow", x: 0, z: 0, primary: "Charles Leclerc", secondary: "Ferrari", rcbCardKey: "f1CharlesLeclerc" },
             { id: "f1_ln", name: "L. Norris", role: "fielder", jersey: "4", team: "blue", x: 0, z: 0, primary: "Lando Norris", secondary: "McLaren", rcbCardKey: "f1LandoNorris" },
-            { id: "f1_op", name: "O. Piastri", role: "fielder", jersey: "81", team: "blue", x: 0, z: 0, primary: "Oscar Piastri", secondary: "McLaren", rcbCardKey: "f1OscarPiastri" },
-            { id: "f1_gr", name: "G. Russell", role: "fielder", jersey: "63", team: "neutral", x: 0, z: 0, primary: "George Russell", secondary: "Mercedes", rcbCardKey: "f1GeorgeRussell" },
-            { id: "f1_ka", name: "K. Antonelli", role: "fielder", jersey: "12", team: "neutral", x: 0, z: 0, primary: "Kimi Antonelli", secondary: "Mercedes", rcbCardKey: "f1KimiAntonelli" }
+            { id: "f1_gr", name: "G. Russell", role: "fielder", jersey: "63", team: "neutral", x: 0, z: 0, primary: "George Russell", secondary: "Mercedes", rcbCardKey: "f1GeorgeRussell" }
         ];
 
         const roster: PlayerEntry[] =
@@ -8551,7 +8546,7 @@ export class DomainExpansionSystem extends createSystem({
 
     private createNurburgringGroup() {
         this.nurburgringGroup = new THREE.Group();
-        this.nurburgringGroup.position.y = 0.01; // Raise the road map on the ring up by 1 cm
+        this.nurburgringGroup.position.y = 0.03; // Bring track, cars, and spline up on the y axis by 2 cm (0.01 -> 0.03)
 
         // 1. Create a flat ground base (Deep holographic cyan-blue)
         const groundGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.002, 64);
@@ -8561,7 +8556,8 @@ export class DomainExpansionSystem extends createSystem({
             opacity: 0.35
         });
         const ground = new THREE.Mesh(groundGeo, groundMat);
-        ground.position.y = 0.001;
+        // Lower the ground base on the Y axis by 2 cm in world coordinates (-2cm relative to original world Y = 0.011, i.e. new world Y = -0.009, local Y = -0.039)
+        ground.position.y = -0.039;
         this.nurburgringGroup.add(ground);
 
         // Elegant grid floor removed
@@ -8571,7 +8567,8 @@ export class DomainExpansionSystem extends createSystem({
         borderGeo.rotateX(Math.PI / 2);
         const borderMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8 });
         const border = new THREE.Mesh(borderGeo, borderMat);
-        border.position.y = 0.00205;
+        // Lower the border ring on the Y axis by 2 cm in world coordinates (-2cm relative to original world Y = 0.01205, i.e. new world Y = -0.00795, local Y = -0.03795)
+        border.position.y = -0.03795;
         this.nurburgringGroup.add(border);
 
         // 4. Closed winding 3D Spline representing Monaco GP with topography elevations
@@ -9232,28 +9229,38 @@ export class DomainExpansionSystem extends createSystem({
         this.nurburgringGroup.add(drsBadge);
         this.f1Markers.push(drsBadge);
 
-        // 7. Spawn the 1 detailed F1 car (George Russell)
+        // 7. Spawn all 3 detailed F1 cars (Russell, Leclerc, Norris)
         this.nurburgringCars = [];
         this.nurburgringF1WheelMats = [];
 
-        // Mercedes: George Russell (tracked car with HUD)
-        this.nurburgringF1Car = new THREE.Group();
-        this.nurburgringF1Wheels = [];
-        this.nurburgringF1WheelMats = [];
-        const mercRussell = this.createDetailedF1Car(0xa1a1aa, 0xffffff, 0x00d2be, 'merc');
-        this.nurburgringF1Car.add(mercRussell.car);
-        this.nurburgringF1Wheels = mercRussell.wheels;
-        this.createNurburgringF1HUD();
-        this.nurburgringGroup.add(this.nurburgringF1Car);
+        // Helper to build and register a car
+        const spawnCar = (bodyColor: number, accentColor: number, liveryColor: number, colorType: 'merc' | 'ferrari' | 'mclaren', driverId: string, startProgress: number, isMain: boolean) => {
+            const grp = new THREE.Group();
+            const built = this.createDetailedF1Car(bodyColor, accentColor, liveryColor, colorType);
+            grp.add(built.car);
+            this.nurburgringGroup!.add(grp);
+            this.nurburgringCars.push({ group: grp, progress: startProgress, speed: 0.052, wheels: built.wheels, colorType, driverId });
+            if (isMain) {
+                this.nurburgringF1Car = grp;
+                this.nurburgringF1Wheels = built.wheels;
+            }
+        };
 
-        this.nurburgringCars.push(
-            { group: this.nurburgringF1Car, progress: 0.0, speed: 0.052, wheels: this.nurburgringF1Wheels, colorType: 'merc', driverId: 'f1_gr' }
-        );
+        // P1 – Mercedes: George Russell  (silver / cyan)  — primary tracked car (no permanent HUD)
+        spawnCar(0xa1a1aa, 0xffffff, 0x00d2be, 'merc', 'f1_gr',  0.000, true);
+        // this.createNurburgringF1HUD(); // Removed permanent AR billboard/HUD from the first car
+
+        // P2 – Ferrari: Charles Leclerc  (red / yellow)
+        spawnCar(0xdc0000, 0xffcc00, 0xff2200, 'ferrari', 'f1_cl', 0.950, false);
+
+        // P3 – McLaren: Lando Norris     (papaya orange / black)
+        spawnCar(0xff8000, 0x111111, 0xff6600, 'mclaren', 'f1_ln', 0.900, false);
 
         // --- Create F1 Live Roster ---
+        this.f1RosterMinimized = false;
         this.f1RosterCanvas = document.createElement('canvas');
         this.f1RosterCanvas.width = 512;
-        this.f1RosterCanvas.height = 768; // Vertical aspect ratio 2:3
+        this.f1RosterCanvas.height = 600; // Aspect ratio for 0.24 x 0.28
         this.f1RosterCtx = this.f1RosterCanvas.getContext('2d')!;
 
         this.f1RosterTexture = new THREE.CanvasTexture(this.f1RosterCanvas);
@@ -9267,12 +9274,20 @@ export class DomainExpansionSystem extends createSystem({
             depthWrite: false
         });
 
-        // 0.24m wide by 0.36m high in table local coordinates
-        const rosterGeom = new THREE.PlaneGeometry(0.24, 0.36);
+        // Roster billboard — added to tableGroup's scene-root parent so it is NEVER
+        // affected by tableGroup scale or nurburgringGroup rotation.
+        // World position is recalculated every frame in the update loop.
+        const rosterGeom = new THREE.PlaneGeometry(0.24, 0.28);
         this.f1RosterMesh = new THREE.Mesh(rosterGeom, this.f1RosterMat);
-        // Position it behind the circular table track hologram: x=0, y=0.26, z=-0.22
-        this.f1RosterMesh.position.set(0, 0.26, -0.22);
-        this.nurburgringGroup.add(this.f1RosterMesh);
+        // Temporary world position — will be overridden in update() every frame
+        this.f1RosterMesh.position.set(0, 1.3, -0.4);
+        // Add to the THREE.js scene root (tableGroup.parent) so scale is fully independent
+        if (this.tableGroup.parent) {
+            this.tableGroup.parent.add(this.f1RosterMesh);
+        } else {
+            // Fallback: add to tableGroup (should not happen at runtime)
+            this.nurburgringGroup.add(this.f1RosterMesh);
+        }
         this.drawF1Roster(); // Draw initial empty roster
 
         // --- Create F1 Spawning Active Player Card Group ---
@@ -9695,8 +9710,8 @@ export class DomainExpansionSystem extends createSystem({
             car.add(stripe);
         });
 
-        // 20% smaller F1 car size scale applied to the entire group (scaled from 0.8 to 0.64)
-        car.scale.setScalar(0.64);
+        // 40% smaller than previous: 0.64 * 0.6 = 0.384
+        car.scale.setScalar(0.384);
 
         return { car, wheels };
     }
@@ -9826,12 +9841,9 @@ export class DomainExpansionSystem extends createSystem({
         totalProgress: number;
     }[] {
         const rosterNurburgring = [
-            { id: "f1_lh", name: "L. Hamilton", team: "Ferrari", rcbCardKey: "f1LewisHamilton" },
             { id: "f1_cl", name: "C. Leclerc", team: "Ferrari", rcbCardKey: "f1CharlesLeclerc" },
             { id: "f1_ln", name: "L. Norris", team: "McLaren", rcbCardKey: "f1LandoNorris" },
-            { id: "f1_op", name: "O. Piastri", team: "McLaren", rcbCardKey: "f1OscarPiastri" },
-            { id: "f1_gr", name: "G. Russell", team: "Mercedes", rcbCardKey: "f1GeorgeRussell" },
-            { id: "f1_ka", name: "K. Antonelli", team: "Mercedes", rcbCardKey: "f1KimiAntonelli" }
+            { id: "f1_gr", name: "G. Russell", team: "Mercedes", rcbCardKey: "f1GeorgeRussell" }
         ];
 
         const drivers = rosterNurburgring.map(d => {
@@ -9857,116 +9869,149 @@ export class DomainExpansionSystem extends createSystem({
     private drawF1Roster() {
         if (!this.f1RosterCtx) return;
         const ctx = this.f1RosterCtx;
-        ctx.clearRect(0, 0, 512, 768);
 
-        if (this.f1RosterBgImage && this.f1RosterBgImage.complete && this.f1RosterBgImage.naturalHeight > 0) {
-            ctx.drawImage(this.f1RosterBgImage, 0, 0, 512, 768);
+        if (this.f1RosterMinimized) {
+            ctx.clearRect(0, 0, 512, 170);
+
+            // Minimized layout: compact card with high-vis cyan border & show action text
+            ctx.fillStyle = 'rgba(6, 10, 24, 0.95)';
+            ctx.fillRect(0, 0, 512, 170);
+
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(5, 5, 502, 160);
+
+            ctx.font = 'bold 32px "Orbitron", "Courier New", monospace';
+            ctx.fillStyle = '#00ffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('[+] SHOW F1 ROSTER', 256, 85);
         } else {
-            // Fallback backing panel
-            ctx.fillStyle = 'rgba(6, 10, 24, 0.88)';
-            ctx.fillRect(0, 0, 512, 768);
-            ctx.strokeStyle = 'rgba(34, 211, 238, 0.8)';
-            ctx.lineWidth = 6;
-            ctx.strokeRect(6, 6, 500, 756);
-        }
+            ctx.clearRect(0, 0, 512, 600);
 
-        // 3. Title Text (adjusted for vertical layout and frame borders)
-        ctx.font = 'bold 24px "Orbitron", "Courier New", monospace';
-        ctx.fillStyle = '#22d3ee'; // Cyan
-        ctx.textAlign = 'left';
-        ctx.fillText('JUGNU F1 LIVE', 48, 120);
-
-        // Current maximum lap count
-        const maxLap = Object.keys(this.f1CarLaps).length > 0 ? Math.max(...Object.values(this.f1CarLaps)) : 0;
-        ctx.font = 'bold 16px "Courier New", monospace';
-        ctx.fillStyle = '#f59e0b'; // Amber
-        ctx.textAlign = 'right';
-        ctx.fillText(`LAP ${maxLap}`, 464, 120);
-
-        // Separator line
-        ctx.strokeStyle = 'rgba(34, 211, 238, 0.4)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(32, 136);
-        ctx.lineTo(480, 136);
-        ctx.stroke();
-
-        // 4. Draw Rows vertically
-        const sortedDrivers = this.getSortedDrivers();
-        const rowH = 80;
-        const startY = 144;
-
-        for (let i = 0; i < 6; i++) {
-            const driver = sortedDrivers[i];
-            if (!driver) continue;
-
-            const rowTop = startY + i * rowH;
-
-            // Hover state backing card highlight
-            if (this.f1RosterHoveredRowIndex === i) {
-                ctx.fillStyle = 'rgba(34, 211, 238, 0.15)';
-                ctx.fillRect(32, rowTop + 4, 448, rowH - 8);
-                ctx.strokeStyle = 'rgba(34, 211, 238, 0.6)';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(32, rowTop + 4, 448, rowH - 8);
+            if (this.f1RosterBgImage && this.f1RosterBgImage.complete && this.f1RosterBgImage.naturalHeight > 0) {
+                ctx.drawImage(this.f1RosterBgImage, 0, 0, 512, 600);
+            } else {
+                // Fallback backing panel
+                ctx.fillStyle = 'rgba(6, 10, 24, 0.88)';
+                ctx.fillRect(0, 0, 512, 600);
+                ctx.strokeStyle = 'rgba(34, 211, 238, 0.8)';
+                ctx.lineWidth = 6;
+                ctx.strokeRect(6, 6, 500, 588);
             }
 
-            // Subtle divider
-            if (i < 5) {
-                ctx.strokeStyle = 'rgba(34, 211, 238, 0.1)';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(48, rowTop + rowH);
-                ctx.lineTo(464, rowTop + rowH);
-                ctx.stroke();
-            }
-
-            // A. Position number block
-            ctx.fillStyle = i === 0 ? '#f59e0b' : (i === 1 ? '#cbd5e1' : (i === 2 ? '#b45309' : '#1e293b'));
-            ctx.fillRect(48, rowTop + 25, 30, 30);
-            ctx.font = 'bold 18px monospace';
-            ctx.fillStyle = i < 3 ? '#090d16' : '#9ca3af';
-            ctx.textAlign = 'center';
-            ctx.fillText(`${i + 1}`, 63, rowTop + 46);
-
-            // B. Driver name & Jersey
-            const rosterNurburgringRaw = [
-                { id: "f1_lh", jersey: "44" },
-                { id: "f1_cl", jersey: "16" },
-                { id: "f1_ln", jersey: "4" },
-                { id: "f1_op", jersey: "81" },
-                { id: "f1_gr", jersey: "63" },
-                { id: "f1_ka", jersey: "12" }
-            ];
-            const jersey = rosterNurburgringRaw.find(r => r.id === driver.driverId)?.jersey ?? "";
-            ctx.font = 'bold 18px "Courier New", monospace';
-            ctx.fillStyle = '#ffffff';
+            // Title Text
+            ctx.font = 'bold 24px "Orbitron", "Courier New", monospace';
+            ctx.fillStyle = '#22d3ee'; // Cyan
             ctx.textAlign = 'left';
-            ctx.fillText(`${driver.name} #${jersey}`, 96, rowTop + 40);
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillText('JUGNU F1 LIVE', 48, 80);
 
-            // C. Team logo tag (color coded border)
-            let teamColor = '#00ffff'; // Mercedes cyan
-            if (driver.team === 'Ferrari') teamColor = '#e11d48'; // Red
-            else if (driver.team === 'McLaren') teamColor = '#ea580c'; // Orange
-
-            ctx.strokeStyle = teamColor;
-            ctx.lineWidth = 2;
-            ctx.strokeRect(96, rowTop + 50, 86, 20);
-            ctx.font = '11px monospace';
-            ctx.fillStyle = teamColor;
-            ctx.textAlign = 'center';
-            ctx.fillText(driver.team.toUpperCase(), 139, rowTop + 64);
-
-            // D. Telemetry Snippet: Lap and Live Speed
-            const tel = this.getF1Telemetry(driver.progress);
+            // Current maximum lap count
+            const maxLap = Object.keys(this.f1CarLaps).length > 0 ? Math.max(...Object.values(this.f1CarLaps)) : 0;
             ctx.font = 'bold 16px "Courier New", monospace';
-            ctx.fillStyle = '#22d3ee';
+            ctx.fillStyle = '#f59e0b'; // Amber
             ctx.textAlign = 'right';
-            ctx.fillText(`${tel.speed} KM/H`, 464, rowTop + 40);
+            ctx.fillText(`LAP ${maxLap}`, 464, 80);
 
-            ctx.font = '14px "Courier New", monospace';
-            ctx.fillStyle = '#a1a1aa';
-            ctx.fillText(`LAP ${driver.lap}`, 464, rowTop + 64);
+            // Separator line
+            ctx.strokeStyle = 'rgba(34, 211, 238, 0.4)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(32, 100);
+            ctx.lineTo(480, 100);
+            ctx.stroke();
+
+            // Draw Rows vertically (3 rows only for 3 cars)
+            const sortedDrivers = this.getSortedDrivers();
+            const rowH = 80;
+            const startY = 110;
+
+            for (let i = 0; i < 3; i++) {
+                const driver = sortedDrivers[i];
+                if (!driver) continue;
+
+                const rowTop = startY + i * rowH;
+
+                // Hover state backing card highlight
+                if (this.f1RosterHoveredRowIndex === i) {
+                    ctx.fillStyle = 'rgba(34, 211, 238, 0.15)';
+                    ctx.fillRect(32, rowTop + 4, 448, rowH - 8);
+                    ctx.strokeStyle = 'rgba(34, 211, 238, 0.6)';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(32, rowTop + 4, 448, rowH - 8);
+                }
+
+                // Subtle divider
+                if (i < 2) {
+                    ctx.strokeStyle = 'rgba(34, 211, 238, 0.1)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(48, rowTop + rowH);
+                    ctx.lineTo(464, rowTop + rowH);
+                    ctx.stroke();
+                }
+
+                // A. Position number block
+                ctx.fillStyle = i === 0 ? '#f59e0b' : (i === 1 ? '#cbd5e1' : '#b45309');
+                ctx.fillRect(48, rowTop + 25, 30, 30);
+                ctx.font = 'bold 18px monospace';
+                ctx.fillStyle = '#090d16';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${i + 1}`, 63, rowTop + 46);
+
+                // B. Driver name & Jersey
+                const rosterNurburgringRaw = [
+                    { id: "f1_lh", jersey: "44" },
+                    { id: "f1_cl", jersey: "16" },
+                    { id: "f1_ln", jersey: "4" },
+                    { id: "f1_op", jersey: "81" },
+                    { id: "f1_gr", jersey: "63" },
+                    { id: "f1_ka", jersey: "12" }
+                ];
+                const jersey = rosterNurburgringRaw.find(r => r.id === driver.driverId)?.jersey ?? "";
+                ctx.font = 'bold 18px "Courier New", monospace';
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'left';
+                ctx.fillText(`${driver.name} #${jersey}`, 96, rowTop + 40);
+
+                // C. Team logo tag (color coded border)
+                let teamColor = '#00ffff'; // Mercedes cyan
+                if (driver.team === 'Ferrari') teamColor = '#e11d48'; // Red
+                else if (driver.team === 'McLaren') teamColor = '#ea580c'; // Orange
+
+                ctx.strokeStyle = teamColor;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(96, rowTop + 50, 86, 20);
+                ctx.font = '11px monospace';
+                ctx.fillStyle = teamColor;
+                ctx.textAlign = 'center';
+                ctx.fillText(driver.team.toUpperCase(), 139, rowTop + 64);
+
+                // D. Telemetry Snippet: Lap and Live Speed
+                const tel = this.getF1Telemetry(driver.progress);
+                ctx.font = 'bold 16px "Courier New", monospace';
+                ctx.fillStyle = '#22d3ee';
+                ctx.textAlign = 'right';
+                ctx.fillText(`${tel.speed} KM/H`, 464, rowTop + 40);
+
+                ctx.font = '14px "Courier New", monospace';
+                ctx.fillStyle = '#a1a1aa';
+                ctx.fillText(`LAP ${driver.lap}`, 464, rowTop + 64);
+            }
+
+            // Draw "MINIMIZE" Button at the bottom (Y = 430 to 510)
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+            ctx.fillRect(32, 430, 448, 80);
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(32, 430, 448, 80);
+
+            ctx.font = 'bold 26px "Orbitron", "Courier New", monospace';
+            ctx.fillStyle = '#ef4444';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('[-] HIDE ROSTER', 256, 470);
         }
 
         this.f1RosterTexture.needsUpdate = true;
