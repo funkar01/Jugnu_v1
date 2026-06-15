@@ -498,7 +498,7 @@ export class DomainExpansionSystem extends createSystem({
     private readonly THUMB_KEYS_BERLIN  = ["berlin360_1_thumb","berlin360_2_thumb","berlin360_3_thumb","berlin360_4_thumb","berlin360_5_thumb","berlin360_6_thumb"];
     private readonly THUMB_KEYS_INUIT   = ["inuit360_1_thumb","inuit360_2_thumb","inuit360_3_thumb","inuit360_4_thumb","inuit360_5_thumb","inuit360_6_thumb"];
     private readonly DOMAIN_KEYS_BUTTERFLIES  = ["butterfly360_1","butterfly360_2","butterfly360_3","butterfly360_4","butterfly360_5","butterfly360_6","butterfly360_7","butterfly360_8","butterfly360_9","butterfly360_10"];
-    private readonly DOMAIN_NAMES_BUTTERFLIES = ["Butterfly Park — 1","Butterfly Park — 2","Butterfly Park — 3","Butterfly Park — 4","Butterfly Park — 5","Butterfly Park — 6","Butterfly Park — 7","Butterfly Park — 8","Butterfly Park — 9","Butterfly Park — 10"];
+    private readonly DOMAIN_NAMES_BUTTERFLIES = ["FIFA Stadium — 1","FIFA Stadium — 2","FIFA Stadium — 3","FIFA Stadium — 4","FIFA Stadium — 5","FIFA Stadium — 6","FIFA Stadium — 7","FIFA Stadium — 8","FIFA Stadium — 9","FIFA Stadium — 10"];
     private readonly THUMB_KEYS_BUTTERFLIES  = ["butterfly360_1","butterfly360_2","butterfly360_3","butterfly360_4","butterfly360_5","butterfly360_6","butterfly360_7","butterfly360_8","butterfly360_9","butterfly360_10"];
     private readonly DOMAIN_KEYS_NURBURGRING  = ["nurburgring360_1","nurburgring360_2","nurburgring360_3","nurburgring360_4","nurburgring360_5","nurburgring360_6"];
     private readonly DOMAIN_NAMES_NURBURGRING  = ["GP Pit Lane","Hatzenbach","Adenauer Forst","Karussell","Pflanzgarten","Döttinger Höhe"];
@@ -1451,11 +1451,8 @@ export class DomainExpansionSystem extends createSystem({
         if (this.butterflyGroup) {
             this.butterflyGroup.visible = (stadiumType === 'butterflies');
         }
-        if (this.nurburgringGroup) {
-            this.nurburgringGroup.visible = (stadiumType === 'nurburgring');
-        }
         if (this.minimapMapPlane) {
-            this.minimapMapPlane.visible = (stadiumType !== 'butterflies' && stadiumType !== 'nurburgring');
+            this.minimapMapPlane.visible = true;
         }
         if (this.techRing1) {
             this.techRing1.visible = (stadiumType !== 'butterflies');
@@ -1494,11 +1491,13 @@ export class DomainExpansionSystem extends createSystem({
                 if (this.nurburgringGroup) {
                     this.nurburgringGroup.visible = (this.currentStadiumType === 'nurburgring');
                 }
+                console.log('[NurburgringMap] Deferred build complete — outside XRFrame.');
             }, 50);
         }
         if (this.nurburgringGroup) {
             this.nurburgringGroup.visible = (stadiumType === 'nurburgring');
         }
+
 
         // 2. Lazily create new meshes if they don't exist yet
         if (stadiumType === 'berlin' && !this.berlinMesh) {
@@ -1780,7 +1779,7 @@ export class DomainExpansionSystem extends createSystem({
         if (this.locationPin && this.locationPin.children.length >= 4) {
             const pinLabelMesh = this.locationPin.children[3] as THREE.Mesh;
             const pinLabelMat = pinLabelMesh.material as THREE.MeshBasicMaterial;
-            const newLabel = stadiumType === 'berlin' ? 'OLYMPIASTADION' : stadiumType === 'inuit' ? 'CRYPTO.COM ARENA' : stadiumType === 'nurburgring' ? 'NÜRBURGRING 24H' : 'WANKHEDE STADIUM';
+            const newLabel = stadiumType === 'berlin' ? 'UEFA' : stadiumType === 'inuit' ? 'NBA' : stadiumType === 'butterflies' ? 'FIFA' : stadiumType === 'nurburgring' ? 'F1' : 'IPL';
             
             const canvas = document.createElement('canvas');
             canvas.width = 256; canvas.height = 64;
@@ -1877,7 +1876,7 @@ export class DomainExpansionSystem extends createSystem({
                     bannerMat.needsUpdate = true;
                 }
             }
-        } else if (stadiumType === 'berlin') {
+        } else if (stadiumType === 'berlin' || stadiumType === 'butterflies') {
             // Apply Soccer score display meshes
             this.scoreDisplayMeshes.forEach((mesh, idx) => {
                 mesh.visible = true;
@@ -2031,7 +2030,8 @@ export class DomainExpansionSystem extends createSystem({
         }
 
         // --- Update Butterflies in the Minimap ---
-        if (this.currentStadiumType === 'butterflies' && this.butterflyGroup && this.tableGroup.visible) {
+        // Commented out:
+        if (false && this.currentStadiumType === 'butterflies' && this.butterflyGroup && this.tableGroup.visible) {
             this.butterflies.forEach((b) => {
                 b.wanderTime -= dt;
                 if (b.wanderTime <= 0) {
@@ -2079,9 +2079,9 @@ export class DomainExpansionSystem extends createSystem({
         // --- Update Nürburgring in the Minimap ---
         if (this.currentStadiumType === 'nurburgring' && this.nurburgringGroup && this.tableGroup.visible) {
 
-            // Update base race progress
+            // Update base race progress (75s Monaco lap time)
             const isImmersive = this.currentTableScale >= 2.5;
-            this.nurburgringF1Progress += dt * this.nurburgringF1Speed;
+            this.nurburgringF1Progress += dt / 75.0;
             if (this.nurburgringF1Progress > 1.0) this.nurburgringF1Progress -= 1.0;
 
             // Determine if the track is in a corner at current progress using tangent change curvature check
@@ -3821,7 +3821,7 @@ export class DomainExpansionSystem extends createSystem({
                         }
                     }
                 });
-                this.arBillboard.visible = (this.currentStadiumType === 'default' || this.currentStadiumType === 'berlin') && (maxOpacity > 0.01);
+                this.arBillboard.visible = (this.currentStadiumType === 'default' || this.currentStadiumType === 'berlin' || this.currentStadiumType === 'butterflies') && (maxOpacity > 0.01);
             }
 
             // 7. Holographic Close "X" Button Billboard & Poke check (hide at scale >= 2.5)
@@ -5256,7 +5256,7 @@ export class DomainExpansionSystem extends createSystem({
         texLoader.load('./ui/football/ucl_score_banner.png', (tex) => {
             const alphaTex = this.makeBlackTransparent(tex.image);
             this.soccerBillboardTexture = alphaTex;
-            if (this.currentStadiumType === 'berlin') {
+            if (this.currentStadiumType === 'berlin' || this.currentStadiumType === 'butterflies') {
                 bannerMat.map = alphaTex;
                 bannerMat.needsUpdate = true;
             }
@@ -5503,10 +5503,9 @@ export class DomainExpansionSystem extends createSystem({
         ];
 
         const roster: PlayerEntry[] =
-            this.currentStadiumType === 'berlin' ? rosterFootball
+            (this.currentStadiumType === 'berlin' || this.currentStadiumType === 'butterflies') ? rosterFootball
           : this.currentStadiumType === 'inuit'  ? rosterBasketball
           : this.currentStadiumType === 'nurburgring' ? rosterNurburgring
-          : this.currentStadiumType === 'butterflies' ? []
           : rosterCricket;
 
         // ── Shared Phong glassmorphic materials (created ONCE per team — not 22× per player) ───────
@@ -5597,7 +5596,7 @@ export class DomainExpansionSystem extends createSystem({
 
             // Active sport flags
             const isCricket = this.currentStadiumType === 'default';
-            const isFootball = this.currentStadiumType === 'berlin';
+            const isFootball = this.currentStadiumType === 'berlin' || this.currentStadiumType === 'butterflies';
             const isBasketball = this.currentStadiumType === 'inuit';
 
             // ── Torso ─────────────────────────────────────────────────────────────────
@@ -6908,7 +6907,7 @@ export class DomainExpansionSystem extends createSystem({
             texLoader.load(`./ui/football/${soccerFiles[idx]}`, (tex) => {
                 const alphaTex = this.makeBlackTransparent(tex.image);
                 this.soccerTextures[idx] = alphaTex;
-                if (this.currentStadiumType === 'berlin') {
+                if (this.currentStadiumType === 'berlin' || this.currentStadiumType === 'butterflies') {
                     panelMat.map = alphaTex;
                     panelMat.needsUpdate = true;
                 }
@@ -8369,6 +8368,7 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     private createButterflyGroup() {
+        /*
         this.butterflyGroup = new THREE.Group();
         
         // 1. Create a flat ground for Butterfly Park
@@ -8482,6 +8482,70 @@ export class DomainExpansionSystem extends createSystem({
         }
         
         this.tableGroup.add(this.butterflyGroup);
+        */
+
+        // NEW: Duplicate UEFA stadium (Olympiastadion) for FIFA
+        this.butterflyGroup = new THREE.Group();
+        const berlinAsset = AssetManager.getGLTF("olympiastadion");
+        if (berlinAsset) {
+            const mesh = berlinAsset.scene.clone();
+            const box = new THREE.Box3().setFromObject(mesh);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const maxDim = Math.max(size.x, size.z);
+            const berlinScale = 0.24 / (maxDim || 1.0);
+            mesh.scale.setScalar(berlinScale);
+            mesh.updateMatrixWorld(true);
+            const berlinBox = new THREE.Box3().setFromObject(mesh);
+            const berlinMinY = berlinBox.min.y;
+            mesh.position.set(0, -berlinMinY + 0.0005, 0);
+            this.butterflyGroup.add(mesh);
+
+            let fieldMesh: THREE.Mesh | null = null;
+            mesh.traverse((child: any) => {
+                if (child instanceof THREE.Mesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    const name = child.name.toLowerCase();
+                    const parentName = child.parent ? child.parent.name.toLowerCase() : "";
+                    if (Array.isArray(child.material)) {
+                        child.material = child.material.map((m: any) => applyStadiumMaterial(m, name, parentName));
+                    } else {
+                        child.material = applyStadiumMaterial(child.material, name, parentName);
+                    }
+                    if (name.includes('field') || name.includes('grass') || name.includes('pitch')) {
+                        fieldMesh = child;
+                    }
+                    if (name.includes('olympiagoalpost')) {
+                        child.userData.originalScale = child.scale.clone();
+                        if (child.position.z > 0) {
+                            this.berlinGoal1 = child;
+                            this.goal1NetMesh = child;
+                        } else {
+                            this.berlinGoal2 = child;
+                            this.goal2NetMesh = child;
+                        }
+                        console.log(`[FIFAStadium] Linked built-in goalpost "${child.name}" (Z: ${child.position.z.toFixed(4)})`);
+                    }
+                }
+            });
+            this.collectStadiumMaterials(mesh);
+        } else {
+            const cylinderGeo = new THREE.CylinderGeometry(0.096, 0.096, 0.095, 64, 1, true);
+            cylinderGeo.translate(0, 0.095 / 2, 0);
+            const berlinMat = new THREE.MeshStandardMaterial({
+                color: 0x22d3ee,
+                roughness: 0.1,
+                metalness: 0.8,
+                transparent: true,
+                opacity: 0.35,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const cylinderWall = new THREE.Mesh(cylinderGeo, berlinMat);
+            this.butterflyGroup.add(cylinderWall);
+        }
+        this.tableGroup.add(this.butterflyGroup);
     }
 
     private createNurburgringGroup() {
@@ -8509,19 +8573,24 @@ export class DomainExpansionSystem extends createSystem({
         border.position.y = 0.00205;
         this.nurburgringGroup.add(border);
 
-        // 4. Closed winding 3D Spline representing Nürburgring with topography elevations
+        // 4. Closed winding 3D Spline representing Monaco GP with topography elevations
         const points = [
-            new THREE.Vector3( 0.00,  0.003, -0.09), // Start/GP Straight
-            new THREE.Vector3( 0.04,  0.003, -0.09), // Hatzenbach (straightened)
-            new THREE.Vector3( 0.08,  0.012, -0.05), // Flugplatz (elevation!)
-            new THREE.Vector3( 0.06,  0.002, -0.01), // Fuchsroehre (dip!)
-            new THREE.Vector3( 0.09,  0.008,  0.03), // Adenauer Forst
-            new THREE.Vector3( 0.02,  0.006,  0.07), // Wehrseifen
-            new THREE.Vector3(-0.03,  0.003,  0.09), // Karussell (steep bank / dip)
-            new THREE.Vector3(-0.08,  0.010,  0.05), // Hohe Acht (highest point!)
-            new THREE.Vector3(-0.07,  0.005, -0.01), // Pflanzgarten
-            new THREE.Vector3(-0.05,  0.002, -0.06), // Schwalbenschwanz
-            new THREE.Vector3(-0.04,  0.003, -0.09)  // Döttinger Höhe (straightened)
+            new THREE.Vector3(-0.06, 0.003, -0.06), // Turn 1 (01 - Sainte Devote)
+            new THREE.Vector3(-0.02, 0.008, -0.05), // Beau Rivage uphill (02)
+            new THREE.Vector3( 0.02, 0.012, -0.03), // Massenet (03)
+            new THREE.Vector3( 0.05, 0.012, -0.02), // Casino Square (04)
+            new THREE.Vector3( 0.08, 0.009, -0.01), // Mirabeau Haute (05)
+            new THREE.Vector3( 0.06, 0.006,  0.01), // Grand Hotel Hairpin (06)
+            new THREE.Vector3( 0.08, 0.003,  0.03), // Portier (07/08)
+            new THREE.Vector3( 0.05, 0.003,  0.05), // Tunnel Entry (09)
+            new THREE.Vector3( 0.00, 0.003,  0.06), // Tunnel Mid (09)
+            new THREE.Vector3(-0.05, 0.003,  0.05), // Chicane (10/11)
+            new THREE.Vector3(-0.08, 0.003,  0.02), // Tabac (12)
+            new THREE.Vector3(-0.07, 0.003, -0.01), // Swimming Pool 1 (13/14)
+            new THREE.Vector3(-0.06, 0.003, -0.03), // Swimming Pool 2 (15/16)
+            new THREE.Vector3(-0.07, 0.003, -0.05), // Rascasse (17/18)
+            new THREE.Vector3(-0.09, 0.003, -0.02), // Anthony Noghes (19)
+            new THREE.Vector3(-0.08, 0.003, -0.04)  // Pit straight
         ];
         this.nurburgringCurve = new THREE.CatmullRomCurve3(points, true);
         (this.nurburgringCurve as any).isNurburgring = true;
@@ -8571,27 +8640,53 @@ export class DomainExpansionSystem extends createSystem({
 
         this.nurburgringFrenetFrames = (this.nurburgringCurve as any).computeFrenetFrames(250, true);
 
-        // 5. Extrude 3D flat road geometry along the spline (V17 approach — stable, no custom Frenet override)
-        const roadWidth = 0.018;
-        const roadThickness = 0.001;
-        const roadShape = new THREE.Shape();
-        roadShape.moveTo(-roadWidth / 2, -roadThickness / 2);
-        roadShape.lineTo( roadWidth / 2, -roadThickness / 2);
-        roadShape.lineTo( roadWidth / 2,  roadThickness / 2);
-        roadShape.lineTo(-roadWidth / 2,  roadThickness / 2);
-        roadShape.closePath();
-
-        const extrudeSettings = {
-            steps: 128,
-            bevelEnabled: false,
-            extrudePath: this.nurburgringCurve
-        };
-        const trackGeo = new THREE.ExtrudeGeometry(roadShape, extrudeSettings);
+        // 5. Build 3D flat road geometry using InstancedMesh along the spline
+        const segments = 300;
+        const roadWidth = 0.016;
+        const roadThickness = 0.0005;
+        const roadGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
         this.nurburgringTrackMat = new THREE.MeshBasicMaterial({
             color: 0x2a2a33
         });
-        const trackMesh = new THREE.Mesh(trackGeo, this.nurburgringTrackMat);
-        this.nurburgringGroup.add(trackMesh);
+        const roadMesh = new THREE.InstancedMesh(roadGeo, this.nurburgringTrackMat, segments);
+
+        const tempMatrix = new THREE.Matrix4();
+        const xAxis = new THREE.Vector3();
+        const yAxis = new THREE.Vector3();
+        const zAxis = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        const scale = new THREE.Vector3();
+        const up = new THREE.Vector3(0, 1, 0);
+
+        for (let i = 0; i < segments; i++) {
+            const u1 = i / segments;
+            const u2 = (i + 1) / segments;
+            const p1 = this.nurburgringCurve.getPointAt(u1);
+            const p2 = this.nurburgringCurve.getPointAt(u2 % 1.0);
+            
+            center.addVectors(p1, p2).multiplyScalar(0.5);
+            zAxis.subVectors(p2, p1);
+            const len = zAxis.length();
+            zAxis.normalize();
+            
+            xAxis.crossVectors(up, zAxis);
+            if (xAxis.lengthSq() < 0.0001) {
+                xAxis.set(1, 0, 0);
+            } else {
+                xAxis.normalize();
+            }
+            yAxis.crossVectors(zAxis, xAxis).normalize();
+            
+            tempMatrix.makeBasis(xAxis, yAxis, zAxis);
+            tempMatrix.setPosition(center);
+            
+            scale.set(roadWidth, roadThickness, len);
+            tempMatrix.scale(scale);
+            
+            roadMesh.setMatrixAt(i, tempMatrix);
+        }
+        roadMesh.instanceMatrix.needsUpdate = true;
+        this.nurburgringGroup.add(roadMesh);
 
         // 6. Overlay glowing neon racing outline guide line
         const linePoints = this.nurburgringCurve.getPoints(200);
@@ -8605,7 +8700,7 @@ export class DomainExpansionSystem extends createSystem({
         const lineMesh = new THREE.Line(lineGeo, lineMat);
         this.nurburgringGroup.add(lineMesh);
 
-        // 7. Spawn the 6 detailed F1 cars (20% smaller)
+        // 7. Spawn the 1 detailed F1 car (George Russell)
         this.nurburgringCars = [];
         this.nurburgringF1WheelMats = [];
 
@@ -8619,33 +8714,8 @@ export class DomainExpansionSystem extends createSystem({
         this.createNurburgringF1HUD();
         this.nurburgringGroup.add(this.nurburgringF1Car);
 
-        // Mercedes: Kimi Antonelli
-        const mercAntonelli = this.createDetailedF1Car(0xa1a1aa, 0x1e3a8a, 0xeab308, 'merc');
-        this.nurburgringGroup.add(mercAntonelli.car);
-
-        // Ferrari: Charles Leclerc
-        const ferrariLeclerc = this.createDetailedF1Car(0xd10000, 0xffffff, 0xffffff, 'ferrari');
-        this.nurburgringGroup.add(ferrariLeclerc.car);
-
-        // Ferrari: Lewis Hamilton
-        const ferrariHamilton = this.createDetailedF1Car(0xd10000, 0x18181b, 0xeab308, 'ferrari');
-        this.nurburgringGroup.add(ferrariHamilton.car);
-
-        // McLaren: Lando Norris
-        const mclarenNorris = this.createDetailedF1Car(0xff6600, 0x4ade80, 0xeab308, 'mclaren');
-        this.nurburgringGroup.add(mclarenNorris.car);
-
-        // McLaren: Oscar Piastri
-        const mclarenPiastri = this.createDetailedF1Car(0xff6600, 0x0284c7, 0xffffff, 'mclaren');
-        this.nurburgringGroup.add(mclarenPiastri.car);
-
         this.nurburgringCars.push(
-            { group: this.nurburgringF1Car, progress: 0.0, speed: 0.052, wheels: this.nurburgringF1Wheels, colorType: 'merc', driverId: 'f1_gr' },
-            { group: mercAntonelli.car, progress: 0.0, speed: 0.052, wheels: mercAntonelli.wheels, colorType: 'merc', driverId: 'f1_ka' },
-            { group: ferrariLeclerc.car, progress: 0.0, speed: 0.052, wheels: ferrariLeclerc.wheels, colorType: 'ferrari', driverId: 'f1_cl' },
-            { group: ferrariHamilton.car, progress: 0.0, speed: 0.052, wheels: ferrariHamilton.wheels, colorType: 'ferrari', driverId: 'f1_lh' },
-            { group: mclarenNorris.car, progress: 0.0, speed: 0.052, wheels: mclarenNorris.wheels, colorType: 'mclaren', driverId: 'f1_ln' },
-            { group: mclarenPiastri.car, progress: 0.0, speed: 0.052, wheels: mclarenPiastri.wheels, colorType: 'mclaren', driverId: 'f1_op' }
+            { group: this.nurburgringF1Car, progress: 0.0, speed: 0.052, wheels: this.nurburgringF1Wheels, colorType: 'merc', driverId: 'f1_gr' }
         );
 
         // --- Create F1 Live Roster ---

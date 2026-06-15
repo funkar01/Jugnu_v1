@@ -1344,3 +1344,19 @@
   - `[x]` Added visibility gating to the Cricket Hawk-Eye splines and elements to hide them during F1/other maps.
   - `[x]` Scaled down the city minimap dynamically in `CityMapSystem` when the F1 stadium table is visible to prevent overlap.
   - `[x]` Verified typecheck safety (`npx tsc --noEmit`) and successful production build (`npm run build`).
+
+- `[x]` Venue UI Cleanup, Nürburgring/Butterfly Map Comment Out, and FIFA Soccer Duplicate (Current Run)
+  - `[x]` Restructured the Venue UI to feature 5 active venues: IPL, UEFA, NBA, FIFA, F1, with evenly spaced compass angles.
+  - `[x]` Commented out the lazy-loaded creation and update loops for the 3D Nürburgring and Butterfly maps to remove them from the active application.
+  - `[x]` Programmed F1 to open the 2D plane minimap/radar instead of a 3D track model.
+  - `[x]` Cloned the Olympiastadion (UEFA) GLTF asset to create a duplicate stadium for FIFA.
+  - `[x]` Mapped FIFA (key `butterflies`) to play soccer by linking it to the soccer roster, scoreboards, visors, headwear, and billboard TV.
+  - `[x]` Successfully verified typecheck safety and client builds.
+
+- `[x]` Monaco GP Spline & Instanced Road Mesh Integration (Current Run)
+  - `[x]` Defined Cartesian coordinate points for the Monaco GP track layout including elevation changes.
+  - `[x]` Programmed dynamic instanced unit box road meshes (`THREE.InstancedMesh`) along the spline segments, aligning direction, roll, and scale.
+  - `[x]` Uncommented the F1 map lazy-loading creation and rendering update loops.
+  - `[x]` Spawned exactly one Mercedes F1 car (George Russell) on the track, disabling the other 5 cars.
+  - `[x]` Calibrated the car's update loop progress to take exactly 75 seconds to complete a full lap, matching the real-world Monaco lap time.
+  - `[x]` Confirmed zero type errors and successful Vite build client asset bundles.

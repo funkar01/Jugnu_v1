@@ -2834,7 +2834,7 @@ export class JugnuSystem extends createSystem({
           '/textures/wankde.jpg',
           '/textures/olympia.jpg',
           '/textures/crytpo.jpg',
-          '/textures/butterfly park.avif',
+          '/textures/olympia.jpg',
           '/textures/nuburning 24h.jpg',
       ];
       imageSrcs.forEach((src, i) => {
@@ -3422,11 +3422,11 @@ export class JugnuSystem extends createSystem({
       ctx.stroke();
 
       const venues: { key: string; name: string; sub: string; img: HTMLImageElement | null }[] = [
-          { key: 'default',     name: 'WANKHEDE',   sub: 'Mumbai, India',        img: this.stadiumImages[0] },
-          { key: 'berlin',      name: 'OLYMPIA',    sub: 'Berlin, Germany',      img: this.stadiumImages[1] },
-          { key: 'inuit',       name: 'CRYPTO',     sub: 'Los Angeles, USA',     img: this.stadiumImages[2] },
-          { key: 'butterflies', name: 'BUTTERFLY',  sub: 'Immersive 360°',       img: this.stadiumImages[3] },
-          { key: 'nurburgring', name: 'NÜRBURGRING',sub: 'Nürburg, Germany',     img: this.stadiumImages[4] },
+          { key: 'default',     name: 'IPL',        sub: 'Mumbai, India',        img: this.stadiumImages[0] },
+          { key: 'berlin',      name: 'UEFA',       sub: 'Berlin, Germany',      img: this.stadiumImages[1] },
+          { key: 'inuit',       name: 'NBA',        sub: 'Los Angeles, USA',     img: this.stadiumImages[2] },
+          { key: 'butterflies', name: 'FIFA',       sub: 'Munich, Germany',      img: this.stadiumImages[3] },
+          { key: 'nurburgring', name: 'F1',         sub: 'Nürburg, Germany',     img: this.stadiumImages[4] },
       ];
 
       const targetAngles = [
