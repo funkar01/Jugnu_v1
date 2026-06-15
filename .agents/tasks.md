@@ -1407,10 +1407,29 @@
 - `[x]` Monaco GP Map Rotation & Spatial Lock Refinements (Current Run)
   - `[x]` Implemented dynamic relative matrix transform chain calculation to map `rawPoints` directly to the `roadMeshChild` geometry's local space, auto-aligning spline and mesh perfectly.
   - `[x]` Rotated the Monaco GP Track 3D mesh Y-axis rotation to absolute -10 degrees (`-10 * Math.PI / 180` rad).
+  - `[x]` Resampled the track spline curve at 300 equidistant points and set `__arcLengthDivisions = 3000` to guarantee constant, jitter-free F1 car speeds.
+  - `[x]` Implemented a 1.2% progress offset look-ahead heading calculation vector to eliminate yaw/steering jitters on curves.
+  - `[x]` Bypassed CPU-heavy and noisy raycasting height projection, allowing cars to follow the smooth aligned spline Y coordinate directly.
   - `[x]` Replaced long-press lock-escape with double left index finger pinch in under 1 second to prevent accidental summon escapes.
   - `[x]` Programmed high-frequency visual vibration feedback on Jugnu during the first pinch of a double pinch sequence.
   - `[x]` Linked lock icon visibility to check `!isMapScaledMax` to hide the lock icon dynamically when fully zoomed inside the minimap.
   - `[x]` Verified static type checking (`npx tsc --noEmit`) and client production build (`npm run build`) successfully.
+
+- `[x]` Monaco Map Spline Upgrade & Car Forward-Facing Fix (Current Run)
+  - `[x]` Replaced low-density 110-point Monaco GP rawPoints with high-density 274-point resampled equidistant curve in `src/domainExpansion.ts` for ultra-smooth car movement with no speed pulsing.
+  - `[x]` Fixed car forward-facing: negated `f1zAxis` in `makeBasis(xAxis, yAxis, -zAxis)` so the car's local +Z nose correctly aligns with travel direction instead of pointing backward.
+  - `[x]` Verified zero TypeScript errors (`npx tsc --noEmit`).
+
+- `[x]` F1 Car Track Adherence & Forward-Facing Fix (Current Run)
+  - `[x]` Eliminated `rotateY(steerAngle)` per-frame delta — root cause of 360° spins before corners.
+  - `[x]` Removed oscillating `progressDiff * 0.014` that pulled cars off spline center; replaced with fixed `baseLag` only.
+  - `[x]` Clamped lateral offset to ±2mm (was ±5mm) — stops cars floating visibly off track.
+  - `[x]` Switched from `setFromRotationMatrix` (instant snap) to `quaternion.slerp(target, 12*dt)` for smooth heading transitions.
+  - `[x]` Added shortest-arc quaternion guard (manual component flip when dot < 0) to prevent 360° wrap-around during slerp.
+  - `[x]` Corrected `makeBasis(xAxis, yAxis, forwardTangent)` — no negation — car nose (+Z local) correctly faces travel.
+  - `[x]` Verified zero TypeScript errors (`npx tsc --noEmit`).
+
+
 
 
 
