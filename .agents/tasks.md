@@ -1430,4 +1430,9 @@
   - `[x]` Wired `startOnboarding()` inside "Enter XR" button click listener in `src/index.ts`.
   - `[x]` Removed window-level pointerdown/keydown auto-start fallback listeners for `startAudio` to prevent premature ambient audio loops on the loading screen.
   - `[x]` Verified type compilation safety (`npx tsc --noEmit`) and built client production bundle successfully (`npm run build`).
+- `[x]` Onboarding WebXR Loop Crash / Passthrough Freeze Fix (Current Run)
+  - `[x]` Added null-safety check for `this.player.raySpaces` inside index tip trackers and trigger fallbacks.
+  - `[x]` Wrapped head matrix copy/inversion in determinant non-zero checks to prevent degenerate tracking matrices from propagating NaN coordinates.
+  - `[x]` Added finite checks (`Number.isFinite`) and try-catch safety wrapper around Web Audio API `setValueAtTime()` calls on the heartbeat spatial panner.
+  - `[x]` Verified type compilation safety (`npx tsc --noEmit`) and compiled client production bundle successfully (`npm run build`).
 

@@ -133,7 +133,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
     private physicsRemoved = false;
     
     // Embers Particle System
-    private readonly MAX_EMBERS = 1200;
+    private readonly MAX_EMBERS = 600;
     private embersPool: EmberParticle[] = [];
     private embersMesh!: THREE.InstancedMesh;
     private emberDummy = new THREE.Object3D();
@@ -312,7 +312,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         }
         
         // Setup InstancedMesh for embers
-        const emberGeo = new THREE.BoxGeometry(0.007, 0.007, 0.007);
+        const emberGeo = new THREE.BoxGeometry(0.0095, 0.0095, 0.0095);
         const emberMat = new THREE.MeshBasicMaterial({
             color: 0xffaa33, // Warm gold-orange fallback color
             transparent: true,
@@ -713,22 +713,35 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
             }
             
             // Orbit the heartbeat panner around the player's head (8D spatial panning)
-            if (this.audioCtx && this.heartbeatPanner && this.player) {
-                const time = this.onboardingTime;
-                const radius = 1.6;
-                const px = radius * Math.sin(time * 0.85);
-                const py = 1.45 + 0.2 * Math.sin(time * 1.2);
-                const pz = radius * Math.cos(time * 0.85);
-                
-                // Convert to head relative coordinates
-                this.scratchV3.set(px, py, pz);
-                const headMat = this.player.head.matrixWorld;
-                this.scratchV3.applyMatrix4(this.scratchMatrix.copy(headMat).invert());
-                
-                const now = this.audioCtx.currentTime;
-                this.heartbeatPanner.positionX.setValueAtTime(this.scratchV3.x, now);
-                this.heartbeatPanner.positionY.setValueAtTime(this.scratchV3.y, now);
-                this.heartbeatPanner.positionZ.setValueAtTime(this.scratchV3.z, now);
+            if (this.audioCtx && this.heartbeatPanner && this.player && this.player.head) {
+                try {
+                    const time = this.onboardingTime;
+                    const radius = 1.6;
+                    const px = radius * Math.sin(time * 0.85);
+                    const py = 1.45 + 0.2 * Math.sin(time * 1.2);
+                    const pz = radius * Math.cos(time * 0.85);
+                    
+                    // Convert to head relative coordinates
+                    this.scratchV3.set(px, py, pz);
+                    const headMat = this.player.head.matrixWorld;
+                    
+                    // Check if headMat is valid and invertible
+                    if (headMat) {
+                        const det = headMat.determinant();
+                        if (det !== 0 && !isNaN(det)) {
+                            this.scratchV3.applyMatrix4(this.scratchMatrix.copy(headMat).invert());
+                            
+                            if (Number.isFinite(this.scratchV3.x) && Number.isFinite(this.scratchV3.y) && Number.isFinite(this.scratchV3.z)) {
+                                const now = this.audioCtx.currentTime;
+                                this.heartbeatPanner.positionX.setValueAtTime(this.scratchV3.x, now);
+                                this.heartbeatPanner.positionY.setValueAtTime(this.scratchV3.y, now);
+                                this.heartbeatPanner.positionZ.setValueAtTime(this.scratchV3.z, now);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn("[OnboardingSystem] Error updating heartbeat panner coordinates:", e);
+                }
             }
         }
         
@@ -736,11 +749,11 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         let leftActive = this.getJointWorldData('left', 'index-finger-tip', this.leftHandTip);
         let rightActive = this.getJointWorldData('right', 'index-finger-tip', this.rightHandTip);
         
-        if (!leftActive && this.player && this.player.raySpaces.left) {
+        if (!leftActive && this.player && this.player.raySpaces && this.player.raySpaces.left) {
             this.player.raySpaces.left.getWorldPosition(this.leftHandTip);
             leftActive = true;
         }
-        if (!rightActive && this.player && this.player.raySpaces.right) {
+        if (!rightActive && this.player && this.player.raySpaces && this.player.raySpaces.right) {
             this.player.raySpaces.right.getWorldPosition(this.rightHandTip);
             rightActive = true;
         }
@@ -1251,6 +1264,23 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         const q = this.scratchQ.setFromUnitVectors(new THREE.Vector3(0, 1, 0), toUser);
         const qInv = this.scratchQ_2.copy(q).invert();
         
+        // Proximity throttling: Only perform individual particle distance checks if the target hand/mouse
+        // is inside the active particle drift bounds to eliminate 3,600 distance vector operations per frame.
+        const leftHandInBounds = leftActive && 
+            this.leftHandTip.x >= -2.0 && this.leftHandTip.x <= 2.0 &&
+            this.leftHandTip.y >= 0.2 && this.leftHandTip.y <= 2.6 &&
+            this.leftHandTip.z >= -3.0 && this.leftHandTip.z <= 0.5;
+
+        const rightHandInBounds = rightActive && 
+            this.rightHandTip.x >= -2.0 && this.rightHandTip.x <= 2.0 &&
+            this.rightHandTip.y >= 0.2 && this.rightHandTip.y <= 2.6 &&
+            this.rightHandTip.z >= -3.0 && this.rightHandTip.z <= 0.5;
+
+        const mouseInBounds = !isXR && 
+            this.mousePos.x >= -2.0 && this.mousePos.x <= 2.0 &&
+            this.mousePos.y >= 0.2 && this.mousePos.y <= 2.6 &&
+            this.mousePos.z >= -3.0 && this.mousePos.z <= 0.5;
+
         for (let i = 0; i < this.MAX_EMBERS; i++) {
             const p = this.embersPool[i];
             p.age += safeDt;
@@ -1273,21 +1303,21 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
                     // --- Phase 1: Lazy drift + hand repulsion ---
                     p.position.addScaledVector(p.velocity, safeDt);
                     
-                    if (leftActive) {
+                    if (leftHandInBounds) {
                         const distLeft = p.position.distanceTo(this.leftHandTip);
                         if (distLeft < 0.4) {
                             const pushDir = this.scratchV3.subVectors(p.position, this.leftHandTip).normalize();
                             p.velocity.addScaledVector(pushDir, (1.0 - distLeft / 0.4) * 2.8 * safeDt);
                         }
                     }
-                    if (rightActive) {
+                    if (rightHandInBounds) {
                         const distRight = p.position.distanceTo(this.rightHandTip);
                         if (distRight < 0.4) {
                             const pushDir = this.scratchV3.subVectors(p.position, this.rightHandTip).normalize();
                             p.velocity.addScaledVector(pushDir, (1.0 - distRight / 0.4) * 2.8 * safeDt);
                         }
                     }
-                    if (!isXR) {
+                    if (mouseInBounds) {
                         const distMouse = p.position.distanceTo(this.mousePos);
                         if (distMouse < 0.35) {
                             const pushDir = this.scratchV3.subVectors(p.position, this.mousePos).normalize();
@@ -1811,7 +1841,7 @@ export class OnboardingSystem extends createSystem({ jugnu: { required: [Jugnu] 
         if (source.gamepad) {
             const trigger = source.gamepad.buttons[0];
             if (trigger && trigger.pressed) {
-                if (this.player && this.player.raySpaces[handedness]) {
+                if (this.player && this.player.raySpaces && this.player.raySpaces[handedness]) {
                     this.player.raySpaces[handedness].getWorldPosition(tipPosOut);
                     return true;
                 }
