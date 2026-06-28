@@ -290,6 +290,127 @@ export class SpatialFXSystem extends createSystem({}) {
         }
     }
 
+    playRefereeWhistle(pos: THREE.Vector3) {
+        this.resumeAudio();
+        if (!this.ctx) return;
+        const panner = this.setupPanner(pos);
+        if (!panner) return;
+        panner.connect(this.ctx.destination);
+
+        const t = this.ctx.currentTime;
+        
+        // Double pulse whistle sound
+        const playPulse = (startOffset: number) => {
+            if (!this.ctx) return;
+            const osc1 = this.ctx.createOscillator();
+            const osc2 = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            
+            osc1.connect(gain);
+            osc2.connect(gain);
+            gain.connect(panner);
+            
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(2000, t + startOffset);
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(2150, t + startOffset); // detuned for beating vibrato
+            
+            gain.gain.setValueAtTime(0.001, t + startOffset);
+            gain.gain.linearRampToValueAtTime(0.18, t + startOffset + 0.02);
+            gain.gain.linearRampToValueAtTime(0.18, t + startOffset + 0.15);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + startOffset + 0.22);
+            
+            osc1.start(t + startOffset);
+            osc2.start(t + startOffset);
+            osc1.stop(t + startOffset + 0.24);
+            osc2.stop(t + startOffset + 0.24);
+        };
+        
+        playPulse(0.0);
+        playPulse(0.28); // double pulse
+    }
+
+    playDRSBeep(pos: THREE.Vector3) {
+        this.resumeAudio();
+        if (!this.ctx) return;
+        const panner = this.setupPanner(pos);
+        if (!panner) return;
+        panner.connect(this.ctx.destination);
+
+        const t = this.ctx.currentTime;
+
+        const playBeep = (startOffset: number) => {
+            if (!this.ctx) return;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.connect(gain);
+            gain.connect(panner);
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1600, t + startOffset);
+
+            gain.gain.setValueAtTime(0.001, t + startOffset);
+            gain.gain.linearRampToValueAtTime(0.08, t + startOffset + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + startOffset + 0.06);
+
+            osc.start(t + startOffset);
+            osc.stop(t + startOffset + 0.08);
+        };
+
+        playBeep(0.0);
+        playBeep(0.10); // double beep
+    }
+
+    playCrowdCheer(pos: THREE.Vector3) {
+        this.resumeAudio();
+        if (!this.ctx) return;
+        const panner = this.setupPanner(pos);
+        if (!panner) return;
+        panner.connect(this.ctx.destination);
+
+        const t = this.ctx.currentTime;
+        const duration = 2.8;
+
+        const noise = this.createNoiseBufferNode();
+        if (noise) {
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(800, t);
+            filter.frequency.exponentialRampToValueAtTime(1200, t + 1.0);
+            filter.frequency.exponentialRampToValueAtTime(700, t + duration);
+            filter.Q.setValueAtTime(2.0, t);
+
+            const gain = this.ctx.createGain();
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(panner);
+
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.linearRampToValueAtTime(0.24, t + 0.35); // swell up
+            gain.gain.linearRampToValueAtTime(0.18, t + 1.2);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+            noise.start(t);
+            noise.stop(t + duration + 0.1);
+        }
+
+        const osc = this.ctx.createOscillator();
+        const oscGain = this.ctx.createGain();
+        osc.connect(oscGain);
+        oscGain.connect(panner);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(110, t);
+        osc.frequency.linearRampToValueAtTime(145, t + 0.8);
+        osc.frequency.linearRampToValueAtTime(95, t + duration);
+
+        oscGain.gain.setValueAtTime(0.001, t);
+        oscGain.gain.linearRampToValueAtTime(0.12, t + 0.4);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+        osc.start(t);
+        osc.stop(t + duration + 0.1);
+    }
+
     // --- Jugnu Continuous Hover hum ---
 
     startJugnuHoverSound(pos: THREE.Vector3) {

@@ -1457,3 +1457,66 @@
   - `[x]` Commented out createNurburgringF1HUD() call in createNurburgringGroup(), cleanly removing the permanent Mercedes telemetry HUD.
   - `[x]` Updated active player card group timer threshold inside the update loop from 7.0s to 30.0s, keeping spawned cards visible for 30 seconds.
   - `[x]` Verified typecheck safety via npx tsc --noEmit and built client bundle cleanly via npm run build.
+- `[x]` F1 UI Overhaul — 2-Car Roster, Circular Minimize, Turn Marker Toggle & Overtake (Current Run)
+  - `[x]` Removed 3rd car (McLaren/Lando Norris) — nurburgring now runs exactly 2 cars: George Russell (Mercedes) and Charles Leclerc (Ferrari).
+  - `[x]` Rewrote 2-car update loop in update() to implement real lateral overtake: Leclerc's progress gap shifts dynamically via sin(overtakePhase)*0.04, and both cars nudge sideways by ±1.8mm during passes for a visible on-track move.
+  - `[x]` Replaced the flat rectangular minimized roster with a circular glassmorphic button (0.08m x 0.08m plane, 256x256 canvas): dark glass fill, cyan neon border ring with shadow glow, 4-row bullet-list icon, "F1" label and chevron-up hint.
+  - `[x]` Replaced the old rectangular "[-] HIDE ROSTER" button with a circular red button (center-bottom, radius 52px) bearing a bullet-list icon and chevron-down, matching the minimized icon style.
+  - `[x]` Added TURN MARKERS toggle row in the maximized roster UI (Y=290–360 canvas zone): active state is cyan-lit with "ON" pill, inactive is grey-dimmed with "OFF" pill and bullet-list icon. Touch detection updated to match new zone.
+  - `[x]` Implemented smooth opacity animation for turn markers: non-immersive update path lerps f1MarkerOpacity at 6× speed toward 0.0 or 1.0, and sets marker material opacity + visibility accordingly for a fluid fade-in/fade-out effect.
+  - `[x]` AR billboard confirmed permanently hidden for nurburgring (already gated in setStadiumType and update loop; no change needed).
+  - `[x]` Updated getSortedDrivers() and drawF1Roster() row count to 2; updated touch coordinate check row-count guard from 3 to 2; updated position badge colors for 2-car layout.
+  - `[x]` Verified zero compile-time errors via npx tsc --noEmit.
+
+- `[x]` F1 Map AR Billboards & Overlay (Current Run)
+  - `[x]` Disabled depth testing (`depthTest: false`, `depthWrite: false`) on active card materials to render cards overlaid on top of all layers.
+  - `[x]` Configured sequential `renderOrder` on all card meshes (9999, 10000, 10001) to ensure correct layering layout without flickering.
+  - `[x]` Added robust lookAt billboarding math with camera and head fallbacks to face the user at all times.
+  - `[x]` Linked card visibility strictly to roster selection: removed automatic timeout and collapse animations, keeping cards open indefinitely while selected.
+  - `[x]` Implemented active selection highlights in the maximized roster list: renders a neon-cyan border and left indicator bar on the active driver's row.
+  - `[x]` Added card cleanup on roster minimizing, card toggling on double selection, and card hiding on stadium deactivations.
+  - `[x]` Verified typecheck safety via `npx tsc --noEmit` and bundled successfully in production client builds via `npm run build`.
+
+- `[x]` European F1 & Soccer Broadcast Makeover (Current Run)
+  - `[x]` Extend `PlayerMarker` with leg/arm references in `src/domainExpansion.ts`
+  - `[x]` Cache leg/arm meshes inside `initPlayerMarkers()`
+  - `[x]` Implement dynamic leg/arm running cycles inside `runPlayer()` & `stopPlayer()`
+  - `[x]` Refine Soccer animations (Kimmich slide, Kane/Rüdiger jumps, Neuer mid-air horizontal dive)
+  - `[x]` Implement Soccer Ultras smoke flares behind goal net & stands flashbulbs
+  - `[x]` Implement F1 Tyre Steering Yaw (wheels turn to face spline tangent)
+  - `[x]` Implement F1 Chassis Cornering Roll based on lateral curvature change
+  - `[x]` Implement F1 Brake Disc Cherry Glow in deceleration/corner entry zones
+  - `[x]` Implement F1 Slipstream Drafting Trails behind leading Russell car when Leclerc is close
+  - `[x]` Animate dynamic live telemetry cards with RPM, speed, gear, throttle/brake HUD
+  - `[x]` Verified zero type compile errors (`npx tsc --noEmit`) and successful production bundling (`npm run build`).
+
+- `[x]` Immersive Replay Mechanic Polish (Current Run)
+  - `[x]` Add `playRefereeWhistle`, `playDRSBeep`, `playCrowdCheer` to `src/spatialFX.ts`
+  - `[x]` Implement dynamic time dilation for F1 corner overtake in `update()` (`src/domainExpansion.ts`)
+  - `[x]` Implement dynamic time dilation for Soccer Neuer dive save in `updateSportSequence()` (`src/domainExpansion.ts`)
+  - `[x]` Trigger referee whistle audio at Soccer kickoff (`time === 0.0`)
+  - `[x]` Trigger DRS beep audio when DRS triggers
+  - `[x]` Trigger crowd cheer audio when Soccer goal is scored
+  - `[x]` Build and position the holographic tracking spotlight ring mesh
+  - `[x]` Update spotlight tracking coordinates on active ball/leading car
+  - `[x]` Verified zero type compile errors (`npx tsc --noEmit`) and successful production bundling (`npm run build`).
+
+- `[x]` Trackside & Sideline 3D Props (Current Run)
+  - `[x]` Define DRS arches & kerb properties in `DomainExpansionSystem` (`src/domainExpansion.ts`)
+  - `[x]` Construct 3D Apex Rumble Strips in `createNurburgringGroup()`
+  - `[x]` Construct Neon DRS Gantry Arches in `createNurburgringGroup()`
+  - `[x]` Implement gantry proximity glow animations in F1 `update()`
+  - `[x]` Construct corner flags and team dugouts in `setStadiumType()` for berlin/butterflies
+  - `[x]` Verified zero type compile errors (`npx tsc --noEmit`) and successful production bundling (`npm run build`).
+
+- `[x]` Final Visual Polish & Zero-GC Optimization (Current Run)
+  - `[x]` Optimize weather system frame allocations to pre-allocated properties (Zero-GC compliant)
+  - `[x]` Implement holographic scale-in/scale-out smooth transitions on all stadium loading states
+  - `[x]` Verified zero type compile errors (`npx tsc --noEmit`) and successful production bundling (`npm run build`).
+
+- `[x]` Stadium Scale & F1 Card Polish Refinements (Current Run)
+  - `[x]` Fix Cricket (default) stadium scale in update loop by multiplying by stadiumBaseScale
+  - `[x]` Restructure driver card visibility in update loop to support telemetry cards for Russell/Leclerc in F1 replays
+  - `[x]` Verified zero type compile errors (`npx tsc --noEmit`) and successful production bundling (`npm run build`).
+
+

@@ -23,6 +23,15 @@ interface PlayerMarker {
     statsCard: THREE.Group;
     hoverScale: number;
     isHovered: boolean;
+    lArm?: THREE.Mesh;
+    rArm?: THREE.Mesh;
+    lLeg?: THREE.Mesh;
+    rLeg?: THREE.Mesh;
+    lShin?: THREE.Mesh;
+    rShin?: THREE.Mesh;
+    lFArm?: THREE.Mesh;
+    rFArm?: THREE.Mesh;
+    batPivot?: THREE.Group;
 }
 
 const applyStadiumMaterial = (mat: THREE.Material | undefined, name: string, parentName: string): THREE.Material => {
@@ -316,7 +325,8 @@ export class DomainExpansionSystem extends createSystem({
         speed: number,
         wheels: THREE.Mesh[],
         colorType: 'merc' | 'ferrari' | 'mclaren',
-        driverId: string
+        driverId: string,
+        rimMat?: THREE.MeshBasicMaterial
     }[] = [];
     private holoCylinder!: THREE.Mesh;
     private holoCylinderWire!: THREE.LineSegments;
@@ -324,13 +334,30 @@ export class DomainExpansionSystem extends createSystem({
     private nurburgringF1Wheels: THREE.Mesh[] = [];
     private nurburgringF1WheelMats: THREE.MeshBasicMaterial[] = [];
     private nurburgringF1Progress = 0.0;
-    private nurburgringOvertakePhase = 0.0;
+    private wasInDrsWindow = false;
+    private hasTriggeredWhistle = false;
+    private hasTriggeredCheer = false;
+    private drsGantryMats: THREE.MeshBasicMaterial[] = [];
+    private weatherDummy = new THREE.Object3D();
+    private weatherColor = new THREE.Color();
+    private stadiumScaleDefault = 0.0;
+    private stadiumScaleBerlin = 0.0;
+    private stadiumScaleInuit = 0.0;
+    private stadiumScaleButterflies = 0.0;
+    private stadiumScaleNurburgring = 0.0;
+    private nurburgringOvertakePhase = 0.0; // integer 0..4: state machine phase
+    private _overtakeTimer = 0.0; // time accumulator for current state
+    private _lecGapCurrent = -0.025;   // smooth-lerped gap between Leclerc and Russell
+    private _lecLateralCurrent = 0.0;  // smooth-lerped lateral offset for Leclerc
+    private _rusLateralCurrent = 0.0;  // smooth-lerped lateral offset for Russell
     private nurburgringF1Speed = 0.052;
     private nurburgringTrackMat!: THREE.MeshBasicMaterial;
     private monacoRoadMesh: THREE.Group | null = null;
     private carRaycaster = new THREE.Raycaster();
     private carRayDirection = new THREE.Vector3(0, -1, 0);
     private f1Markers: THREE.Mesh[] = [];
+    private f1MarkersVisible = true;
+    private f1MarkerOpacity = 1.0; // smooth animation target opacity
 
     // --- F1 Live Roster and Spawning Player Cards ---
     private f1RosterMesh!: THREE.Mesh;
@@ -407,6 +434,7 @@ export class DomainExpansionSystem extends createSystem({
     private scratchVector6 = new THREE.Vector3();
     private scratchQuat1 = new THREE.Quaternion();
     private scratchQuat2 = new THREE.Quaternion();
+    private scratchColor = new THREE.Color();
     private sequenceBallTrailCount = 0;
 
     // Highly Optimized, Zero-GC Holographic Fireworks System
@@ -459,10 +487,15 @@ export class DomainExpansionSystem extends createSystem({
     // Holographic Telemetry Projector Disk System
     private ballProjectorDisk!: THREE.Group;
     private ballProjectorDiskMat!: THREE.MeshBasicMaterial;
+    private replaySpotlight!: THREE.Mesh;
 
     // Cricket Wankhede props
     private cricketBatMesh!: THREE.Group;
     private cricketStumpsMesh!: THREE.Group;
+    private stumpM1!: THREE.Mesh;
+    private stumpM2!: THREE.Mesh;
+    private stumpM3!: THREE.Mesh;
+    private bailMesh!: THREE.Mesh;
 
     // Football Goal posts (Berlin references)
     private berlinGoal1: any = null;
@@ -1444,18 +1477,12 @@ export class DomainExpansionSystem extends createSystem({
         console.log(`[StadiumSelector] Bubble skins updated to ${stadiumType}`);
 
         // ── Show/hide existing stadium meshes ────────────────────────────────
-        if (this.stadiumMesh) {
-            this.stadiumMesh.visible = (stadiumType === 'default');
-        }
-        if (this.berlinMesh) {
-            this.berlinMesh.visible = (stadiumType === 'berlin');
-        }
-        if (this.inuitMesh) {
-            this.inuitMesh.visible = (stadiumType === 'inuit');
-        }
-        if (this.butterflyGroup) {
-            this.butterflyGroup.visible = (stadiumType === 'butterflies');
-        }
+        if (stadiumType === 'default' && this.stadiumMesh) this.stadiumMesh.visible = true;
+        if (stadiumType === 'berlin' && this.berlinMesh) this.berlinMesh.visible = true;
+        if (stadiumType === 'inuit' && this.inuitMesh) this.inuitMesh.visible = true;
+        if (stadiumType === 'butterflies' && this.butterflyGroup) this.butterflyGroup.visible = true;
+        if (stadiumType === 'nurburgring' && this.nurburgringGroup) this.nurburgringGroup.visible = true;
+
         if (this.minimapMapPlane) {
             this.minimapMapPlane.visible = true;
         }
@@ -1549,15 +1576,8 @@ export class DomainExpansionSystem extends createSystem({
 
                         // Link built-in goalposts
                         if (name.includes('olympiagoalpost')) {
+                            child.visible = false; // Hide the built-in 3D goal mesh
                             child.userData.originalScale = child.scale.clone();
-                            if (child.position.z > 0) {
-                                this.berlinGoal1 = child;
-                                this.goal1NetMesh = child;
-                            } else {
-                                this.berlinGoal2 = child;
-                                this.goal2NetMesh = child;
-                            }
-                            console.log(`[BerlinStadium] Linked built-in goalpost "${child.name}" (Z: ${child.position.z.toFixed(4)})`);
                         }
                     }
                 });
@@ -1579,9 +1599,18 @@ export class DomainExpansionSystem extends createSystem({
                 berlinGroup.add(cylinderWall);
             }
 
-            // Grid floor & anchor helper removed
+            // Add procedural goalposts to berlinGroup (both asset and fallback paths)
+            const pGoal1 = this.createGoalPost('proceduralGoal1');
+            pGoal1.position.set(0.0, 0.0005, 0.061);
+            pGoal1.rotation.y = Math.PI; // Face field center
+            berlinGroup.add(pGoal1);
+
+            const pGoal2 = this.createGoalPost('proceduralGoal2');
+            pGoal2.position.set(0.0, 0.0005, -0.061); // Behind goalie
+            berlinGroup.add(pGoal2);
 
             this.berlinMesh = berlinGroup as any;
+            this.addSoccerDecorations(berlinGroup);
             this.tableGroup.add(this.berlinMesh!);
         }
 
@@ -2015,6 +2044,25 @@ export class DomainExpansionSystem extends createSystem({
             this.dynamicFloorY = 0.001;
         }
         console.log(`[DynamicFloorY] Fallback floor Y for '${stType}': ${this.dynamicFloorY}`);
+
+        // Re-link goalposts dynamically based on active stadium (Berlin or Butterflies)
+        if (stadiumType === 'berlin' || stadiumType === 'butterflies') {
+            const currentGroup = stadiumType === 'berlin' ? this.berlinMesh : this.butterflyGroup;
+            if (currentGroup) {
+                let g1: THREE.Object3D | null = null;
+                let g2: THREE.Object3D | null = null;
+                currentGroup.traverse((child) => {
+                    if (child.name === 'proceduralGoal1') g1 = child;
+                    if (child.name === 'proceduralGoal2') g2 = child;
+                });
+                if (g1 && g2) {
+                    this.berlinGoal1 = g1;
+                    this.goal1NetMesh = (g1 as any).userData.netMesh;
+                    this.berlinGoal2 = g2;
+                    this.goal2NetMesh = (g2 as any).userData.netMesh;
+                }
+            }
+        }
     }
 
 
@@ -2032,6 +2080,45 @@ export class DomainExpansionSystem extends createSystem({
         const desiredStadium = (window as any).selectedStadiumType || 'default';
         if (this.currentStadiumType !== desiredStadium) {
             this.setStadiumType(desiredStadium);
+        }
+
+        // Animate stadium scales smoothly (holographic dome scale-in/out transition)
+        const targetDefault = (this.currentStadiumType === 'default') ? 1.0 : 0.0;
+        const targetBerlin = (this.currentStadiumType === 'berlin') ? 1.0 : 0.0;
+        const targetInuit = (this.currentStadiumType === 'inuit') ? 1.0 : 0.0;
+        const targetButterflies = (this.currentStadiumType === 'butterflies') ? 1.0 : 0.0;
+        const targetNurburgring = (this.currentStadiumType === 'nurburgring') ? 1.0 : 0.0;
+
+        const sLerp = Math.min(1.0, dt * 7.5);
+
+        this.stadiumScaleDefault += (targetDefault - this.stadiumScaleDefault) * sLerp;
+        this.stadiumScaleBerlin += (targetBerlin - this.stadiumScaleBerlin) * sLerp;
+        this.stadiumScaleInuit += (targetInuit - this.stadiumScaleInuit) * sLerp;
+        this.stadiumScaleButterflies += (targetButterflies - this.stadiumScaleButterflies) * sLerp;
+        this.stadiumScaleNurburgring += (targetNurburgring - this.stadiumScaleNurburgring) * sLerp;
+
+        if (this.stadiumMesh) {
+            this.stadiumMesh.scale.setScalar(this.stadiumScaleDefault * this.stadiumBaseScale);
+            this.stadiumMesh.visible = (this.stadiumScaleDefault > 0.002);
+            if (Math.random() < 0.01) {
+                console.log(`[STAD_DEBUG] Default: scale=${this.stadiumScaleDefault.toFixed(4)}, base=${this.stadiumBaseScale.toFixed(4)}, type=${this.currentStadiumType}, visible=${this.stadiumMesh.visible}`);
+            }
+        }
+        if (this.berlinMesh) {
+            this.berlinMesh.scale.setScalar(this.stadiumScaleBerlin);
+            this.berlinMesh.visible = (this.stadiumScaleBerlin > 0.002);
+        }
+        if (this.inuitMesh) {
+            this.inuitMesh.scale.setScalar(this.stadiumScaleInuit);
+            this.inuitMesh.visible = (this.stadiumScaleInuit > 0.002);
+        }
+        if (this.butterflyGroup) {
+            this.butterflyGroup.scale.setScalar(this.stadiumScaleButterflies);
+            this.butterflyGroup.visible = (this.stadiumScaleButterflies > 0.002);
+        }
+        if (this.nurburgringGroup) {
+            this.nurburgringGroup.scale.setScalar(this.stadiumScaleNurburgring);
+            this.nurburgringGroup.visible = (this.stadiumScaleNurburgring > 0.002);
         }
 
         // --- Update Butterflies in the Minimap ---
@@ -2085,9 +2172,15 @@ export class DomainExpansionSystem extends createSystem({
         if (this.currentStadiumType === 'nurburgring' && this.nurburgringGroup && this.tableGroup.visible) {
             this.nurburgringGroup.updateMatrixWorld(true);
 
+            // Dynamic Time Dilation (Slow-motion highlights during Monaco overtake climax)
+            let activeDt = dt;
+            if (this.isSportSequenceActive && this.sportSequenceTime >= 11.5 && this.sportSequenceTime < 14.5) {
+                activeDt = dt * 0.40; // 0.40x slow-mo!
+            }
+
             // Update base race progress (75s Monaco lap time)
             const isImmersive = this.currentTableScale >= 2.5;
-            this.nurburgringF1Progress += dt / 75.0;
+            this.nurburgringF1Progress += activeDt / 75.0;
             if (this.nurburgringF1Progress > 1.0) this.nurburgringF1Progress -= 1.0;
 
             // Determine if the track is in a corner at current progress using tangent change curvature check
@@ -2098,81 +2191,117 @@ export class DomainExpansionSystem extends createSystem({
             const dot = t1.normalize().dot(t2.normalize());
             const isCorner = dot < 0.992; // high curvature = corner
 
-            let targetPhase = 0.0;
-            if (this.isSportSequenceActive) {
-                // Cinematic Lap Overtake Choreography:
-                // 0s to 12.0s: Mercedes (Hamilton) leads (overtakePhase = 0)
-                // 12.0s to 13.5s: Red Bull (Verstappen) passes Mercedes (overtakePhase goes 0 -> PI)
-                // 13.5s to 18.0s: Red Bull (Verstappen) leads (overtakePhase = PI) (corresponds to P1 Verstappen card at 15s)
-                // 18.0s to 19.8s: Mercedes passes Red Bull back on finish straight (overtakePhase goes PI -> 2PI)
-                // 19.8s onwards: Mercedes wins! (overtakePhase = 2PI)
-                const time = this.sportSequenceTime;
-                if (time < 12.0) {
-                    this.nurburgringOvertakePhase = 0.0;
-                } else if (time >= 12.0 && time < 13.5) {
-                    const t = (time - 12.0) / 1.5;
-                    this.nurburgringOvertakePhase = t * Math.PI;
-                } else if (time >= 13.5 && time < 18.0) {
-                    this.nurburgringOvertakePhase = Math.PI;
-                } else if (time >= 18.0 && time < 19.8) {
-                    const t = (time - 18.0) / 1.8;
-                    this.nurburgringOvertakePhase = Math.PI + t * Math.PI;
-                } else {
-                    this.nurburgringOvertakePhase = 2.0 * Math.PI;
+            // ── Overtake State Machine ──────────────────────────────────────────────
+            // States (stored in nurburgringOvertakePhase as 0/1/2/3/4):
+            //   0 = TRAIL   : Leclerc 0.025 behind, single file
+            //   1 = ATTACK  : Leclerc closing gap to 0.010, still inline
+            //   2 = ALONGSIDE: Both shift laterally — Leclerc draws alongside
+            //   3 = AHEAD   : Leclerc 0.012 ahead, Russell tucks behind
+            //   4 = HOLD    : Leclerc leads, pause before re-challenging
+            // Phase cycles: 0→1→2→3→4→0→...
+
+            // Monaco overtake opportunity windows (progress values on long straights/chicane exits):
+            // - T1 blast: ~0.06–0.09 (after turn 1 to Casino square)
+            // - Tunnel exit: ~0.53–0.60
+            // - Swimming Pool exit: ~0.70–0.76
+            const isOvertakeWindow =
+                (this.nurburgringF1Progress > 0.06 && this.nurburgringF1Progress < 0.09) ||
+                (this.nurburgringF1Progress > 0.53 && this.nurburgringF1Progress < 0.60) ||
+                (this.nurburgringF1Progress > 0.70 && this.nurburgringF1Progress < 0.76);
+
+            if (!this.isSportSequenceActive) {
+                // Auto-drive state machine
+                const phase = Math.round(this.nurburgringOvertakePhase) % 5;
+
+                if (phase === 0) {
+                    // TRAIL — wait for an overtake window
+                    if (isOvertakeWindow) {
+                        this.nurburgringOvertakePhase = 1.0;
+                        this._overtakeTimer = 0;
+                    }
+                } else if (phase === 1) {
+                    // ATTACK — gap closes over ~2s, advance when gap small
+                    this._overtakeTimer += activeDt;
+                    if (this._overtakeTimer > 2.0) {
+                        this._overtakeTimer = 0;
+                        this.nurburgringOvertakePhase = 2.0;
+                    }
+                } else if (phase === 2) {
+                    // ALONGSIDE — lateral pass, advance over ~1.2s
+                    this._overtakeTimer += activeDt;
+                    if (this._overtakeTimer > 1.2) {
+                        this._overtakeTimer = 0;
+                        this.nurburgringOvertakePhase = 3.0;
+                    }
+                } else if (phase === 3) {
+                    // AHEAD — Leclerc leads for a few seconds
+                    this._overtakeTimer += activeDt;
+                    if (this._overtakeTimer > 5.0) {
+                        this._overtakeTimer = 0;
+                        this.nurburgringOvertakePhase = 4.0;
+                    }
+                } else if (phase === 4) {
+                    // HOLD — Russell tucks in, pause before re-challenging
+                    this._overtakeTimer += activeDt;
+                    if (this._overtakeTimer > 6.0) {
+                        this._overtakeTimer = 0;
+                        this.nurburgringOvertakePhase = 0.0; // reset — Russell closes again
+                    }
                 }
-                targetPhase = Math.round(this.nurburgringOvertakePhase / Math.PI) * Math.PI;
             } else {
-                targetPhase = Math.round(this.nurburgringOvertakePhase / Math.PI) * Math.PI;
-                if (isCorner) {
-                    // Advance overtake phase in corners
-                    this.nurburgringOvertakePhase += dt * 1.5;
+                // Cinematic choreography: map sequence time to phases
+                const time = this.sportSequenceTime;
+                if (time < 10.0) {
+                    this.nurburgringOvertakePhase = 0.0;
+                } else if (time < 12.0) {
+                    this.nurburgringOvertakePhase = 1.0;
+                } else if (time < 13.5) {
+                    this.nurburgringOvertakePhase = 2.0;
+                } else if (time < 18.0) {
+                    this.nurburgringOvertakePhase = 3.0;
                 } else {
-                    // Snap/lerp to nearest lead state on straights (drafting in single file)
-                    this.nurburgringOvertakePhase += (targetPhase - this.nurburgringOvertakePhase) * 5.0 * dt;
+                    this.nurburgringOvertakePhase = 4.0;
                 }
             }
 
-            // Update all six detailed F1 cars
+            // ── Per-Car position & lateral offset — smooth lerp to state targets ──
+            const ovPhase = Math.round(this.nurburgringOvertakePhase) % 5;
+
+            const lecGapTable     = [ -0.025, -0.010,  0.000,  0.012,  0.020 ];
+            const lecLateralTable = [  0.000,  0.000,  0.005,  0.000,  0.000 ];
+            const rusLateralTable = [  0.000,  0.000, -0.003,  0.000,  0.000 ];
+
+            const targetLecGap     = lecGapTable[ovPhase];
+            const targetLecLateral = lecLateralTable[ovPhase];
+            const targetRusLateral = rusLateralTable[ovPhase];
+
+            // Lerp rates: gap closes at 2.5× per second, lateral shifts at 4× per second
+            const gapLerpRate     = 2.5 * activeDt;
+            const lateralLerpRate = 4.0 * activeDt;
+            this._lecGapCurrent     += (targetLecGap     - this._lecGapCurrent)     * Math.min(1.0, gapLerpRate);
+            this._lecLateralCurrent += (targetLecLateral - this._lecLateralCurrent) * Math.min(1.0, lateralLerpRate);
+            this._rusLateralCurrent += (targetRusLateral - this._rusLateralCurrent) * Math.min(1.0, lateralLerpRate);
+
+            // Update all detailed F1 cars
             this.nurburgringCars.forEach((car) => {
                 car.group.visible = true;
 
-                // Calculate progress and lateral offset for the car to simulate a realistic battle
                 let carProgress = 0.0;
                 let lateralOffset = 0.0;
 
-                let phaseOffset = 0.0;
-                let sign = 1.0;
                 if (car.driverId === 'f1_gr') {
-                    phaseOffset = 0.0;
-                    sign = 1.0;
-                } else if (car.driverId === 'f1_ka') {
-                    phaseOffset = 0.0;
-                    sign = -1.0;
+                    carProgress = this.nurburgringF1Progress;
+                    lateralOffset = 0.0;
                 } else if (car.driverId === 'f1_cl') {
-                    phaseOffset = 1.2;
-                    sign = 1.0;
-                } else if (car.driverId === 'f1_lh') {
-                    phaseOffset = 1.2;
-                    sign = -1.0;
+                    carProgress = (this.nurburgringF1Progress - 0.03 + 1.0) % 1.0;
+                    lateralOffset = 0.0;
                 } else if (car.driverId === 'f1_ln') {
-                    phaseOffset = 2.4;
-                    sign = 1.0;
-                } else if (car.driverId === 'f1_op') {
-                    phaseOffset = 2.4;
-                    sign = -1.0;
+                    carProgress = (this.nurburgringF1Progress - 0.06 + 1.0) % 1.0;
+                    lateralOffset = 0.0;
+                } else {
+                    carProgress = this.nurburgringF1Progress;
+                    lateralOffset = 0.0;
                 }
-
-                // Gap between cars: sequential 0.03 progress offsets to keep cars staggered in a single file line
-                const baseLag = 
-                    car.driverId === 'f1_gr' ? 0.00 :
-                    car.driverId === 'f1_ka' ? -0.03 :
-                    car.driverId === 'f1_cl' ? -0.06 :
-                    car.driverId === 'f1_lh' ? -0.09 :
-                    car.driverId === 'f1_ln' ? -0.12 :
-                    car.driverId === 'f1_op' ? -0.15 : 0.0;
-                // Force zero lateral offset so all cars run in a single centerline lane
-                lateralOffset = 0.0;
-                carProgress = (this.nurburgringF1Progress + baseLag + 1.0) % 1.0;
 
                 car.progress = carProgress;
 
@@ -2199,6 +2328,16 @@ export class DomainExpansionSystem extends createSystem({
                     this.f1zAxis.normalize();
                 }
 
+                // Front wheels steering angle based on future curvature
+                const tCurrent = this.scratchVector4;
+                this.nurburgringCurve.getTangentAt(carProgress, tCurrent);
+                const tAhead = this.scratchVector5;
+                this.nurburgringCurve.getTangentAt((carProgress + 0.015) % 1.0, tAhead);
+                const steerYaw = Math.atan2(tAhead.x, tAhead.z) - Math.atan2(tCurrent.x, tCurrent.z);
+                let steerDiff = steerYaw;
+                steerDiff = Math.atan2(Math.sin(steerDiff), Math.cos(steerDiff));
+                const steerAngle = Math.max(-0.42, Math.min(0.42, steerDiff * 15.0));
+
                 // Build orthonormal basis: right = worldUp × forward, up = forward × right
                 const worldUp = this.scratchVector1.set(0, 1, 0);
                 this.f1xAxis.crossVectors(worldUp, this.f1zAxis);
@@ -2209,6 +2348,19 @@ export class DomainExpansionSystem extends createSystem({
                 }
                 this.f1yAxis.crossVectors(this.f1zAxis, this.f1xAxis).normalize();
 
+                // Apply dynamic suspension roll outwards in corners
+                const rollAngle = -steerAngle * 0.16;
+                const cosR = Math.cos(rollAngle);
+                const sinR = Math.sin(rollAngle);
+                const origX = this.scratchVector4.copy(this.f1xAxis);
+                const origY = this.scratchVector5.copy(this.f1yAxis);
+                this.f1xAxis.set(
+                    origX.x * cosR - origY.x * sinR,
+                    origX.y * cosR - origY.y * sinR,
+                    origX.z * cosR - origY.z * sinR
+                ).normalize();
+                this.f1yAxis.crossVectors(this.f1zAxis, this.f1xAxis).normalize();
+
                 // Apply tiny lateral offset to stay on track center
                 this.f1Pos.addScaledVector(this.f1xAxis, lateralOffset);
 
@@ -2217,9 +2369,6 @@ export class DomainExpansionSystem extends createSystem({
                 car.group.position.y += 0.0011 * 0.384;
 
                 // ── SET ORIENTATION: car nose is at local +Z, travel direction is f1zAxis ──
-                // makeBasis columns = local X, Y, Z axes expressed in world space.
-                // We want local +Z (nose) → world f1zAxis (travel), so pass f1zAxis as the Z column.
-                // Right-hand basis: xAxis=right, yAxis=up, zAxis=forward(travel).
                 this.f1RotationMatrix.makeBasis(this.f1xAxis, this.f1yAxis, this.f1zAxis);
 
                 // Validate matrix (no NaN) before extracting quaternion
@@ -2241,22 +2390,87 @@ export class DomainExpansionSystem extends createSystem({
                             -this.scratchQuat1.w
                         );
                     }
-                    car.group.quaternion.slerp(this.scratchQuat1, Math.min(1.0, 12.0 * dt));
+                    car.group.quaternion.slerp(this.scratchQuat1, Math.min(1.0, 12.0 * activeDt));
                 } // else: keep previous quaternion — no garbage rotation
 
-                // NOTE: NO rotateY steer-slip added — that was the source of 360° spins.
-                // The look-ahead vector already encodes all cornering direction naturally.
-
-                // Spin wheels locally
-                car.wheels.forEach((wheel) => {
-                    wheel.rotation.x -= dt * 35.0;
+                // Spin wheels locally, yaw front wheels for steering
+                car.wheels.forEach((wheel, wIdx) => {
+                    wheel.rotation.x -= activeDt * 35.0;
+                    if (wIdx < 2) {
+                        wheel.rotation.y = steerAngle;
+                    } else {
+                        wheel.rotation.y = 0;
+                    }
                 });
+
+                // Trigger DRS sound beep when entering an overtake window
+                if (car.driverId === 'f1_gr') {
+                    if (isOvertakeWindow && !this.wasInDrsWindow) {
+                        const spatialFX = (window as any).spatialFX;
+                        if (spatialFX) {
+                            spatialFX.playDRSBeep(car.group.position);
+                        }
+                    }
+                    this.wasInDrsWindow = isOvertakeWindow;
+                }
+
+                // Apply Brake Disc Cherry Glow
+                const tel = this.getF1Telemetry(carProgress);
+                if (car.rimMat) {
+                    const baseCol = car.driverId === 'f1_cl' ? 0xdc0000 : 0xa1a1aa;
+                    this.scratchColor.setHex(baseCol);
+                    this.scratchColor.lerp(this.scratchColor.setHex(0xff1800), tel.brake * 0.96);
+                    car.rimMat.color.copy(this.scratchColor);
+                }
+
+                // Spawn Slipstream Trails behind Russell when Leclerc drafts closely
+                if (car.driverId === 'f1_gr' && this._lecGapCurrent < 0 && Math.abs(this._lecGapCurrent) < 0.02) {
+                    const spatialFX = (window as any).spatialFX;
+                    if (spatialFX && Math.random() < 0.25) {
+                        car.group.updateMatrixWorld(true);
+                        const wingL = this.scratchVector3.set(-0.0034 * 0.384, 0.003 * 0.384, -0.0072 * 0.384).applyMatrix4(car.group.matrixWorld);
+                        const wingR = this.scratchVector6.set(0.0034 * 0.384, 0.003 * 0.384, -0.0072 * 0.384).applyMatrix4(car.group.matrixWorld);
+                        spatialFX.triggerSpark(wingL, this.scratchColor.setHex(0x22d3ee), 1);
+                        spatialFX.triggerSpark(wingR, this.scratchColor.setHex(0x22d3ee), 1);
+                    }
+                }
 
                 // Sync position with corresponding driver player card group
                 const pMarker = this.players.find(p => p.id === car.driverId);
                 if (pMarker) {
                     pMarker.group.position.copy(car.group.position);
                     pMarker.currentPos.copy(car.group.position);
+                }
+            });
+
+            // Update Holographic project spotlight tracking under the leading F1 car
+            if (this.replaySpotlight) {
+                if (this.isSportSequenceActive) {
+                    this.replaySpotlight.visible = true;
+                    this.replaySpotlight.position.copy(this.nurburgringF1Car.position);
+                    this.replaySpotlight.position.y = 0.0095;
+                    const time = this.sportSequenceTime;
+                    const pScale = 1.0 + Math.sin(time * 8.0) * 0.15;
+                    this.replaySpotlight.scale.set(pScale, 1.0, pScale);
+                    (this.replaySpotlight.material as THREE.MeshBasicMaterial).opacity = 0.65;
+                } else {
+                    this.replaySpotlight.visible = false;
+                }
+            }
+
+            // Proximity glow updates for Neon DRS arches
+            this.drsGantryMats.forEach((mat, idx) => {
+                const gantryProgress = idx === 0 ? 0.08 : 0.55;
+                let minProgressDist = 999.0;
+                this.nurburgringCars.forEach(car => {
+                    let d = Math.abs(car.progress - gantryProgress);
+                    if (d > 0.5) d = 1.0 - d; // circular spline distance
+                    if (d < minProgressDist) minProgressDist = d;
+                });
+                if (minProgressDist < 0.02) {
+                    mat.color.setHex(0xffffff); // White hot alert glow
+                } else {
+                    mat.color.setHex(0x00d2be); // Cyan neon base
                 }
             });
 
@@ -2396,24 +2610,18 @@ export class DomainExpansionSystem extends createSystem({
                         (this.f1VortexRight_FE.material as THREE.LineBasicMaterial).opacity = 0.85;
                     }
 
-                    // Pre-initialize vortex trail points to rear wheels if not done yet to prevent centering glitch
+                    // Pre-initialize vortex trail points using world matrix to prevent centroid glitch
                     if (!this.f1VortexInitialized) {
-                        this.nurburgringF1Car.updateMatrix();
-                        if (rbCar) rbCar.updateMatrix();
-                        if (feCar) feCar.updateMatrix();
+                        this.nurburgringF1Car.updateMatrixWorld(true);
+                        if (feCar) feCar.updateMatrixWorld(true);
 
                         for (let i = 0; i < 25; i++) {
-                            this.f1VortexLeftPoints[i].set(-0.0035, 0.0035, -0.007).applyMatrix4(this.nurburgringF1Car.matrix);
-                            this.f1VortexRightPoints[i].set(0.0035, 0.0035, -0.007).applyMatrix4(this.nurburgringF1Car.matrix);
-
-                            if (rbCar) {
-                                this.f1VortexLeftPoints_RB[i].set(-0.0035, 0.0035, -0.007).applyMatrix4(rbCar.matrix);
-                                this.f1VortexRightPoints_RB[i].set(0.0035, 0.0035, -0.007).applyMatrix4(rbCar.matrix);
-                            }
+                            this.f1VortexLeftPoints[i].set(-0.0037, 0.0030, -0.0050).applyMatrix4(this.nurburgringF1Car.matrixWorld);
+                            this.f1VortexRightPoints[i].set( 0.0037, 0.0030, -0.0050).applyMatrix4(this.nurburgringF1Car.matrixWorld);
 
                             if (feCar) {
-                                this.f1VortexLeftPoints_FE[i].set(-0.0035, 0.0035, -0.007).applyMatrix4(feCar.matrix);
-                                this.f1VortexRightPoints_FE[i].set(0.0035, 0.0035, -0.007).applyMatrix4(feCar.matrix);
+                                this.f1VortexLeftPoints_FE[i].set(-0.0037, 0.0030, -0.0050).applyMatrix4(feCar.matrixWorld);
+                                this.f1VortexRightPoints_FE[i].set( 0.0037, 0.0030, -0.0050).applyMatrix4(feCar.matrixWorld);
                             }
                         }
                         this.f1VortexInitialized = true;
@@ -2431,21 +2639,22 @@ export class DomainExpansionSystem extends createSystem({
                         this.f1VortexRightPoints_FE[i].copy(this.f1VortexRightPoints_FE[i + 1]);
                     }
 
-                    // Copy new wing tip positions in track local coordinates
-                    this.nurburgringF1Car.updateMatrix();
-                    this.f1VortexLeftPoints[24].set(-0.0035, 0.0035, -0.007).applyMatrix4(this.nurburgringF1Car.matrix);
-                    this.f1VortexRightPoints[24].set(0.0035, 0.0035, -0.007).applyMatrix4(this.nurburgringF1Car.matrix);
+                    // Copy new wing tip world positions — rear beam-wing tips:
+                    // Car local: X = ±0.0037 (wheel width), Y = 0.0030 (beam wing height), Z = -0.0050 (rear axle)
+                    this.nurburgringF1Car.updateMatrixWorld(true);
+                    this.f1VortexLeftPoints[24].set(-0.0037, 0.0030, -0.0050).applyMatrix4(this.nurburgringF1Car.matrixWorld);
+                    this.f1VortexRightPoints[24].set( 0.0037, 0.0030, -0.0050).applyMatrix4(this.nurburgringF1Car.matrixWorld);
 
                     if (rbCar) {
-                        rbCar.updateMatrix();
-                        this.f1VortexLeftPoints_RB[24].set(-0.0035, 0.0035, -0.007).applyMatrix4(rbCar.matrix);
-                        this.f1VortexRightPoints_RB[24].set(0.0035, 0.0035, -0.007).applyMatrix4(rbCar.matrix);
+                        rbCar.updateMatrixWorld(true);
+                        this.f1VortexLeftPoints_RB[24].set(-0.0037, 0.0030, -0.0050).applyMatrix4(rbCar.matrixWorld);
+                        this.f1VortexRightPoints_RB[24].set( 0.0037, 0.0030, -0.0050).applyMatrix4(rbCar.matrixWorld);
                     }
 
                     if (feCar) {
-                        feCar.updateMatrix();
-                        this.f1VortexLeftPoints_FE[24].set(-0.0035, 0.0035, -0.007).applyMatrix4(feCar.matrix);
-                        this.f1VortexRightPoints_FE[24].set(0.0035, 0.0035, -0.007).applyMatrix4(feCar.matrix);
+                        feCar.updateMatrixWorld(true);
+                        this.f1VortexLeftPoints_FE[24].set(-0.0037, 0.0030, -0.0050).applyMatrix4(feCar.matrixWorld);
+                        this.f1VortexRightPoints_FE[24].set( 0.0037, 0.0030, -0.0050).applyMatrix4(feCar.matrixWorld);
                     }
 
                     // Copy vectors directly to buffer attribute array (Zero-GC)
@@ -2495,19 +2704,25 @@ export class DomainExpansionSystem extends createSystem({
                     this.f1SprayMesh.visible = false;
                 }
 
-                // Hide floating markers if stadium not active
+                // Hide floating markers in immersive mode (scale >= 2.5)
                 if (this.f1Markers && this.f1Markers.length > 0) {
                     this.f1Markers.forEach(m => { m.visible = false; });
                 }
 
             } else {
-                // Hide F1 car
+                // Hide F1 car in non-immersive mode
                 this.nurburgringF1Car.visible = false;
                 if (this.f1HudMesh) this.f1HudMesh.visible = false;
 
-                // Hide floating markers if stadium not active
+                // Smooth opacity animation for turn markers based on toggle state
+                const targetMarkerOpacity = this.f1MarkersVisible ? 1.0 : 0.0;
+                this.f1MarkerOpacity += (targetMarkerOpacity - this.f1MarkerOpacity) * Math.min(1.0, 6.0 * dt);
                 if (this.f1Markers && this.f1Markers.length > 0) {
-                    this.f1Markers.forEach(m => { m.visible = false; });
+                    this.f1Markers.forEach(m => {
+                        m.visible = this.f1MarkerOpacity > 0.01;
+                        const mat = m.material as THREE.MeshBasicMaterial;
+                        if (mat) { mat.opacity = this.f1MarkerOpacity * 0.9; }
+                    });
                 }
                 this.f1VortexInitialized = false;
                 if (this.f1VortexLeft) {
@@ -2531,6 +2746,7 @@ export class DomainExpansionSystem extends createSystem({
 
                 // ── F1 LIVE ROSTER & ACTIVE PLAYER CARD SPATIAL UPDATES ──
                 if (this.f1RosterMesh) {
+                    this.f1RosterMesh.visible = true;
                     // A. Draw/refresh roster list
                     this.drawF1Roster();
 
@@ -2585,8 +2801,8 @@ export class DomainExpansionSystem extends createSystem({
                             const localTip = tip.clone().applyMatrix4(inv);
                             
                             if (this.f1RosterMinimized) {
-                                // Minimized size: 0.24m wide by 0.08m high. localTip Y range: -0.04 to 0.04
-                                if (Math.abs(localTip.z) < 0.015 && Math.abs(localTip.x) < 0.12 && Math.abs(localTip.y) < 0.04) {
+                                // Minimized state: circular button, size 0.08m x 0.08m (matching PlaneGeometry 0.08x0.08)
+                                if (Math.abs(localTip.z) < 0.015 && Math.abs(localTip.x) < 0.04 && Math.abs(localTip.y) < 0.04) {
                                     isTouchingRoster = true;
                                     touchTipUsed = tip;
                                     touchedMaximize = true;
@@ -2602,15 +2818,30 @@ export class DomainExpansionSystem extends createSystem({
                                     const cx = (localTip.x + 0.12) / 0.24 * 512;
                                     const cy = (0.14 - localTip.y) / 0.28 * 600;
 
-                                    // Check rows 0, 1, 2
+                                    // Check rows 0, 1, 2 (3 cars)
                                     if (cy >= 144 && cy <= 384) {
                                         const rowIndex = Math.floor((cy - 144) / 80);
                                         if (rowIndex >= 0 && rowIndex < 3) {
                                             touchedRow = rowIndex;
                                         }
                                     }
-                                    // Check Minimize button at Y = 430 to 510
-                                    else if (cy >= 430 && cy <= 510 && cx >= 32 && cx <= 480) {
+                                    // Check Turn Marker Toggle button at Y = 370 to 440
+                                    else if (cy >= 370 && cy <= 440) {
+                                        // Toggle the turn markers ON/OFF with haptic feedback
+                                        if (this.f1TouchCooldown <= 0.0) {
+                                            this.f1TouchCooldown = 0.5;
+                                            this.f1MarkersVisible = !this.f1MarkersVisible;
+                                            this.drawF1Roster();
+                                            const spatialFX = (window as any).spatialFX;
+                                            if (spatialFX) {
+                                                spatialFX.playPositionalSound('click', tip);
+                                                spatialFX.triggerSpark(tip, new THREE.Color(0x00ffff), 8);
+                                            }
+                                        }
+                                        break;
+                                    }
+                                    // Check circular Hide button at Y = 488 to 592, X = 204 to 308
+                                    else if (cy >= 488 && cy <= 592 && cx >= 204 && cx <= 308) {
                                         touchedMinimize = true;
                                     }
                                     break;
@@ -2633,7 +2864,7 @@ export class DomainExpansionSystem extends createSystem({
                             this.f1RosterMesh.geometry.dispose();
                             this.f1RosterMesh.geometry = new THREE.PlaneGeometry(0.24, 0.28);
                             
-                            // Resize Canvas
+                            // Resize Canvas to square for maximized
                             this.f1RosterCanvas.width = 512;
                             this.f1RosterCanvas.height = 600;
                             
@@ -2657,13 +2888,14 @@ export class DomainExpansionSystem extends createSystem({
                             this.f1TouchCooldown = 0.5;
                             this.f1RosterMinimized = true;
                             
-                            // Recreate PlaneGeometry for minimized state
-                            this.f1RosterMesh.geometry.dispose();
-                            this.f1RosterMesh.geometry = new THREE.PlaneGeometry(0.24, 0.08);
                             
-                            // Resize Canvas
-                            this.f1RosterCanvas.width = 512;
-                            this.f1RosterCanvas.height = 170;
+                            // Recreate PlaneGeometry for minimized circular button (0.08m x 0.08m square backing)
+                            this.f1RosterMesh.geometry.dispose();
+                            this.f1RosterMesh.geometry = new THREE.PlaneGeometry(0.08, 0.08);
+                            
+                            // Resize Canvas to square for circular button render
+                            this.f1RosterCanvas.width = 256;
+                            this.f1RosterCanvas.height = 256;
                             
                             this.drawF1Roster();
 
@@ -2686,7 +2918,15 @@ export class DomainExpansionSystem extends createSystem({
                             const selectedDriver = sortedDrivers[touchedRow];
                             if (selectedDriver) {
                                 this.f1TouchCooldown = 0.5; // 500ms cooldown
-                                this.triggerPlayerCard(selectedDriver.driverId);
+                                if (this.f1ActiveCardDriverId === selectedDriver.driverId) {
+                                    this.f1ActiveCardDriverId = null;
+                                    if (this.f1ActiveCardGroup) {
+                                        this.f1ActiveCardGroup.visible = false;
+                                    }
+                                    console.log(`[F1Roster] Deselected driver ${selectedDriver.driverId}`);
+                                } else {
+                                    this.triggerPlayerCard(selectedDriver.driverId);
+                                }
 
                                 // Trigger click sound and sparks right at the finger tip!
                                 const spatialFX = (window as any).spatialFX;
@@ -2723,66 +2963,63 @@ export class DomainExpansionSystem extends createSystem({
                         // Update timer
                         this.f1ActiveCardTimer += dt;
 
-                        if (this.f1ActiveCardTimer >= 30.0) {
-                            // Collapse completely after 30 seconds
-                            this.f1ActiveCardGroup.visible = false;
-                            this.f1ActiveCardDriverId = null;
-                        } else {
-                            // Position card group directly above the car in table local coordinates
-                            // Floating 0.065m (6.5cm) high
-                            this.f1ActiveCardGroup.position.copy(activeCar.group.position);
-                            this.f1ActiveCardGroup.position.y += 0.065;
+                        // Position card group directly above the car in table local coordinates
+                        // Floating 0.065m (6.5cm) high
+                        this.f1ActiveCardGroup.position.copy(activeCar.group.position);
+                        this.f1ActiveCardGroup.position.y += 0.065;
 
-                            // Redraw telemetry canvas
-                            const tel = this.getF1Telemetry(activeCar.progress);
-                            this.drawF1ActiveCard(tel.speed, tel.gear, tel.rpm, tel.throttle, tel.brake);
+                        // Redraw telemetry canvas
+                        const tel = this.getF1Telemetry(activeCar.progress);
+                        this.drawF1ActiveCard(tel.speed, tel.gear, tel.rpm, tel.throttle, tel.brake);
 
-                            // Easing scale animation: spawn & collapse
-                            let scale = 1.0;
-                            if (this.f1ActiveCardTimer < 0.4) {
-                                // Spawn: scale up from 0 to 1 over first 0.4s
-                                const t = this.f1ActiveCardTimer / 0.4;
-                                scale = 1.0 - Math.pow(1.0 - t, 3); // out-cubic easing
-                            } else if (this.f1ActiveCardTimer > 6.6) {
-                                // Collapse: scale down from 1 to 0 over final 0.4s
-                                const t = (7.0 - this.f1ActiveCardTimer) / 0.4;
-                                scale = Math.max(0.0, 1.0 - Math.pow(1.0 - t, 3));
-                            }
-
-                            this.f1ActiveCardGroup.scale.setScalar(scale);
-
-                            // Card Billboarding (always face user)
-                            if (this.player && this.player.head) {
-                                this.f1ActiveCardGroup.updateMatrixWorld(true);
-
-                                const headPos = this.scratchVector3;
-                                this.player.head.getWorldPosition(headPos);
-
-                                const cardWorldPos = this.scratchVector1;
-                                this.f1ActiveCardGroup.getWorldPosition(cardWorldPos);
-
-                                // Look at the player's head in world space and convert to parent local space
-                                const m = this.scratchMatrix;
-                                const worldUp = this.scratchVector2;
-                                worldUp.set(0, 1, 0);
-                                m.lookAt(cardWorldPos, headPos, worldUp);
-
-                                const targetWorldQuat = this.scratchQuat1;
-                                targetWorldQuat.setFromRotationMatrix(m);
-
-                                // Flip 180° so PlaneGeometry front (+Z) faces user
-                                const flipQuat = this.scratchQuat2;
-                                flipQuat.setFromAxisAngle(worldUp, Math.PI);
-                                targetWorldQuat.multiply(flipQuat);
-
-                                const parentWorldQuat = this.scratchQuat2; // reuse scratchQuat2
-                                this.nurburgringGroup.getWorldQuaternion(parentWorldQuat);
-
-                                const localQuat = this.scratchQuat1; // reuse scratchQuat1
-                                localQuat.copy(parentWorldQuat).invert().multiply(targetWorldQuat);
-                                this.f1ActiveCardGroup.quaternion.copy(localQuat);
-                            }
+                        // Easing scale animation: spawn only, stay open
+                        let scale = 1.0;
+                        if (this.f1ActiveCardTimer < 0.4) {
+                            // Spawn: scale up from 0 to 1 over first 0.4s
+                            const t = this.f1ActiveCardTimer / 0.4;
+                            scale = 1.0 - Math.pow(1.0 - t, 3); // out-cubic easing
                         }
+                        this.f1ActiveCardGroup.scale.setScalar(scale);
+
+                        // Card Billboarding (always face user)
+                        const headPos = this.scratchVector3;
+                        if (this.player && this.player.head) {
+                            this.player.head.getWorldPosition(headPos);
+                        } else if (this.camera) {
+                            this.camera.getWorldPosition(headPos);
+                        } else {
+                            headPos.set(0, 1.45, 0.4);
+                        }
+
+                        this.f1ActiveCardGroup.updateMatrixWorld(true);
+
+                        const cardWorldPos = this.scratchVector1;
+                        this.f1ActiveCardGroup.getWorldPosition(cardWorldPos);
+
+                        // Look at the player's head in world space and convert to parent local space
+                        const m = this.scratchMatrix;
+                        const worldUp = this.scratchVector2;
+                        worldUp.set(0, 1, 0);
+                        m.lookAt(cardWorldPos, headPos, worldUp);
+
+                        const targetWorldQuat = this.scratchQuat1;
+                        targetWorldQuat.setFromRotationMatrix(m);
+
+                        // Flip 180° so PlaneGeometry front (+Z) faces user
+                        const flipQuat = this.scratchQuat2;
+                        flipQuat.setFromAxisAngle(worldUp, Math.PI);
+                        targetWorldQuat.multiply(flipQuat);
+
+                        const parentWorldQuat = this.scratchQuat2; // reuse scratchQuat2
+                        if (this.nurburgringGroup) {
+                            this.nurburgringGroup.getWorldQuaternion(parentWorldQuat);
+                        } else {
+                            parentWorldQuat.set(0, 0, 0, 1);
+                        }
+
+                        const localQuat = this.scratchQuat1; // reuse scratchQuat1
+                        localQuat.copy(parentWorldQuat).invert().multiply(targetWorldQuat);
+                        this.f1ActiveCardGroup.quaternion.copy(localQuat);
                     }
                 } else if (this.f1ActiveCardGroup && this.f1ActiveCardGroup.visible) {
                     this.f1ActiveCardGroup.visible = false;
@@ -2791,8 +3028,8 @@ export class DomainExpansionSystem extends createSystem({
                 if (this.f1SprayMesh) this.f1SprayMesh.visible = false;
             }
 
-            // Billboard all floating markers in this.f1Markers dynamically
-            if (this.f1Markers && this.f1Markers.length > 0) {
+            // Billboard all visible floating markers dynamically
+            if (this.f1Markers && this.f1Markers.length > 0 && this.f1MarkerOpacity > 0.01) {
                 const headPos = this.scratchVector3;
                 if (this.player && this.player.head) {
                     this.player.head.getWorldPosition(headPos);
@@ -2802,12 +3039,19 @@ export class DomainExpansionSystem extends createSystem({
                     headPos.set(0, 1.45, 0.4);
                 }
                 this.f1Markers.forEach(marker => {
-                    marker.visible = true;
-                    marker.lookAt(headPos);
+                    if (marker.visible) marker.lookAt(headPos);
                 });
             }
 
             // Spectator particle effects removed — keep the map clean
+        } else {
+            if (this.f1RosterMesh) {
+                this.f1RosterMesh.visible = false;
+            }
+            if (this.f1ActiveCardGroup && this.f1ActiveCardGroup.visible) {
+                this.f1ActiveCardGroup.visible = false;
+                this.f1ActiveCardDriverId = null;
+            }
         }
 
         // Expose a global window variable so Jugnu System ignores index pinches when this table is actively rotating
@@ -3413,8 +3657,17 @@ export class DomainExpansionSystem extends createSystem({
                     }
                 }
 
-                if (!this.isSportSequenceActive) {
-                    const targetOpacity = (isHovered && isScalingAbove2m) ? 0.95 : 0.0;
+                const shouldUpdateCard = !this.isSportSequenceActive || (this.currentStadiumType === 'nurburgring');
+                if (shouldUpdateCard) {
+                    let targetOpacity = 0.0;
+                    if (this.currentStadiumType === 'nurburgring' && this.isSportSequenceActive) {
+                        if (p.id === 'f1_cl' || p.id === 'f1_gr') {
+                            targetOpacity = 0.95;
+                        }
+                    } else {
+                        targetOpacity = (isHovered && isScalingAbove2m) ? 0.95 : 0.0;
+                    }
+
                     cardMat.opacity += (targetOpacity - cardMat.opacity) * dt * 8.0;
 
                     const curCardOpacity = cardMat.opacity;
@@ -5719,6 +5972,7 @@ export class DomainExpansionSystem extends createSystem({
             });
 
             // ── Role-specific extras & poses (NO CROSSED HANDS) ───────────────────────
+            let batPivot: THREE.Group | undefined = undefined;
             if (p.role === 'batsman') {
                 // Leg pads
                 [lShin, rShin].forEach(sh => {
@@ -5734,7 +5988,7 @@ export class DomainExpansionSystem extends createSystem({
                 const grip = new THREE.Mesh(gripG, sharedBlack);
                 grip.position.y = -0.00075;
                 blade.add(grip);
-                const batPivot = new THREE.Group();
+                batPivot = new THREE.Group();
                 batPivot.add(blade);
                 batPivot.position.set(W_TORSO * 0.9, H_TORSO * 0.35, W_TORSO * 0.7);
                 batPivot.rotation.set(-Math.PI / 4.5, 0.15, Math.PI / 5.5);
@@ -5790,7 +6044,12 @@ export class DomainExpansionSystem extends createSystem({
                 speed: p.role === 'fielder' ? 0.005 : 0.001,
                 stats: { primary: p.primary, secondary: p.secondary },
                 group: playerGroup, mesh, ring, tag, statsCard,
-                hoverScale: 1.0, isHovered: false
+                hoverScale: 1.0, isHovered: false,
+                lArm: lArmMesh, rArm: rArmMesh,
+                lLeg: lLegMesh, rLeg: rLegMesh,
+                lShin: lShin, rShin: rShin,
+                lFArm: lFArm, rFArm: rFArm,
+                batPivot: batPivot
             });
         });
     }
@@ -6222,45 +6481,53 @@ export class DomainExpansionSystem extends createSystem({
 
 
 
-    private createGoalPost(): THREE.Group {
+    private createGoalPost(name: string): THREE.Group {
         const group = new THREE.Group();
+        group.name = name;
 
-        // Standard goal post dimensions at stadium local scale:
-        // Width: 0.016m (1.6cm), Height: 0.008m (0.8cm)
-        const postMat = new THREE.MeshBasicMaterial({
+        // Solid white plastic/metal goal posts
+        const postMat = new THREE.MeshStandardMaterial({
             color: 0xffffff,
-            transparent: true,
-            opacity: 0.9,
-            depthWrite: false
+            roughness: 0.2,
+            metalness: 0.1
         });
 
-        // Vertical post cylinders: radius 0.5mm, height 8mm
-        const postGeom = new THREE.CylinderGeometry(0.0005, 0.0005, 0.008, 8);
-        // Horizontal crossbar cylinder: radius 0.5mm, length 16mm
-        const crossbarGeom = new THREE.CylinderGeometry(0.0005, 0.0005, 0.016, 8);
+        // Vertical posts: radius 0.0005 (0.5mm), height 0.008 (8mm)
+        const postGeom = new THREE.CylinderGeometry(0.0005, 0.0005, 0.008, 12);
+        // Horizontal crossbar: length 0.016 (1.6cm)
+        const crossbarGeom = new THREE.CylinderGeometry(0.0005, 0.0005, 0.016, 12);
 
         const leftPost = new THREE.Mesh(postGeom, postMat);
         leftPost.position.set(-0.008, 0.004, 0.0);
+        leftPost.castShadow = true;
 
         const rightPost = new THREE.Mesh(postGeom, postMat);
         rightPost.position.set(0.008, 0.004, 0.0);
+        rightPost.castShadow = true;
 
         const crossbar = new THREE.Mesh(crossbarGeom, postMat);
         crossbar.rotation.z = Math.PI / 2;
         crossbar.position.set(0.0, 0.008, 0.0);
+        crossbar.castShadow = true;
 
-        // Dynamic glowing neon cyan wireframe net!
+        // Realistic net: transparent/white grid pattern
         const netGeom = new THREE.BoxGeometry(0.016, 0.008, 0.006);
         const netWire = new THREE.EdgesGeometry(netGeom);
         const netMat = new THREE.LineBasicMaterial({
-            color: 0x00ffff,
+            color: 0xcccccc,
             transparent: true,
-            opacity: 0.45
+            opacity: 0.6
         });
         const netMesh = new THREE.LineSegments(netWire, netMat);
         netMesh.position.set(0.0, 0.004, -0.003); // extend backward
 
         group.add(leftPost, rightPost, crossbar, netMesh);
+        
+        // Store netMesh reference in userData so net wiggling animation finds it
+        group.userData.netMesh = netMesh;
+        netMesh.userData.originalScale = netMesh.scale.clone();
+        group.userData.originalScale = group.scale.clone();
+
         return group;
     }
 
@@ -6322,9 +6589,22 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     private initSportSequenceSystem() {
-        // Create parent group for sports sequences props
         this.sportPropsGroup = new THREE.Group();
         this.tableGroup.add(this.sportPropsGroup);
+
+        // Holographic Tracking Spotlight (pulsing neon ring on the pitch floor)
+        const spotlightGeom = new THREE.RingGeometry(0.005, 0.007, 24);
+        spotlightGeom.rotateX(-Math.PI / 2);
+        const spotlightMat = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.0,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        this.replaySpotlight = new THREE.Mesh(spotlightGeom, spotlightMat);
+        this.replaySpotlight.position.set(0, 0.0095, 0);
+        this.sportPropsGroup.add(this.replaySpotlight);
 
         // --- 1. CRICKET PROPS (default) ---
         // Neon green Wickets/Stumps group (Aligned side-by-side along Z-axis!)
@@ -6344,6 +6624,10 @@ export class DomainExpansionSystem extends createSystem({
         stumpsGroup.add(s1, s2, s3, bail);
         stumpsGroup.position.set(0.045, 0.009, 0);
         this.cricketStumpsMesh = stumpsGroup;
+        this.stumpM1 = s1;
+        this.stumpM2 = s2;
+        this.stumpM3 = s3;
+        this.bailMesh = bail;
         this.sportPropsGroup.add(this.cricketStumpsMesh);
 
         // Neon gold wooden bat group (Flat side facing X-axis!)
@@ -6775,10 +7059,8 @@ export class DomainExpansionSystem extends createSystem({
         }
 
         // --- Animate falling/drifting instanced weather particles ---
-        const dummy = new THREE.Object3D();
-        const cyan = new THREE.Color(0x00ffff);
-        const colorObj = new THREE.Color();
-        const dustColors = [0xff00ff, 0x00ffff, 0xffaa00]; // Magenta, Cyan, Gold dust
+        const dummy = this.weatherDummy;
+        const cyan = this.weatherColor.setHex(0x00ffff);
 
         for (let i = 0; i < this.MAX_WEATHER_PARTICLES; i++) {
             let px = this.weatherPositions[i * 3 + 0];
@@ -6821,8 +7103,8 @@ export class DomainExpansionSystem extends createSystem({
                 dummy.updateMatrix();
                 this.weatherMesh.setMatrixAt(i, dummy.matrix);
 
-                colorObj.setHex(0xffffff); // Pure white snow
-                this.weatherMesh.setColorAt(i, colorObj);
+                this.weatherColor.setHex(0xffffff); // Pure white snow
+                this.weatherMesh.setColorAt(i, this.weatherColor);
             }
         }
 
@@ -6986,6 +7268,8 @@ export class DomainExpansionSystem extends createSystem({
         this.sportSequencePhase = 0;
         this.sequenceBallTrailCount = 0;
         this.f1VortexInitialized = false;
+        this.hasTriggeredWhistle = false;
+        this.hasTriggeredCheer = false;
 
         // Clear existing trails
         this.sequenceBallTrail.geometry.setDrawRange(0, 0);
@@ -7095,17 +7379,57 @@ export class DomainExpansionSystem extends createSystem({
     }
 
     private updateSportSequence(dt: number) {
-        if (this.currentStadiumType === 'butterflies') {
-            this.isSportSequenceActive = false;
-            if (this.sequenceBall) this.sequenceBall.visible = false;
-            if (this.sequenceBallTrail) this.sequenceBallTrail.visible = false;
-            return;
-        }
         if (!this.isSportSequenceActive) return;
 
-        this.sportSequenceTime += dt;
-        const time = this.sportSequenceTime;
         const stType = this.currentStadiumType;
+        let timeScale = 1.0;
+
+        // Apply Time Dilation (Slow-Motion Replay) at key event moments
+        if (stType === 'berlin' || stType === 'butterflies') {
+            // Slow motion when Neuer dives and Kane shoots (from 16.2s to 18.0s)
+            if (this.sportSequenceTime >= 16.2 && this.sportSequenceTime < 18.0) {
+                timeScale = 0.35; // 0.35x speed slow-motion!
+            }
+        } else if (stType === 'default') {
+            // Slow motion during the clean bowled stump explosion impact (from 10.2s to 11.5s)
+            if (this.sportSequenceTime >= 10.2 && this.sportSequenceTime < 11.5) {
+                timeScale = 0.30; // 0.30x speed slow-motion!
+            }
+        }
+
+        // Trigger spatial Audio referee whistle at Soccer kickoff
+        if (this.sportSequenceTime < 0.05 && !this.hasTriggeredWhistle) {
+            this.hasTriggeredWhistle = true;
+            if (stType === 'berlin' || stType === 'butterflies') {
+                const spatialFX = (window as any).spatialFX;
+                if (spatialFX) {
+                    spatialFX.playRefereeWhistle(this.scratchVector1.set(0.0, 0.01, 0.0));
+                }
+            }
+        }
+
+        const dilatedDt = dt * timeScale;
+        this.sportSequenceTime += dilatedDt;
+        const time = this.sportSequenceTime;
+        dt = dilatedDt; // Reassign parameter to apply time dilation to all internal player dynamics
+
+        // Update Holographic project spotlight tracking under the ball
+        if (this.replaySpotlight) {
+            if (stType === 'default' || stType === 'berlin' || stType === 'butterflies' || stType === 'inuit') {
+                this.replaySpotlight.visible = true;
+                this.replaySpotlight.position.copy(this.sequenceBall.position);
+                this.replaySpotlight.position.y = 0.0095;
+                const pScale = 1.0 + Math.sin(time * 8.0) * 0.15;
+                this.replaySpotlight.scale.set(pScale, 1.0, pScale);
+                if (time >= 20.0) {
+                    (this.replaySpotlight.material as THREE.MeshBasicMaterial).opacity = 0.0;
+                } else {
+                    (this.replaySpotlight.material as THREE.MeshBasicMaterial).opacity = 0.65;
+                }
+            } else {
+                this.replaySpotlight.visible = false;
+            }
+        }
 
         // Hide main AR matchup scoreboard to make way for the sport celebration card
         if (this.arBillboard) {
@@ -7134,17 +7458,66 @@ export class DomainExpansionSystem extends createSystem({
             p.group.position.x += dx * speedFactor;
             p.group.position.z += dz * speedFactor;
 
-            if (Math.abs(dx) > 0.001 || Math.abs(dz) > 0.001) {
+            const isMoving = Math.abs(dx) > 0.001 || Math.abs(dz) > 0.001;
+            if (isMoving) {
                 const targetAngle = Math.atan2(dx, dz);
                 let diff = targetAngle - p.group.rotation.y;
                 diff = Math.atan2(Math.sin(diff), Math.cos(diff)); // normalize to [-PI, PI]
                 p.group.rotation.y += diff * 12.0 * dt;
-                p.group.position.y = 0.009 + Math.abs(Math.sin(time * 15.0)) * 0.002; // bob up/down
+                p.group.position.y = 0.009 + Math.abs(Math.sin(time * 16.0)) * 0.0025; // bob up/down
+
+                // Sinusoidal running limb swing
+                const swingFreq = 18.0;
+                const swingAmt = 0.65;
+                if (p.lArm) p.lArm.rotation.x = -Math.PI / 18 + Math.sin(time * swingFreq) * swingAmt;
+                if (p.rArm) p.rArm.rotation.x = -Math.PI / 18 - Math.sin(time * swingFreq) * swingAmt;
+                if (p.lLeg) p.lLeg.rotation.x = Math.sin(time * swingFreq) * 0.45;
+                if (p.rLeg) p.rLeg.rotation.x = -Math.sin(time * swingFreq) * 0.45;
+
+                // Shin bending (flexing knees)
+                if (p.lShin) p.lShin.rotation.x = Math.max(0, Math.cos(time * swingFreq) * 0.6);
+                if (p.rShin) p.rShin.rotation.x = Math.max(0, -Math.cos(time * swingFreq) * 0.6);
+
+                // Forearm pumping
+                if (p.lFArm) p.lFArm.rotation.x = Math.sin(time * swingFreq) * 0.25;
+                if (p.rFArm) p.rFArm.rotation.x = -Math.sin(time * swingFreq) * 0.25;
+
+                // Trigger grass/turf sparks underneath players when running in soccer
+                if ((stType === 'berlin' || stType === 'butterflies') && Math.random() < 0.25) {
+                    const spatialFX = (window as any).spatialFX;
+                    if (spatialFX) {
+                        spatialFX.triggerSpark(p.group.position, this.scratchColor.setHex(0x34d399), 1);
+                    }
+                }
+            } else {
+                stopPlayer(p);
             }
         };
 
         const stopPlayer = (p: any) => {
             p.group.position.y = 0.009;
+            // Restore default athletic stances
+            if (p.role === 'batsman') {
+                if (p.lArm) p.lArm.rotation.set(-Math.PI / 4, 0, -Math.PI / 12);
+                if (p.rArm) p.rArm.rotation.set(-Math.PI / 3, 0, Math.PI / 12);
+                if (p.lLeg) p.lLeg.rotation.set(Math.PI / 9, 0, -Math.PI / 14);
+                if (p.rLeg) p.rLeg.rotation.set(Math.PI / 9, 0, Math.PI / 14);
+                if (p.lShin) p.lShin.rotation.set(0, 0, 0);
+                if (p.rShin) p.rShin.rotation.set(0, 0, 0);
+                if (p.lFArm) p.lFArm.rotation.set(0, 0, 0);
+                if (p.rFArm) p.rFArm.rotation.set(0, 0, 0);
+                if (p.batPivot) p.batPivot.rotation.set(-Math.PI / 4.5, 0.15, Math.PI / 5.5);
+            } else {
+                // Fielder/soccer/basketball defaults
+                if (p.lArm) p.lArm.rotation.set(-Math.PI / 18, 0, -Math.PI / 10);
+                if (p.rArm) p.rArm.rotation.set(-Math.PI / 18, 0, Math.PI / 10);
+                if (p.lLeg) p.lLeg.rotation.set(Math.PI / 11, 0, -Math.PI / 13);
+                if (p.rLeg) p.rLeg.rotation.set(Math.PI / 11, 0, Math.PI / 13);
+                if (p.lShin) p.lShin.rotation.set(0, 0, 0);
+                if (p.rShin) p.rShin.rotation.set(0, 0, 0);
+                if (p.lFArm) p.lFArm.rotation.set(0, 0, 0);
+                if (p.rFArm) p.rFArm.rotation.set(0, 0, 0);
+            }
         };
 
         // Helper to show/fade cards
@@ -7443,9 +7816,7 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
         }
-
-        // --- 2. SOCCER CHOREOGRAPHY SEQUENCE (20.0s twist match) ---
-        else if (stType === 'berlin') {
+        else if (stType === 'berlin' || stType === 'butterflies') {
             const bellingham = getPlayer("a1"); // AM Attacking J. Bellingham
             const sane = getPlayer("fw1");      // LW L. Sané
             const kimmich = getPlayer("d3");    // RB J. Kimmich
@@ -7534,6 +7905,12 @@ export class DomainExpansionSystem extends createSystem({
                         kimmich.group.position.z += (-0.03 * S - kimmich.group.position.z) * dt * 18.0;
                         kimmich.group.rotation.y = Math.PI / 4;
                         kimmich.mesh.rotation.z = Math.PI / 2.5; // fall flat
+
+                        // Slide pose limb adjustments
+                        if (kimmich.lLeg) kimmich.lLeg.rotation.set(-Math.PI / 2.8, 0, 0);
+                        if (kimmich.rLeg) kimmich.rLeg.rotation.set(-Math.PI / 2.5, 0, 0);
+                        if (kimmich.lArm) kimmich.lArm.rotation.set(Math.PI / 4, 0, 0);
+                        if (kimmich.rArm) kimmich.rArm.rotation.set(Math.PI / 4.5, 0, 0);
                     }
                 }
 
@@ -7559,18 +7936,34 @@ export class DomainExpansionSystem extends createSystem({
                 }
                 const duelT = Math.min((time - 8.0) / 1.2, 1.0);
 
-                // Kane/Rüdiger Contest (Soccer, phase 4): Accelerate run speed to dt * 22.0
+                // Kane/Rüdiger Contest (Soccer, phase 4): Elevate run speed to dt * 22.0
                 if (kane) runPlayer(kane, 0.0 * S, -0.045 * S, dt * 22.0);
                 if (rudiger) runPlayer(rudiger, 0.003 * S, -0.042 * S, dt * 22.0);
 
                 // Contesting header: Kane leaps!
                 if (time >= 9.0 && time < 10.2) {
-                    if (kane) kane.group.position.y = 0.018; // jump 9mm high!
+                    if (kane) {
+                        kane.group.position.y = 0.018; // jump 9mm high!
+                        if (kane.lArm) kane.lArm.rotation.set(-Math.PI / 2.5, 0, -Math.PI / 6);
+                        if (kane.rArm) kane.rArm.rotation.set(-Math.PI / 2.5, 0, Math.PI / 6);
+                        if (kane.lLeg) kane.lLeg.rotation.set(Math.PI / 6, 0, 0);
+                        if (kane.rLeg) kane.rLeg.rotation.set(Math.PI / 6, 0, 0);
+                    }
+                    if (rudiger) {
+                        rudiger.group.position.y = 0.016;
+                        if (rudiger.lArm) rudiger.lArm.rotation.set(-Math.PI / 2.2, 0, -Math.PI / 4);
+                        if (rudiger.rArm) rudiger.rArm.rotation.set(-Math.PI / 2.2, 0, Math.PI / 4);
+                    }
                     if (time >= 9.0 && time < 9.1) {
                         this.triggerFirework(0.0 * S, 0.018, -0.045 * S, 0x00ffff, 0.01);
                     }
-                } else if (kane) {
-                    kane.group.position.y = 0.009;
+                } else {
+                    if (kane) {
+                        kane.group.position.y = 0.009;
+                    }
+                    if (rudiger) {
+                        rudiger.group.position.y = 0.009;
+                    }
                 }
 
                 // Ball rebounds off Rüdiger's block back to Bellingham
@@ -7581,7 +7974,7 @@ export class DomainExpansionSystem extends createSystem({
                         this.scratchVector5.set(0.0 * S, 0.003, -0.025 * S), // bellingham rebound spot
                         reboundT
                     );
-                    // Bellingham Rebound (Soccer, phase 4): Accelerate run speed to dt * 20.0
+                    // Bellingham Rebound (Soccer, phase 4): Elevate run speed to dt * 20.0
                     if (bellingham) runPlayer(bellingham, 0.0 * S, -0.025 * S, dt * 20.0);
                 }
             } else if (time >= 12.0 && time < 16.0) {
@@ -7634,12 +8027,38 @@ export class DomainExpansionSystem extends createSystem({
                     this.wigglingGoalNet = this.goal2NetMesh;
                     // Sparkler trigger aligned perfectly with end positions
                     this.triggerFirework(0.008 * S, 0.004, -0.061, 0x22d3ee, 0.015);
+
+                    // Trigger spatial crowd cheer roar
+                    if (!this.hasTriggeredCheer) {
+                        this.hasTriggeredCheer = true;
+                        const spatialFX = (window as any).spatialFX;
+                        if (spatialFX) {
+                            spatialFX.playCrowdCheer(this.scratchVector1.set(0.008 * S, 0.004, -0.061));
+                        }
+                    }
                 }
 
                 // Neuer Dive (Soccer, phase 6): Set dive LERP speed to dt * 20.0
                 if (neuer && time >= 16.5) {
                     neuer.group.position.x += (0.008 * S - neuer.group.position.x) * dt * 20.0;
-                    neuer.mesh.rotation.z = -Math.PI / 2.2; // side dive
+                    neuer.mesh.rotation.z = -Math.PI / 2.2; // side dive horizontal body rotation
+
+                    // Extend arms and legs for save animation
+                    if (neuer.lArm) neuer.lArm.rotation.set(0, 0, -Math.PI / 1.8);
+                    if (neuer.rArm) neuer.rArm.rotation.set(0, 0, -Math.PI / 1.8);
+                    if (neuer.lLeg) neuer.lLeg.rotation.set(Math.PI / 8, 0, 0);
+                    if (neuer.rLeg) neuer.rLeg.rotation.set(Math.PI / 12, 0, 0);
+                }
+
+                // Ultras cyan/white smoke flares spray behind the net
+                if (time >= 17.2) {
+                    const spatialFX = (window as any).spatialFX;
+                    if (spatialFX && Math.random() < 0.3) {
+                        const flarePos1 = this.scratchVector4.set(-0.012 * S, 0.001, -0.062);
+                        const flarePos2 = this.scratchVector5.set(0.012 * S, 0.001, -0.062);
+                        spatialFX.triggerSpark(flarePos1, this.scratchColor.setHex(0x22d3ee), 1);
+                        spatialFX.triggerSpark(flarePos2, this.scratchColor.setHex(0xffffff), 1);
+                    }
                 }
 
                 // Show GOAL celebration card
@@ -8513,15 +8932,8 @@ export class DomainExpansionSystem extends createSystem({
                         fieldMesh = child;
                     }
                     if (name.includes('olympiagoalpost')) {
+                        child.visible = false; // Hide the built-in 3D goal mesh
                         child.userData.originalScale = child.scale.clone();
-                        if (child.position.z > 0) {
-                            this.berlinGoal1 = child;
-                            this.goal1NetMesh = child;
-                        } else {
-                            this.berlinGoal2 = child;
-                            this.goal2NetMesh = child;
-                        }
-                        console.log(`[FIFAStadium] Linked built-in goalpost "${child.name}" (Z: ${child.position.z.toFixed(4)})`);
                     }
                 }
             });
@@ -8541,7 +8953,88 @@ export class DomainExpansionSystem extends createSystem({
             const cylinderWall = new THREE.Mesh(cylinderGeo, berlinMat);
             this.butterflyGroup.add(cylinderWall);
         }
+
+        // Add procedural goalposts to butterflyGroup (both asset and fallback paths)
+        const pGoal1 = this.createGoalPost('proceduralGoal1');
+        pGoal1.position.set(0.0, 0.0005, 0.061);
+        pGoal1.rotation.y = Math.PI; // Face field center
+        this.butterflyGroup.add(pGoal1);
+
+        const pGoal2 = this.createGoalPost('proceduralGoal2');
+        pGoal2.position.set(0.0, 0.0005, -0.061); // Behind goalie
+        this.butterflyGroup.add(pGoal2);
+
+        this.addSoccerDecorations(this.butterflyGroup);
         this.tableGroup.add(this.butterflyGroup);
+    }
+
+    private addSoccerDecorations(group: THREE.Group) {
+        // 1. Corner Flags
+        const poleGeo = new THREE.CylinderGeometry(0.00015, 0.00015, 0.004, 5);
+        poleGeo.translate(0, 0.002, 0); // pivot base
+        const poleMat = new THREE.MeshBasicMaterial({ color: 0x94a3b8 });
+        
+        const flagGeo = new THREE.BoxGeometry(0.0016, 0.001, 0.0001);
+        flagGeo.translate(0.0008, 0.0035, 0); // position top-side of pole
+        const flagMat = new THREE.MeshBasicMaterial({ color: 0xeab308 }); // Neon yellow flag
+        
+        const corners = [
+            { x: -0.035, z: -0.054 },
+            { x: 0.035, z: -0.054 },
+            { x: -0.035, z: 0.054 },
+            { x: 0.035, z: 0.054 }
+        ];
+        
+        corners.forEach(c => {
+            const flagGroup = new THREE.Group();
+            flagGroup.position.set(c.x, 0.009, c.z);
+            
+            const pole = new THREE.Mesh(poleGeo, poleMat);
+            const flag = new THREE.Mesh(flagGeo, flagMat);
+            
+            flagGroup.add(pole);
+            flagGroup.add(flag);
+            group.add(flagGroup);
+        });
+        
+        // 2. Side Dugouts (Team A and B side-by-side at x = -0.040)
+        const dugoutPositions = [
+            { z: -0.012 },
+            { z: 0.012 }
+        ];
+        
+        const canopyGeo = new THREE.CylinderGeometry(0.003, 0.003, 0.006, 12, 1, false, 0, Math.PI);
+        // Rotate so it opens forward (facing +X)
+        canopyGeo.rotateX(-Math.PI / 2);
+        canopyGeo.rotateY(Math.PI / 2);
+        
+        const canopyMat = new THREE.MeshBasicMaterial({
+            color: 0x06b6d4, // Cyan translucent glass
+            transparent: true,
+            opacity: 0.4,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        
+        const benchGeo = new THREE.BoxGeometry(0.0015, 0.0008, 0.0048);
+        benchGeo.translate(0.0005, 0.0004, 0);
+        const benchMat = new THREE.MeshBasicMaterial({ color: 0x1e293b }); // Slate dark bench
+        
+        dugoutPositions.forEach(d => {
+            const dugout = new THREE.Group();
+            dugout.position.set(-0.040, 0.009, d.z);
+            
+            const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+            canopy.position.set(0, 0.003, 0);
+            
+            const bench = new THREE.Mesh(benchGeo, benchMat);
+            
+            dugout.add(canopy);
+            dugout.add(bench);
+            group.add(dugout);
+        });
+        
+        console.log("[SoccerDecorations] Added 4 corner flags and 2 dugouts.");
     }
 
     private createNurburgringGroup() {
@@ -9229,6 +9722,94 @@ export class DomainExpansionSystem extends createSystem({
         this.nurburgringGroup.add(drsBadge);
         this.f1Markers.push(drsBadge);
 
+        // --- Construction of 3D Apex Rumble Strips ---
+        const createApexRumbleStrip = (centerU: number, innerOffsetDirection: number) => {
+            const segCount = 10;
+            const roadWidth = 0.0082;
+            const boxGeo = new THREE.BoxGeometry(0.0016, 0.0003, 0.002);
+            const redMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+            const whiteMat = new THREE.MeshBasicMaterial({ color: 0xfafafa });
+
+            for (let i = 0; i < segCount; i++) {
+                const u = centerU - 0.008 + (i / segCount) * 0.016;
+                const progress = (u + 1.0) % 1.0;
+                const p = this.nurburgringCurve.getPointAt(progress);
+                
+                const frameIdx = Math.floor(progress * segments) % segments;
+                const binormal = this.nurburgringFrenetFrames.binormals[frameIdx];
+                const tangent = this.nurburgringFrenetFrames.tangents[frameIdx];
+                
+                const pos = p.clone().addScaledVector(binormal, roadWidth * innerOffsetDirection);
+                pos.y += 0.0003 + (i % 2) * 0.0001;
+
+                const box = new THREE.Mesh(boxGeo, i % 2 === 0 ? redMat : whiteMat);
+                box.position.copy(pos);
+
+                const upVec = this.scratchVector3.set(0, 1, 0);
+                const rMat = new THREE.Matrix4().makeBasis(binormal, upVec, tangent);
+                box.quaternion.setFromRotationMatrix(rMat);
+
+                this.nurburgringGroup!.add(box);
+            }
+        };
+
+        // Spawn rumble strips at key Monaco corners
+        createApexRumbleStrip(0.182, 1.0);  // Turn 5 Apex Left
+        createApexRumbleStrip(0.227, -1.0); // Turn 6 Apex Right
+        createApexRumbleStrip(0.591, 1.0);  // Turn 12 Apex Left
+        createApexRumbleStrip(0.727, -1.0); // Turn 15 Apex Right
+        createApexRumbleStrip(0.864, 1.0);  // Turn 18 Apex Left
+
+        // --- Construction of Neon DRS Gantry Arches ---
+        this.drsGantryMats = [];
+        const createDRSGantry = (gProgress: number) => {
+            const p = this.nurburgringCurve.getPointAt(gProgress);
+            const frameIdx = Math.floor(gProgress * segments) % segments;
+            const binormal = this.nurburgringFrenetFrames.binormals[frameIdx];
+            const tangent = this.nurburgringFrenetFrames.tangents[frameIdx];
+            const upVec = new THREE.Vector3(0, 1, 0);
+            
+            const gantryGroup = new THREE.Group();
+            gantryGroup.position.copy(p);
+            
+            const rMat = new THREE.Matrix4().makeBasis(binormal, upVec, tangent);
+            gantryGroup.quaternion.setFromRotationMatrix(rMat);
+            
+            const roadWidth = 0.008;
+            const archHeight = 0.0072;
+            
+            const colGeo = new THREE.CylinderGeometry(0.0003, 0.0003, archHeight, 6);
+            const colMat = new THREE.MeshBasicMaterial({ color: 0x475569 });
+            const leftCol = new THREE.Mesh(colGeo, colMat);
+            leftCol.position.set(-roadWidth, archHeight / 2, 0);
+            gantryGroup.add(leftCol);
+            
+            const rightCol = leftCol.clone();
+            rightCol.position.set(roadWidth, archHeight / 2, 0);
+            gantryGroup.add(rightCol);
+            
+            const beamGeo = new THREE.BoxGeometry(roadWidth * 2, 0.0004, 0.0004);
+            const beam = new THREE.Mesh(beamGeo, colMat);
+            beam.position.set(0, archHeight, 0);
+            gantryGroup.add(beam);
+            
+            const signGeo = new THREE.BoxGeometry(0.006, 0.0012, 0.0002);
+            const signMat = new THREE.MeshBasicMaterial({
+                color: 0x00d2be,
+                transparent: true,
+                opacity: 0.95
+            });
+            this.drsGantryMats.push(signMat);
+            const sign = new THREE.Mesh(signGeo, signMat);
+            sign.position.set(0, archHeight, 0.0003);
+            gantryGroup.add(sign);
+            
+            this.nurburgringGroup!.add(gantryGroup);
+        };
+
+        createDRSGantry(0.08); // Straightaway 1 DRS Zone
+        createDRSGantry(0.55); // Straightaway 2 Tunnel DRS Zone
+
         // 7. Spawn all 3 detailed F1 cars (Russell, Leclerc, Norris)
         this.nurburgringCars = [];
         this.nurburgringF1WheelMats = [];
@@ -9239,7 +9820,15 @@ export class DomainExpansionSystem extends createSystem({
             const built = this.createDetailedF1Car(bodyColor, accentColor, liveryColor, colorType);
             grp.add(built.car);
             this.nurburgringGroup!.add(grp);
-            this.nurburgringCars.push({ group: grp, progress: startProgress, speed: 0.052, wheels: built.wheels, colorType, driverId });
+            this.nurburgringCars.push({
+                group: grp,
+                progress: startProgress,
+                speed: 0.052,
+                wheels: built.wheels,
+                colorType,
+                driverId,
+                rimMat: built.car.userData.rimMat
+            });
             if (isMain) {
                 this.nurburgringF1Car = grp;
                 this.nurburgringF1Wheels = built.wheels;
@@ -9252,12 +9841,13 @@ export class DomainExpansionSystem extends createSystem({
 
         // P2 – Ferrari: Charles Leclerc  (red / yellow)
         spawnCar(0xdc0000, 0xffcc00, 0xff2200, 'ferrari', 'f1_cl', 0.950, false);
-
-        // P3 – McLaren: Lando Norris     (papaya orange / black)
-        spawnCar(0xff8000, 0x111111, 0xff6600, 'mclaren', 'f1_ln', 0.900, false);
+        // P3 - McLaren: Lando Norris (orange / black)
+        spawnCar(0xff6600, 0x1e1e1e, 0x000000, 'mclaren', 'f1_ln', 0.900, false);
 
         // --- Create F1 Live Roster ---
         this.f1RosterMinimized = false;
+        this.f1MarkersVisible = true;
+        this.f1MarkerOpacity = 1.0;
         this.f1RosterCanvas = document.createElement('canvas');
         this.f1RosterCanvas.width = 512;
         this.f1RosterCanvas.height = 600; // Aspect ratio for 0.24 x 0.28
@@ -9302,10 +9892,12 @@ export class DomainExpansionSystem extends createSystem({
         const imgMat = new THREE.MeshBasicMaterial({
             transparent: true,
             side: THREE.DoubleSide,
-            depthWrite: false
+            depthWrite: false,
+            depthTest: false
         });
         this.f1ActiveCardImgMesh = new THREE.Mesh(imgGeom, imgMat);
         this.f1ActiveCardImgMesh.position.set(-0.045, 0, 0.001); // offset slightly forward
+        this.f1ActiveCardImgMesh.renderOrder = 10001;
         this.f1ActiveCardGroup.add(this.f1ActiveCardImgMesh);
 
         // Right Panel: Telemetry Canvas
@@ -9324,11 +9916,13 @@ export class DomainExpansionSystem extends createSystem({
             transparent: true,
             opacity: 0.85,
             side: THREE.DoubleSide,
-            depthWrite: false
+            depthWrite: false,
+            depthTest: false
         });
         const telGeom = new THREE.PlaneGeometry(0.09, 0.08);
         this.f1ActiveCardMesh = new THREE.Mesh(telGeom, telMat);
         this.f1ActiveCardMesh.position.set(0.035, 0, 0.001);
+        this.f1ActiveCardMesh.renderOrder = 10001;
         this.f1ActiveCardGroup.add(this.f1ActiveCardMesh);
 
         // Backing geometry: 0.16m wide by 0.09m high.
@@ -9339,10 +9933,12 @@ export class DomainExpansionSystem extends createSystem({
             transparent: true,
             opacity: 0.82,
             side: THREE.DoubleSide,
-            depthWrite: false
+            depthWrite: false,
+            depthTest: false
         });
         const cardBackMesh = new THREE.Mesh(cardBackGeom, cardBackMat);
         cardBackMesh.position.set(-0.005, 0, 0.0);
+        cardBackMesh.renderOrder = 9999;
         this.f1ActiveCardGroup.add(cardBackMesh);
 
         // Neon cyan wireframe border outline
@@ -9351,10 +9947,12 @@ export class DomainExpansionSystem extends createSystem({
             color: 0x00ffff,
             transparent: true,
             opacity: 0.45,
-            depthWrite: false
+            depthWrite: false,
+            depthTest: false
         });
         const cardBorderMesh = new THREE.LineSegments(cardBorderGeom, cardBorderMat);
         cardBorderMesh.position.set(-0.005, 0, 0.0005);
+        cardBorderMesh.renderOrder = 10000;
         this.f1ActiveCardGroup.add(cardBorderMesh);
 
         // V17 approach: add directly to tableGroup as a normal child.
@@ -9681,6 +10279,7 @@ export class DomainExpansionSystem extends createSystem({
         const rimCoverGeo = new THREE.CylinderGeometry(0.0010, 0.0010, 0.0003, 8);
         rimCoverGeo.rotateZ(Math.PI / 2);
 
+        const rimMat = new THREE.MeshBasicMaterial({ color: bodyColor });
         wheelOffsets.forEach((offset) => {
             const wMat = new THREE.MeshBasicMaterial({ color: 0x09090b });
             if (colorType === 'merc') {
@@ -9691,11 +10290,10 @@ export class DomainExpansionSystem extends createSystem({
             car.add(wheel);
             wheels.push(wheel);
 
-            const rimMat = new THREE.MeshBasicMaterial({ color: bodyColor });
             const rim = new THREE.Mesh(rimCoverGeo, rimMat);
             const rimOffsetX = offset.x > 0 ? 0.0005 : -0.0005;
-            rim.position.set(offset.x + rimOffsetX, 0.001, offset.z);
-            car.add(rim);
+            rim.position.set(rimOffsetX, 0.0, 0.0);
+            wheel.add(rim);
 
             // Sidewall Pirelli compound stripe
             const stripeGeo = new THREE.RingGeometry(0.0012, 0.0014, 16);
@@ -9706,12 +10304,13 @@ export class DomainExpansionSystem extends createSystem({
             });
             const stripe = new THREE.Mesh(stripeGeo, stripeMat);
             const stripeOffsetX = offset.x > 0 ? 0.00062 : -0.00062;
-            stripe.position.set(offset.x + stripeOffsetX, 0.001, offset.z);
-            car.add(stripe);
+            stripe.position.set(stripeOffsetX, 0.0, 0.0);
+            wheel.add(stripe);
         });
 
         // 40% smaller than previous: 0.64 * 0.6 = 0.384
         car.scale.setScalar(0.384);
+        car.userData.rimMat = rimMat;
 
         return { car, wheels };
     }
@@ -9841,9 +10440,9 @@ export class DomainExpansionSystem extends createSystem({
         totalProgress: number;
     }[] {
         const rosterNurburgring = [
+            { id: "f1_gr", name: "G. Russell", team: "Mercedes", rcbCardKey: "f1GeorgeRussell" },
             { id: "f1_cl", name: "C. Leclerc", team: "Ferrari", rcbCardKey: "f1CharlesLeclerc" },
-            { id: "f1_ln", name: "L. Norris", team: "McLaren", rcbCardKey: "f1LandoNorris" },
-            { id: "f1_gr", name: "G. Russell", team: "Mercedes", rcbCardKey: "f1GeorgeRussell" }
+            { id: "f1_ln", name: "L. Norris", team: "McLaren", rcbCardKey: "f1LandoNorris" }
         ];
 
         const drivers = rosterNurburgring.map(d => {
@@ -9871,21 +10470,80 @@ export class DomainExpansionSystem extends createSystem({
         const ctx = this.f1RosterCtx;
 
         if (this.f1RosterMinimized) {
-            ctx.clearRect(0, 0, 512, 170);
+            // Minimized state: circular button with bullet-list (roster) icon
+            ctx.clearRect(0, 0, 256, 256);
 
-            // Minimized layout: compact card with high-vis cyan border & show action text
-            ctx.fillStyle = 'rgba(6, 10, 24, 0.95)';
-            ctx.fillRect(0, 0, 512, 170);
+            const cx = 128, cy = 128, r = 110;
 
+            // Outer glow ring
+            const glowGrad = ctx.createRadialGradient(cx, cy, r * 0.7, cx, cy, r);
+            glowGrad.addColorStop(0, 'rgba(0,255,255,0)');
+            glowGrad.addColorStop(1, 'rgba(0,255,255,0.25)');
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fillStyle = glowGrad;
+            ctx.fill();
+
+            // Dark glass circle
+            const bgGrad = ctx.createRadialGradient(cx, cy, 10, cx, cy, r * 0.95);
+            bgGrad.addColorStop(0, 'rgba(12, 25, 50, 0.96)');
+            bgGrad.addColorStop(1, 'rgba(6, 10, 24, 0.92)');
+            ctx.beginPath();
+            ctx.arc(cx, cy, r * 0.95, 0, Math.PI * 2);
+            ctx.fillStyle = bgGrad;
+            ctx.fill();
+
+            // Cyan border ring
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
             ctx.strokeStyle = '#00ffff';
-            ctx.lineWidth = 10;
-            ctx.strokeRect(5, 5, 502, 160);
+            ctx.lineWidth = 8;
+            ctx.shadowColor = '#00ffff';
+            ctx.shadowBlur = 16;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
 
-            ctx.font = 'bold 32px "Orbitron", "Courier New", monospace';
-            ctx.fillStyle = '#00ffff';
+            // Inner thin ring
+            ctx.beginPath();
+            ctx.arc(cx, cy, r * 0.82, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0,255,255,0.25)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Bullet-list icon (4 dot + line rows)
+            const iconStartY = cy - 36;
+            const dotRadius = 6;
+            const lineW = 60;
+            const rowGap = 22;
+            for (let row = 0; row < 4; row++) {
+                const iy = iconStartY + row * rowGap;
+                ctx.beginPath();
+                ctx.arc(cx - 42, iy, dotRadius, 0, Math.PI * 2);
+                ctx.fillStyle = '#00ffff';
+                ctx.fill();
+                ctx.fillStyle = 'rgba(0,255,255,0.5)';
+                ctx.fillRect(cx - 42 + dotRadius + 5, iy - 3, lineW, 6);
+            }
+
+            // "F1" label at top of circle
+            ctx.font = 'bold 18px "Orbitron", "Courier New", monospace';
+            ctx.fillStyle = '#22d3ee';
             ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('[+] SHOW F1 ROSTER', 256, 85);
+            ctx.textBaseline = 'alphabetic';
+            ctx.shadowColor = '#22d3ee';
+            ctx.shadowBlur = 8;
+            ctx.fillText('F1', cx, cy - 52);
+            ctx.shadowBlur = 0;
+
+            // Chevron-up hint at bottom
+            ctx.beginPath();
+            ctx.moveTo(cx - 14, cy + 58);
+            ctx.lineTo(cx, cy + 46);
+            ctx.lineTo(cx + 14, cy + 58);
+            ctx.strokeStyle = 'rgba(0,255,255,0.6)';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.stroke();
         } else {
             ctx.clearRect(0, 0, 512, 600);
 
@@ -9922,7 +10580,7 @@ export class DomainExpansionSystem extends createSystem({
             ctx.lineTo(480, 100);
             ctx.stroke();
 
-            // Draw Rows vertically (3 rows only for 3 cars)
+            // Draw Rows vertically (3 rows for 3 cars)
             const sortedDrivers = this.getSortedDrivers();
             const rowH = 80;
             const startY = 110;
@@ -9933,8 +10591,20 @@ export class DomainExpansionSystem extends createSystem({
 
                 const rowTop = startY + i * rowH;
 
+                // Active/selected driver card highlight
+                if (this.f1ActiveCardDriverId === driver.driverId) {
+                    ctx.fillStyle = 'rgba(0, 255, 255, 0.12)';
+                    ctx.fillRect(32, rowTop + 4, 448, rowH - 8);
+                    ctx.strokeStyle = '#00ffff';
+                    ctx.lineWidth = 2.5;
+                    ctx.strokeRect(32, rowTop + 4, 448, rowH - 8);
+
+                    // Vertical neon indicator bar on the left edge
+                    ctx.fillStyle = '#00ffff';
+                    ctx.fillRect(32, rowTop + 4, 6, rowH - 8);
+                }
                 // Hover state backing card highlight
-                if (this.f1RosterHoveredRowIndex === i) {
+                else if (this.f1RosterHoveredRowIndex === i) {
                     ctx.fillStyle = 'rgba(34, 211, 238, 0.15)';
                     ctx.fillRect(32, rowTop + 4, 448, rowH - 8);
                     ctx.strokeStyle = 'rgba(34, 211, 238, 0.6)';
@@ -9942,8 +10612,8 @@ export class DomainExpansionSystem extends createSystem({
                     ctx.strokeRect(32, rowTop + 4, 448, rowH - 8);
                 }
 
-                // Subtle divider
-                if (i < 2) {
+                // Subtle divider between rows
+                if (i < sortedDrivers.length - 1) {
                     ctx.strokeStyle = 'rgba(34, 211, 238, 0.1)';
                     ctx.lineWidth = 1;
                     ctx.beginPath();
@@ -9953,7 +10623,7 @@ export class DomainExpansionSystem extends createSystem({
                 }
 
                 // A. Position number block
-                ctx.fillStyle = i === 0 ? '#f59e0b' : (i === 1 ? '#cbd5e1' : '#b45309');
+                ctx.fillStyle = i === 0 ? '#f59e0b' : '#cbd5e1';
                 ctx.fillRect(48, rowTop + 25, 30, 30);
                 ctx.font = 'bold 18px monospace';
                 ctx.fillStyle = '#090d16';
@@ -10000,18 +10670,86 @@ export class DomainExpansionSystem extends createSystem({
                 ctx.fillText(`LAP ${driver.lap}`, 464, rowTop + 64);
             }
 
-            // Draw "MINIMIZE" Button at the bottom (Y = 430 to 510)
-            ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
-            ctx.fillRect(32, 430, 448, 80);
+            // ── Turn Marker Toggle Button (Y = 370 to 440) ──
+            const mkrBtnY = 370;
+            const mkrActive = this.f1MarkersVisible;
+            ctx.fillStyle = mkrActive ? 'rgba(34, 211, 238, 0.18)' : 'rgba(80, 80, 90, 0.18)';
+            ctx.fillRect(32, mkrBtnY, 448, 70);
+            ctx.strokeStyle = mkrActive ? '#22d3ee' : '#555566';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(32, mkrBtnY, 448, 70);
+
+            // Bullet-list icon (3 dots + lines to represent a list/map markers)
+            const iconX = 72;
+            const iconY = mkrBtnY + 35;
+            const dotR = 5;
+            [0, -18, 18].forEach((dy) => {
+                ctx.beginPath();
+                ctx.arc(iconX, iconY + dy, dotR, 0, Math.PI * 2);
+                ctx.fillStyle = mkrActive ? '#22d3ee' : '#555566';
+                ctx.fill();
+                // Line after dot
+                ctx.fillRect(iconX + dotR + 5, iconY + dy - 2, 28, 4);
+            });
+
+            // Toggle label
+            ctx.font = 'bold 18px "Orbitron", "Courier New", monospace';
+            ctx.fillStyle = mkrActive ? '#22d3ee' : '#555566';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('TURN MARKERS', 130, mkrBtnY + 25);
+
+            // Status pill
+            const pillX = 370, pillY = mkrBtnY + 13, pillW = 72, pillH = 24;
+            ctx.fillStyle = mkrActive ? 'rgba(34,211,238,0.3)' : 'rgba(80,80,90,0.3)';
+            ctx.beginPath();
+            ctx.roundRect(pillX, pillY, pillW, pillH, 10);
+            ctx.fill();
+            ctx.font = 'bold 13px monospace';
+            ctx.fillStyle = mkrActive ? '#22d3ee' : '#888899';
+            ctx.textAlign = 'center';
+            ctx.fillText(mkrActive ? 'ON' : 'OFF', pillX + pillW / 2, pillY + 12);
+
+            // Sub-label
+            ctx.font = '13px monospace';
+            ctx.fillStyle = mkrActive ? 'rgba(34,211,238,0.6)' : 'rgba(100,100,115,0.6)';
+            ctx.textAlign = 'left';
+            ctx.fillText('SECTOR / TURN OVERLAYS', 130, mkrBtnY + 50);
+
+            // ── Circular HIDE Button at the bottom center (Y = 540) ──
+            const hideBtnCX = 256;
+            const hideBtnCY = 540;
+            const hideBtnR = 52;
+
+            // Button circle background
+            ctx.beginPath();
+            ctx.arc(hideBtnCX, hideBtnCY, hideBtnR, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
+            ctx.fill();
             ctx.strokeStyle = '#ef4444';
             ctx.lineWidth = 4;
-            ctx.strokeRect(32, 430, 448, 80);
+            ctx.stroke();
 
-            ctx.font = 'bold 26px "Orbitron", "Courier New", monospace';
-            ctx.fillStyle = '#ef4444';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('[-] HIDE ROSTER', 256, 470);
+            // Bullet-list icon inside circle (represents roster/list)
+            const bCX = hideBtnCX;
+            const bCY = hideBtnCY - 8;
+            [0, -13, 13].forEach((dy) => {
+                ctx.beginPath();
+                ctx.arc(bCX - 18, bCY + dy, 4, 0, Math.PI * 2);
+                ctx.fillStyle = '#ef4444';
+                ctx.fill();
+                ctx.fillRect(bCX - 11, bCY + dy - 2, 26, 4);
+            });
+
+            // Chevron-down under bullet icon
+            ctx.beginPath();
+            ctx.moveTo(bCX - 12, hideBtnCY + 24);
+            ctx.lineTo(bCX, hideBtnCY + 34);
+            ctx.lineTo(bCX + 12, hideBtnCY + 24);
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.stroke();
         }
 
         this.f1RosterTexture.needsUpdate = true;
