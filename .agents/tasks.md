@@ -1561,3 +1561,9 @@
 - `[x]` F1 Curbs (Rumble Strips) Alignment (Current Run)
   - `[x]` Shifted the lateral offset of apex rumble strips (`createApexRumbleStrip`) outward to `0.0102` (previously `0.0082`) to guarantee they are positioned cleanly on the track shoulders and clear the active road lane at all times
   - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled Vite client production bundle via `npm run build`
+- `[x]` Roster Interaction, Floating Close Button, and Billboard Alignment (Current Run)
+  - `[x]` Corrected the maximized roster touch boundary check on `localTip.y` to range from `-0.21` to `0.21` (previously restricted to `-0.14` to `0.14`), enabling interaction for top and bottom rows/buttons
+  - `[x]` Displaced the roster minimize close button from the flat canvas drawing into a dedicated 3D mesh (`f1RosterCloseButton`) floating outside the top-right corner of the frame
+  - `[x]` Fixed the 512x900 canvas resizing bug on maximizing the roster menu
+  - `[x]` Rotated both `f1RosterMesh` and `f1ActiveCardGroup` by 180 degrees (`Math.PI` around local Y axis) after their respective `lookAt(headPos)` updates, ensuring their front faces and textures look toward the user rather than backwards/mirrored
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled Vite client production bundle via `npm run build`

@@ -370,6 +370,7 @@ export class DomainExpansionSystem extends createSystem({
     private f1RosterMat!: THREE.MeshBasicMaterial;
     private f1RosterHoveredRowIndex = -1;
     private f1RosterMinimized = false;
+    private f1RosterCloseButton!: THREE.Group;
     private f1TouchCooldown = 0.0;
 
     private f1ActiveCardGroup!: THREE.Group;
@@ -2827,8 +2828,13 @@ export class DomainExpansionSystem extends createSystem({
                         this.f1RosterMesh.position.addScaledVector(leftVec, 0.22);
 
                         // LookAt: front face (+Z of PlaneGeometry) → player
-                        // lookAt(headPos) points the local +Z toward the target, which IS the front face.
+                        // lookAt(headPos) points the local -Z toward the target, so we add 180 degrees to flip the +Z front face to face the user
                         this.f1RosterMesh.lookAt(headPos);
+                        this.f1RosterMesh.rotation.y += Math.PI;
+
+                        if (this.f1RosterCloseButton) {
+                            this.f1RosterCloseButton.visible = !this.f1RosterMinimized;
+                        }
                     }
 
                     // C. Index Finger Touch Checking on Roster
@@ -2861,8 +2867,9 @@ export class DomainExpansionSystem extends createSystem({
                                     break;
                                 }
                             } else {
-                                // Maximized size: 0.24m wide by 0.28m high. localTip Y range: -0.14 to 0.14
-                                if (Math.abs(localTip.z) < 0.015 && Math.abs(localTip.x) < 0.12 && Math.abs(localTip.y) < 0.14) {
+                                // Maximized size: 0.24m wide by 0.42m high. localTip Y range: -0.21 to 0.21
+                                const isOverCloseButton = (localTip.x >= 0.11 && localTip.x <= 0.17 && localTip.y >= 0.20 && localTip.y <= 0.26);
+                                if (Math.abs(localTip.z) < 0.015 && ((Math.abs(localTip.x) < 0.12 && Math.abs(localTip.y) < 0.21) || isOverCloseButton)) {
                                     isTouchingRoster = true;
                                     touchTipUsed = tip;
 
@@ -2870,8 +2877,13 @@ export class DomainExpansionSystem extends createSystem({
                                     const cx = (localTip.x + 0.12) / 0.24 * 512;
                                     const cy = (0.21 - localTip.y) / 0.42 * 900;
 
+                                    // Check close button touch (floating at top-right: x = 0.135, y = 0.225)
+                                    const distToCloseBtn = localTip.distanceTo(new THREE.Vector3(0.135, 0.225, 0));
+                                    if (distToCloseBtn < 0.02) {
+                                        touchedMinimize = true;
+                                    }
                                     // Check rows 0 to 9 (10 drivers)
-                                    if (cy >= 90 && cy <= 730) {
+                                    else if (cy >= 90 && cy <= 730) {
                                         const rowIndex = Math.floor((cy - 90) / 64);
                                         if (rowIndex >= 0 && rowIndex < 10) {
                                             touchedRow = rowIndex;
@@ -2891,11 +2903,6 @@ export class DomainExpansionSystem extends createSystem({
                                             }
                                         }
                                         break;
-                                    }
-                                    // Check circular Hide button at top-right (CX = 465, CY = 70, Radius = 24)
-                                    // cx range: 435 to 495, cy range: 40 to 100
-                                    else if (cy >= 20 && cy <= 80 && cx >= 435 && cx <= 495) {
-                                        touchedMinimize = true;
                                     }
                                     break;
                                 }
@@ -2919,7 +2926,7 @@ export class DomainExpansionSystem extends createSystem({
                             
                             // Resize Canvas to 512x900 for maximized
                             this.f1RosterCanvas.width = 512;
-                            this.f1RosterCanvas.height = 600;
+                            this.f1RosterCanvas.height = 900;
                             
                             this.drawF1Roster();
 
@@ -3053,6 +3060,7 @@ export class DomainExpansionSystem extends createSystem({
                         }
 
                         this.f1ActiveCardGroup.lookAt(headPos);
+                        this.f1ActiveCardGroup.rotation.y += Math.PI; // Flip 180 degrees so PlaneGeometry front (+Z) faces user
                     }
                 } else {
                     if (this.f1ActiveCardGroup && this.f1ActiveCardGroup.visible) {
@@ -10008,6 +10016,32 @@ export class DomainExpansionSystem extends createSystem({
             // Fallback: add to tableGroup (should not happen at runtime)
             this.nurburgringGroup.add(this.f1RosterMesh);
         }
+
+        // Sleek 3D close button floating at top-right of roster (floating outside the frame)
+        this.f1RosterCloseButton = new THREE.Group();
+        this.f1RosterCloseButton.position.set(0.135, 0.225, 0.002);
+        this.f1RosterMesh.add(this.f1RosterCloseButton);
+
+        // Circular background disk (red)
+        const closeBg = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.012, 0.012, 0.002, 32),
+            new THREE.MeshBasicMaterial({ color: 0xff3333, side: THREE.DoubleSide })
+        );
+        closeBg.rotation.x = Math.PI / 2;
+        this.f1RosterCloseButton.add(closeBg);
+
+        // Draw "X" inside the close button
+        const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+        const xPoints1 = [new THREE.Vector3(-0.005, -0.005, 0.0015), new THREE.Vector3(0.005, 0.005, 0.0015)];
+        const xGeo1 = new THREE.BufferGeometry().setFromPoints(xPoints1);
+        const xLine1 = new THREE.Line(xGeo1, lineMat);
+        this.f1RosterCloseButton.add(xLine1);
+
+        const xPoints2 = [new THREE.Vector3(0.005, -0.005, 0.0015), new THREE.Vector3(-0.005, 0.005, 0.0015)];
+        const xGeo2 = new THREE.BufferGeometry().setFromPoints(xPoints2);
+        const xLine2 = new THREE.Line(xGeo2, lineMat);
+        this.f1RosterCloseButton.add(xLine2);
+
         this.drawF1Roster(); // Draw initial empty roster
 
         // --- Create F1 Spawning Active Player Card Group ---
@@ -10922,29 +10956,6 @@ export class DomainExpansionSystem extends createSystem({
             ctx.fillStyle = mkrActive ? 'rgba(34,211,238,0.6)' : 'rgba(100,100,115,0.6)';
             ctx.textAlign = 'left';
             ctx.fillText('SECTOR / TURN OVERLAYS', 130, mkrBtnY + 42);
-
-            // ── Circular HIDE Button at the top-right (CX = 465, CY = 70) ──
-            const hideBtnCX = 465;
-            const hideBtnCY = 70;
-            const hideBtnR = 24;
-
-            // Button circle background
-            ctx.beginPath();
-            ctx.arc(hideBtnCX, hideBtnCY, hideBtnR, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
-            ctx.fill();
-            ctx.strokeStyle = '#ef4444';
-            ctx.lineWidth = 3;
-            ctx.stroke();
-
-            // Draw a small "X" or "-" (minimize symbol) inside
-            ctx.beginPath();
-            ctx.moveTo(hideBtnCX - 8, hideBtnCY);
-            ctx.lineTo(hideBtnCX + 8, hideBtnCY);
-            ctx.strokeStyle = '#ef4444';
-            ctx.lineWidth = 3;
-            ctx.lineCap = 'round';
-            ctx.stroke();
         }
 
         this.f1RosterTexture.needsUpdate = true;
