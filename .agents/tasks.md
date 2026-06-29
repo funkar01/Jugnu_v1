@@ -1519,4 +1519,45 @@
   - `[x]` Restructure driver card visibility in update loop to support telemetry cards for Russell/Leclerc in F1 replays
   - `[x]` Verified zero type compile errors (`npx tsc --noEmit`) and successful production bundling (`npm run build`).
 
+- `[x] F1 Wheel Wobble & Steering Polish (Current Run)`
+  - `[x]` Added `currentSteerAngle` property to `nurburgringCars`
+  - `[x]` Implemented low-pass filter (lerping) on `steerAngle` calculation inside the update loop
+  - `[x]` Integrated dead-zone (`0.025`) filtering to suppress micro-wobbling/yaw wiggles on straight segments
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit`
 
+- `[x]` Lock Break Gesture & Shaking Feedback Polish (Current Run)
+  - `[x]` Removed obsolete double-pinch variables (`leftPinchCount`, `leftPinchTimer`) and triggers
+  - `[x]` Implemented a 3.0-second continuously held left index pinch gesture to break the spatial lock
+  - `[x]` Programmed high-fidelity translation and rotation shaking/vibration visual feedback on lock meshes proportional to hold progress (`lockEscapeTimer / 3.0`)
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled Vite client production bundle via `npm run build`
+- `[x]` Monaco 360 Images Integration (Current Run)
+  - `[x]` Copied 9 new Monaco GP 360 images to `public/360Videos/`
+  - `[x]` Updated F1 asset references in `src/index.ts` to map to the 9 `monacogp` textures
+  - `[x]` Registered Monaco GP domain keys and names in `src/domainExpansion.ts` with correct horizontal mirroring configuration (`repeat.set(-1, 1)`, `offset.set(1, 0)`) to read text correctly when viewed from inside the dome sphere
+  - `[x]` Updated stadium details and F1 venue subtitle to "Monte Carlo, Monaco" in `src/jugnu.ts`
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled Vite client production bundle via `npm run build`
+- `[x]` Roster Layout & Domain Sphere Polish (Current Run)
+  - `[x]` Limited cars count on track to top 2 and roster entries to top 2 when minimap scale is at smallest setting (`userTableScale < 1.5`)
+  - `[x]` Shifted the F1 roster menu 22cm horizontally to the left of the player's face
+  - `[x]` Replaced the bottom-center minimize button with a sleek close tab on the top-right of the roster menu
+  - `[x]` Programmed smooth opacity fading for selection bubbles between scale 1.5 and 2.5
+  - `[x]` Locked selection bubble size growth in world space to at most 50% by dividing by `this.currentTableScale`
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled Vite client production bundle via `npm run build`
+- `[x]` Immersive F1 Card & Dome HUD Polish (Current Run)
+  - `[x]` Compensated local scale of `f1ActiveCardGroup` by dividing by `this.currentTableScale` so that telemetry cards remain at a readable 15cm size when table scale increases to 10.0
+  - `[x]` Programmed dynamic canvas-drawn floating HUD (`domainHudMesh`) displaying active venue and view name (e.g. "MONACO GP — SAINTE DÉVOTE") inside the 360° immersive dome sphere
+  - `[x]` Added instruction step details for DOMAINS to `src/JugnuInstructionBoard.ts` and `src/jugnu.ts` `redrawCompassTutorial` (Step 4, index 3)
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled Vite client production bundle via `npm run build`
+- `[x]` F1 Steer Stabilization & Rim Spokes Polish (Current Run)
+  - `[x]` Isolated front wheel steering yaw (`rotation.y`) from spin (`rotation.x`) by introducing nested `THREE.Group` steer assemblies, eliminating all Euler-wobble artifacts
+  - `[x]` Added 3 dark graphite spoke meshes to the rims of all 4 wheels on each car, rendering wheel rotation clearly visible
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled Vite client production bundle via `npm run build`
+- `[x]` Immersive F1 Card tracking, Highlight Ring, and 10-Driver Roster (Current Run)
+  - `[x]` Moved `f1ActiveCardGroup` and `f1RosterMesh` to the THREE.js scene root (`tableGroup.parent`) to guarantee stable tracking and scale independence from the tactical table
+  - `[x]` Positioned the telemetry card at the active car's world location with a constant 8cm vertical height offset and direct face-user billboarding
+  - `[x]` Created a glowing holographic ring highlight (`f1ActiveCarHighlight`) under the active car on the track with breathing scale animation
+  - `[x]` Extended the F1 roster to show 10 drivers (with simulated telemetry and team branding tags) by resizing the canvas to 512x900, adjusting the rows to 64px height, and recalibrating the touch regions
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled Vite client production bundle via `npm run build`
+- `[x]` F1 Curbs (Rumble Strips) Alignment (Current Run)
+  - `[x]` Shifted the lateral offset of apex rumble strips (`createApexRumbleStrip`) outward to `0.0102` (previously `0.0082`) to guarantee they are positioned cleanly on the track shoulders and clear the active road lane at all times
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled Vite client production bundle via `npm run build`

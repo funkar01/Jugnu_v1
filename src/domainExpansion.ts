@@ -324,9 +324,12 @@ export class DomainExpansionSystem extends createSystem({
         progress: number,
         speed: number,
         wheels: THREE.Mesh[],
+        frontLeftSteer?: THREE.Group,
+        frontRightSteer?: THREE.Group,
         colorType: 'merc' | 'ferrari' | 'mclaren',
         driverId: string,
-        rimMat?: THREE.MeshBasicMaterial
+        rimMat?: THREE.MeshBasicMaterial,
+        currentSteerAngle?: number
     }[] = [];
     private holoCylinder!: THREE.Mesh;
     private holoCylinderWire!: THREE.LineSegments;
@@ -378,6 +381,11 @@ export class DomainExpansionSystem extends createSystem({
     private f1ActiveCardMat!: THREE.MeshBasicMaterial;
     private f1ActiveCardDriverId: string | null = null;
     private f1ActiveCardTimer = 0.0;
+    private f1ActiveCarHighlight!: THREE.Mesh;
+    private domainHudMesh!: THREE.Mesh;
+    private domainHudCanvas!: HTMLCanvasElement;
+    private domainHudCtx!: CanvasRenderingContext2D;
+    private domainHudTexture!: THREE.CanvasTexture;
 
     private f1CarLaps: Record<string, number> = { f1_gr: 1, f1_ka: 1, f1_cl: 1, f1_lh: 1, f1_ln: 1, f1_op: 1 };
     private f1CarPrevProgress: Record<string, number> = { f1_gr: 0, f1_ka: 0, f1_cl: 0, f1_lh: 0, f1_ln: 0, f1_op: 0 };
@@ -538,9 +546,9 @@ export class DomainExpansionSystem extends createSystem({
     private readonly DOMAIN_KEYS_BUTTERFLIES = ["butterfly360_1", "butterfly360_2", "butterfly360_3", "butterfly360_4", "butterfly360_5", "butterfly360_6", "butterfly360_7", "butterfly360_8", "butterfly360_9", "butterfly360_10"];
     private readonly DOMAIN_NAMES_BUTTERFLIES = ["FIFA Stadium — 1", "FIFA Stadium — 2", "FIFA Stadium — 3", "FIFA Stadium — 4", "FIFA Stadium — 5", "FIFA Stadium — 6", "FIFA Stadium — 7", "FIFA Stadium — 8", "FIFA Stadium — 9", "FIFA Stadium — 10"];
     private readonly THUMB_KEYS_BUTTERFLIES = ["butterfly360_1", "butterfly360_2", "butterfly360_3", "butterfly360_4", "butterfly360_5", "butterfly360_6", "butterfly360_7", "butterfly360_8", "butterfly360_9", "butterfly360_10"];
-    private readonly DOMAIN_KEYS_NURBURGRING = ["nurburgring360_1", "nurburgring360_2", "nurburgring360_3", "nurburgring360_4", "nurburgring360_5", "nurburgring360_6"];
-    private readonly DOMAIN_NAMES_NURBURGRING = ["GP Pit Lane", "Hatzenbach", "Adenauer Forst", "Karussell", "Pflanzgarten", "Döttinger Höhe"];
-    private readonly THUMB_KEYS_NURBURGRING = ["nurburgring360_1_thumb", "nurburgring360_2_thumb", "nurburgring360_3_thumb", "nurburgring360_4_thumb", "nurburgring360_5_thumb", "nurburgring360_6_thumb"];
+    private readonly DOMAIN_KEYS_NURBURGRING = ["monacogp_1", "monacogp_2", "monacogp_3", "monacogp_4", "monacogp_5", "monacogp_6", "monacogp_7", "monacogp_8", "monacogp_9"];
+    private readonly DOMAIN_NAMES_NURBURGRING = ["Sainte Dévote", "Beau Rivage", "Massenet", "Casino Square", "Grand Hotel Hairpin", "Portier", "Tunnel Exit", "Nouvelle Chicane", "La Rascasse"];
+    private readonly THUMB_KEYS_NURBURGRING = ["monacogp_1", "monacogp_2", "monacogp_3", "monacogp_4", "monacogp_5", "monacogp_6", "monacogp_7", "monacogp_8", "monacogp_9"];
 
 
     // Keyboard debug listeners
@@ -1056,6 +1064,25 @@ export class DomainExpansionSystem extends createSystem({
         this.domainMesh.visible = false;
         this.domainMesh.renderOrder = -100;
         this.world.createTransformEntity(this.domainMesh);
+
+        // --- Immersive Dome HUD (displays current view name) ---
+        this.domainHudCanvas = document.createElement('canvas');
+        this.domainHudCanvas.width = 512;
+        this.domainHudCanvas.height = 128;
+        this.domainHudCtx = this.domainHudCanvas.getContext('2d')!;
+        this.domainHudTexture = new THREE.CanvasTexture(this.domainHudCanvas);
+        this.domainHudTexture.colorSpace = THREE.SRGBColorSpace;
+        const hudMat = new THREE.MeshBasicMaterial({
+            map: this.domainHudTexture,
+            transparent: true,
+            opacity: 0.0,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const hudGeom = new THREE.PlaneGeometry(0.8, 0.2);
+        this.domainHudMesh = new THREE.Mesh(hudGeom, hudMat);
+        this.domainHudMesh.visible = false;
+        this.world.createTransformEntity(this.domainHudMesh);
 
         // --- Holographic Close "X" Button Setup (floats above active bubble) ---
         this.xButton = new THREE.Group();
@@ -2046,8 +2073,8 @@ export class DomainExpansionSystem extends createSystem({
         console.log(`[DynamicFloorY] Fallback floor Y for '${stType}': ${this.dynamicFloorY}`);
 
         // Re-link goalposts dynamically based on active stadium (Berlin or Butterflies)
-        if (stadiumType === 'berlin' || stadiumType === 'butterflies') {
-            const currentGroup = stadiumType === 'berlin' ? this.berlinMesh : this.butterflyGroup;
+        if (stType === 'berlin' || stType === 'butterflies') {
+            const currentGroup = stType === 'berlin' ? this.berlinMesh : this.butterflyGroup;
             if (currentGroup) {
                 let g1: THREE.Object3D | null = null;
                 let g2: THREE.Object3D | null = null;
@@ -2283,8 +2310,13 @@ export class DomainExpansionSystem extends createSystem({
             this._rusLateralCurrent += (targetRusLateral - this._rusLateralCurrent) * Math.min(1.0, lateralLerpRate);
 
             // Update all detailed F1 cars
+            const showOnlyTwoCars = this.userTableScale < 1.5;
             this.nurburgringCars.forEach((car) => {
-                car.group.visible = true;
+                if (showOnlyTwoCars && car.driverId === 'f1_ln') {
+                    car.group.visible = false;
+                } else {
+                    car.group.visible = true;
+                }
 
                 let carProgress = 0.0;
                 let lateralOffset = 0.0;
@@ -2336,7 +2368,25 @@ export class DomainExpansionSystem extends createSystem({
                 const steerYaw = Math.atan2(tAhead.x, tAhead.z) - Math.atan2(tCurrent.x, tCurrent.z);
                 let steerDiff = steerYaw;
                 steerDiff = Math.atan2(Math.sin(steerDiff), Math.cos(steerDiff));
-                const steerAngle = Math.max(-0.42, Math.min(0.42, steerDiff * 15.0));
+                
+                let targetSteer = steerDiff * 15.0;
+                
+                // Dead-zone: filter out micro-wiggles on straight lines so wheels only turn when in an actual curve
+                const deadZone = 0.025;
+                if (Math.abs(targetSteer) < deadZone) {
+                    targetSteer = 0;
+                } else {
+                    targetSteer = Math.sign(targetSteer) * (Math.abs(targetSteer) - deadZone);
+                }
+                
+                const targetSteerAngle = Math.max(-0.42, Math.min(0.42, targetSteer));
+                if (car.currentSteerAngle === undefined) {
+                    car.currentSteerAngle = 0;
+                }
+                
+                // Smoothly interpolate the steer angle to eliminate wobble
+                car.currentSteerAngle += (targetSteerAngle - car.currentSteerAngle) * Math.min(1.0, 7.5 * activeDt);
+                const steerAngle = car.currentSteerAngle;
 
                 // Build orthonormal basis: right = worldUp × forward, up = forward × right
                 const worldUp = this.scratchVector1.set(0, 1, 0);
@@ -2393,15 +2443,13 @@ export class DomainExpansionSystem extends createSystem({
                     car.group.quaternion.slerp(this.scratchQuat1, Math.min(1.0, 12.0 * activeDt));
                 } // else: keep previous quaternion — no garbage rotation
 
-                // Spin wheels locally, yaw front wheels for steering
-                car.wheels.forEach((wheel, wIdx) => {
+                // Spin wheels locally
+                car.wheels.forEach((wheel) => {
                     wheel.rotation.x -= activeDt * 35.0;
-                    if (wIdx < 2) {
-                        wheel.rotation.y = steerAngle;
-                    } else {
-                        wheel.rotation.y = 0;
-                    }
                 });
+                // Yaw front wheels for steering using the dedicated steer groups
+                if (car.frontLeftSteer) car.frontLeftSteer.rotation.y = steerAngle;
+                if (car.frontRightSteer) car.frontRightSteer.rotation.y = steerAngle;
 
                 // Trigger DRS sound beep when entering an overtake window
                 if (car.driverId === 'f1_gr') {
@@ -2774,6 +2822,10 @@ export class DomainExpansionSystem extends createSystem({
                         this.f1RosterMesh.position.y += rosterYOffset;
                         this.f1RosterMesh.position.addScaledVector(toPlayer, 0.18);
 
+                        // Shift the roster menu to the left side of the user's face (perspective left) by 22cm
+                        const leftVec = new THREE.Vector3().crossVectors(toPlayer, new THREE.Vector3(0, 1, 0)).normalize();
+                        this.f1RosterMesh.position.addScaledVector(leftVec, 0.22);
+
                         // LookAt: front face (+Z of PlaneGeometry) → player
                         // lookAt(headPos) points the local +Z toward the target, which IS the front face.
                         this.f1RosterMesh.lookAt(headPos);
@@ -2814,19 +2866,19 @@ export class DomainExpansionSystem extends createSystem({
                                     isTouchingRoster = true;
                                     touchTipUsed = tip;
 
-                                    // Map local coordinates to Canvas space (512 x 600)
+                                    // Map local coordinates to Canvas space (512 x 900)
                                     const cx = (localTip.x + 0.12) / 0.24 * 512;
-                                    const cy = (0.14 - localTip.y) / 0.28 * 600;
+                                    const cy = (0.21 - localTip.y) / 0.42 * 900;
 
-                                    // Check rows 0, 1, 2 (3 cars)
-                                    if (cy >= 144 && cy <= 384) {
-                                        const rowIndex = Math.floor((cy - 144) / 80);
-                                        if (rowIndex >= 0 && rowIndex < 3) {
+                                    // Check rows 0 to 9 (10 drivers)
+                                    if (cy >= 90 && cy <= 730) {
+                                        const rowIndex = Math.floor((cy - 90) / 64);
+                                        if (rowIndex >= 0 && rowIndex < 10) {
                                             touchedRow = rowIndex;
                                         }
                                     }
-                                    // Check Turn Marker Toggle button at Y = 370 to 440
-                                    else if (cy >= 370 && cy <= 440) {
+                                    // Check Turn Marker Toggle button at Y = 750 to 810
+                                    else if (cy >= 750 && cy <= 810) {
                                         // Toggle the turn markers ON/OFF with haptic feedback
                                         if (this.f1TouchCooldown <= 0.0) {
                                             this.f1TouchCooldown = 0.5;
@@ -2840,8 +2892,9 @@ export class DomainExpansionSystem extends createSystem({
                                         }
                                         break;
                                     }
-                                    // Check circular Hide button at Y = 488 to 592, X = 204 to 308
-                                    else if (cy >= 488 && cy <= 592 && cx >= 204 && cx <= 308) {
+                                    // Check circular Hide button at top-right (CX = 465, CY = 70, Radius = 24)
+                                    // cx range: 435 to 495, cy range: 40 to 100
+                                    else if (cy >= 20 && cy <= 80 && cx >= 435 && cx <= 495) {
                                         touchedMinimize = true;
                                     }
                                     break;
@@ -2862,9 +2915,9 @@ export class DomainExpansionSystem extends createSystem({
                             
                             // Recreate PlaneGeometry for maximized state
                             this.f1RosterMesh.geometry.dispose();
-                            this.f1RosterMesh.geometry = new THREE.PlaneGeometry(0.24, 0.28);
+                            this.f1RosterMesh.geometry = new THREE.PlaneGeometry(0.24, 0.42);
                             
-                            // Resize Canvas to square for maximized
+                            // Resize Canvas to 512x900 for maximized
                             this.f1RosterCanvas.width = 512;
                             this.f1RosterCanvas.height = 600;
                             
@@ -2963,25 +3016,33 @@ export class DomainExpansionSystem extends createSystem({
                         // Update timer
                         this.f1ActiveCardTimer += dt;
 
-                        // Position card group directly above the car in table local coordinates
-                        // Floating 0.065m (6.5cm) high
-                        this.f1ActiveCardGroup.position.copy(activeCar.group.position);
-                        this.f1ActiveCardGroup.position.y += 0.065;
+                        // Place highlight ring under the selected car locally on the track
+                        if (this.f1ActiveCarHighlight) {
+                            this.f1ActiveCarHighlight.visible = true;
+                            this.f1ActiveCarHighlight.position.copy(activeCar.group.position);
+                            this.f1ActiveCarHighlight.position.y = 0.0005; // sit slightly above track
+                            this.f1ActiveCarHighlight.scale.setScalar(1.0 + Math.sin(this.radarTime * 6.0) * 0.15);
+                        }
+
+                        // Position card group directly above the car in WORLD coordinates (floating 8cm high)
+                        const carWorldPos = this.scratchVector1;
+                        activeCar.group.getWorldPosition(carWorldPos);
+                        this.f1ActiveCardGroup.position.copy(carWorldPos);
+                        this.f1ActiveCardGroup.position.y += 0.08;
 
                         // Redraw telemetry canvas
                         const tel = this.getF1Telemetry(activeCar.progress);
                         this.drawF1ActiveCard(tel.speed, tel.gear, tel.rpm, tel.throttle, tel.brake);
 
-                        // Easing scale animation: spawn only, stay open
+                        // Easing scale animation: spawn only, stay open (no table scale division needed since it is a scene-root child!)
                         let scale = 1.0;
                         if (this.f1ActiveCardTimer < 0.4) {
-                            // Spawn: scale up from 0 to 1 over first 0.4s
                             const t = this.f1ActiveCardTimer / 0.4;
                             scale = 1.0 - Math.pow(1.0 - t, 3); // out-cubic easing
                         }
                         this.f1ActiveCardGroup.scale.setScalar(scale);
 
-                        // Card Billboarding (always face user)
+                        // Card Billboarding (always face user directly in world space)
                         const headPos = this.scratchVector3;
                         if (this.player && this.player.head) {
                             this.player.head.getWorldPosition(headPos);
@@ -2991,38 +3052,15 @@ export class DomainExpansionSystem extends createSystem({
                             headPos.set(0, 1.45, 0.4);
                         }
 
-                        this.f1ActiveCardGroup.updateMatrixWorld(true);
-
-                        const cardWorldPos = this.scratchVector1;
-                        this.f1ActiveCardGroup.getWorldPosition(cardWorldPos);
-
-                        // Look at the player's head in world space and convert to parent local space
-                        const m = this.scratchMatrix;
-                        const worldUp = this.scratchVector2;
-                        worldUp.set(0, 1, 0);
-                        m.lookAt(cardWorldPos, headPos, worldUp);
-
-                        const targetWorldQuat = this.scratchQuat1;
-                        targetWorldQuat.setFromRotationMatrix(m);
-
-                        // Flip 180° so PlaneGeometry front (+Z) faces user
-                        const flipQuat = this.scratchQuat2;
-                        flipQuat.setFromAxisAngle(worldUp, Math.PI);
-                        targetWorldQuat.multiply(flipQuat);
-
-                        const parentWorldQuat = this.scratchQuat2; // reuse scratchQuat2
-                        if (this.nurburgringGroup) {
-                            this.nurburgringGroup.getWorldQuaternion(parentWorldQuat);
-                        } else {
-                            parentWorldQuat.set(0, 0, 0, 1);
-                        }
-
-                        const localQuat = this.scratchQuat1; // reuse scratchQuat1
-                        localQuat.copy(parentWorldQuat).invert().multiply(targetWorldQuat);
-                        this.f1ActiveCardGroup.quaternion.copy(localQuat);
+                        this.f1ActiveCardGroup.lookAt(headPos);
                     }
-                } else if (this.f1ActiveCardGroup && this.f1ActiveCardGroup.visible) {
-                    this.f1ActiveCardGroup.visible = false;
+                } else {
+                    if (this.f1ActiveCardGroup && this.f1ActiveCardGroup.visible) {
+                        this.f1ActiveCardGroup.visible = false;
+                    }
+                    if (this.f1ActiveCarHighlight && this.f1ActiveCarHighlight.visible) {
+                        this.f1ActiveCarHighlight.visible = false;
+                    }
                 }
 
                 if (this.f1SprayMesh) this.f1SprayMesh.visible = false;
@@ -3051,6 +3089,9 @@ export class DomainExpansionSystem extends createSystem({
             if (this.f1ActiveCardGroup && this.f1ActiveCardGroup.visible) {
                 this.f1ActiveCardGroup.visible = false;
                 this.f1ActiveCardDriverId = null;
+            }
+            if (this.f1ActiveCarHighlight && this.f1ActiveCarHighlight.visible) {
+                this.f1ActiveCarHighlight.visible = false;
             }
         }
 
@@ -3836,11 +3877,20 @@ export class DomainExpansionSystem extends createSystem({
                 this.player.head.getWorldPosition(headPos);
             }
 
-            const showBubbles = (this.currentTableScale < 2.5);
+            // Smoothly fade selection bubbles between scale 1.5 and 2.5
+            const bubbleFade = THREE.MathUtils.clamp(
+                THREE.MathUtils.mapLinear(this.currentTableScale, 1.5, 2.5, 1.0, 0.0),
+                0.0,
+                1.0
+            );
+            const showBubbles = bubbleFade > 0.001;
+
+            // Compensate for table scale so they grow at most 50% (1.5x)
+            const compensation = Math.min(1.5, this.currentTableScale) / this.currentTableScale;
 
             for (let i = 0; i < this.domainKeys.length; i++) {
                 const bubble = this.selectionBubbles[i];
-                const bMat = this.bubbleMats[i];
+                const bMat = this.bubbleMats[i] as THREE.MeshStandardMaterial;
                 const ring = this.anchorRings[i];
                 const rMat = ring.material as THREE.MeshBasicMaterial;
                 const loader = this.loaderRings[i];
@@ -3864,7 +3914,14 @@ export class DomainExpansionSystem extends createSystem({
 
                 // Billboard name tags to face player headset, and make them float exactly 4cm above the bubble
                 nameTag.lookAt(headPos);
-                nameTag.position.set(bubble.position.x, bubble.position.y + 0.04, bubble.position.z);
+                nameTag.position.set(bubble.position.x, bubble.position.y + 0.04 * compensation, bubble.position.z);
+                nameTag.scale.setScalar(compensation);
+                if (ring) ring.scale.setScalar(compensation);
+
+                // Update nameTag material opacity
+                const nameMat = this.nameTagMats[i] as THREE.MeshBasicMaterial;
+                nameMat.opacity = THREE.MathUtils.lerp(nameMat.opacity, 0.9 * bubbleFade, 10 * dt);
+                nameMat.transparent = true;
 
                 if (bubblePinchEngaged[i]) {
                     // Accumulate progress
@@ -3876,14 +3933,14 @@ export class DomainExpansionSystem extends createSystem({
                     const chargeRatio = this.pinchProgresses[i] / 1.0; // 0.0 to 1.0
 
                     // 1. Animate Loader Ring
-                    loader.scale.setScalar(THREE.MathUtils.lerp(0.01, 1.2, chargeRatio));
-                    lMat.opacity = THREE.MathUtils.lerp(0.0, 1.0, chargeRatio);
+                    loader.scale.setScalar(THREE.MathUtils.lerp(0.01, 1.2, chargeRatio) * compensation);
+                    lMat.opacity = THREE.MathUtils.lerp(0.0, 1.0, chargeRatio) * bubbleFade;
                     loader.rotation.z += dt * (1.5 + chargeRatio * 15.0); // Spin faster as it charges!
 
                     // Dynamic visual compression: bubble shrinks and vibrates violently as charge increases
                     const baseHoverScale = isActive ? 1.25 : 1.15;
                     const scaleComp = baseHoverScale * (1.0 - chargeRatio * 0.25) + Math.sin(this.radarTime * 65.0) * 0.04 * chargeRatio;
-                    bubble.scale.setScalar(scaleComp);
+                    bubble.scale.setScalar(scaleComp * compensation);
 
                     // 2. High-Frequency Visual Vibration Feedback
                     if (chargeRatio > 0.05) {
@@ -3905,7 +3962,7 @@ export class DomainExpansionSystem extends createSystem({
                         this.menuToggleCooldown = 0.8; // Debounce
 
                         // Flash effect: quick scaling burst
-                        bubble.scale.setScalar(1.6);
+                        bubble.scale.setScalar(1.6 * compensation);
 
                         if (this.currentDomainIndex === i) {
                             // Tapping/Holding the currently active domain toggles the dome expansion
@@ -3952,8 +4009,8 @@ export class DomainExpansionSystem extends createSystem({
                     const chargeRatio = this.pinchProgresses[i] / 1.0;
 
                     // Animate loader draining
-                    loader.scale.setScalar(THREE.MathUtils.lerp(0.01, 1.2, chargeRatio));
-                    lMat.opacity = THREE.MathUtils.lerp(0.0, 1.0, chargeRatio);
+                    loader.scale.setScalar(THREE.MathUtils.lerp(0.01, 1.2, chargeRatio) * compensation);
+                    lMat.opacity = THREE.MathUtils.lerp(0.0, 1.0, chargeRatio) * bubbleFade;
                     loader.rotation.z += dt * 1.5;
 
                     // Restore default floating/hover behavior
@@ -3970,12 +4027,12 @@ export class DomainExpansionSystem extends createSystem({
 
                         const baseScale = isHovered ? 1.25 : 1.15;
                         const scalePulse = baseScale + Math.sin(this.radarTime * 3.0) * 0.04;
-                        bubble.scale.setScalar(THREE.MathUtils.lerp(bubble.scale.x, scalePulse, 10 * dt));
+                        bubble.scale.setScalar(THREE.MathUtils.lerp(bubble.scale.x, scalePulse * compensation, 10 * dt));
 
-                        bMat.opacity = THREE.MathUtils.lerp(bMat.opacity, 0.95, 10 * dt);
+                        bMat.opacity = THREE.MathUtils.lerp(bMat.opacity, 0.95 * bubbleFade, 10 * dt);
                         rMat.color.setHex(0x00ffff);
                         const targetRingOpacity = isHovered ? 0.95 : (0.7 + Math.sin(this.radarTime * 5.0) * 0.2);
-                        rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, targetRingOpacity, 10 * dt);
+                        rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, targetRingOpacity * bubbleFade, 10 * dt);
                     } else {
                         // Subtle passive hover for inactive bubbles
                         const hoverPhase = this.radarTime * 1.5 + i * (2 * Math.PI / this.domainKeys.length);
@@ -3986,16 +4043,16 @@ export class DomainExpansionSystem extends createSystem({
 
                         // Tactile hover feedback: expand slightly if index finger tip is nearby
                         if (isHovered) {
-                            bubble.scale.setScalar(THREE.MathUtils.lerp(bubble.scale.x, 1.15, 10 * dt));
-                            bMat.opacity = THREE.MathUtils.lerp(bMat.opacity, 0.85, 10 * dt);
+                            bubble.scale.setScalar(THREE.MathUtils.lerp(bubble.scale.x, 1.15 * compensation, 10 * dt));
+                            bMat.opacity = THREE.MathUtils.lerp(bMat.opacity, 0.85 * bubbleFade, 10 * dt);
                             rMat.color.setHex(0x00ffff);
                             const pulseRing = 0.7 + Math.sin(this.radarTime * 5.0) * 0.15;
-                            rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, pulseRing, 10 * dt);
+                            rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, pulseRing * bubbleFade, 10 * dt);
                         } else {
-                            bubble.scale.setScalar(THREE.MathUtils.lerp(bubble.scale.x, 0.85, 10 * dt));
-                            bMat.opacity = THREE.MathUtils.lerp(bMat.opacity, 0.45, 10 * dt);
+                            bubble.scale.setScalar(THREE.MathUtils.lerp(bubble.scale.x, 0.85 * compensation, 10 * dt));
+                            bMat.opacity = THREE.MathUtils.lerp(bMat.opacity, 0.45 * bubbleFade, 10 * dt);
                             rMat.color.setHex(0x008888);
-                            rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, 0.18, 10 * dt);
+                            rMat.opacity = THREE.MathUtils.lerp(rMat.opacity, 0.18 * bubbleFade, 10 * dt);
                         }
                     }
                 }
@@ -4447,6 +4504,46 @@ export class DomainExpansionSystem extends createSystem({
             this.domainMesh.scale.setScalar(THREE.MathUtils.lerp(this.domainMesh.scale.x, 1.0, 3.0 * dt));
             this.domainMesh.position.lerp(new THREE.Vector3(0, 0, 0), 3.0 * dt);
             this.domainMat.opacity = THREE.MathUtils.lerp(this.domainMat.opacity, 0.95, 3.0 * dt);
+
+            // --- Update Immersive Dome HUD ---
+            let stadiumName = "Stadium View";
+            if (this.currentStadiumType === 'default') stadiumName = "Wankhede Stadium";
+            else if (this.currentStadiumType === 'berlin') stadiumName = "Olympiastadion Berlin";
+            else if (this.currentStadiumType === 'inuit') stadiumName = "Crypto.com Arena";
+            else if (this.currentStadiumType === 'butterflies') stadiumName = "FIFA Stadium";
+            else if (this.currentStadiumType === 'nurburgring') stadiumName = "Monaco GP";
+
+            const viewName = this.domainNames[this.currentDomainIndex] || "Cam View";
+            this.drawDomainHud(stadiumName, viewName);
+
+            this.domainHudMesh.visible = true;
+
+            const headPos = this.scratchVector3;
+            if (this.player && this.player.head) {
+                this.player.head.getWorldPosition(headPos);
+            } else if (this.camera) {
+                this.camera.getWorldPosition(headPos);
+            } else {
+                headPos.set(0, 1.45, 0.4);
+            }
+
+            const forward = this.scratchVector2;
+            if (this.camera) {
+                this.camera.getWorldDirection(forward);
+            } else {
+                forward.set(0, 0, -1);
+            }
+            forward.normalize();
+
+            const hudPos = this.scratchVector1;
+            hudPos.copy(headPos).addScaledVector(forward, 1.5);
+            hudPos.y += 0.2; // float slightly above eye level
+
+            this.domainHudMesh.position.copy(hudPos);
+            this.domainHudMesh.lookAt(headPos);
+
+            const hMat = this.domainHudMesh.material as THREE.MeshBasicMaterial;
+            hMat.opacity = THREE.MathUtils.lerp(hMat.opacity, 0.95, 3.0 * dt);
         } else {
             this.lastActiveDomainIndex = -1;
 
@@ -4462,6 +4559,37 @@ export class DomainExpansionSystem extends createSystem({
 
                 if (this.domainMesh.scale.x < 0.005 || this.domainMat.opacity < 0.01) {
                     this.domainMesh.visible = false;
+                }
+            }
+
+            // Fade out Immersive Dome HUD
+            if (this.domainHudMesh && this.domainHudMesh.visible) {
+                const hMat = this.domainHudMesh.material as THREE.MeshBasicMaterial;
+                hMat.opacity = THREE.MathUtils.lerp(hMat.opacity, 0.0, 3.5 * dt);
+                if (hMat.opacity < 0.02) {
+                    this.domainHudMesh.visible = false;
+                } else {
+                    // Keep billboarding/positioning during fade
+                    const headPos = this.scratchVector3;
+                    if (this.player && this.player.head) {
+                        this.player.head.getWorldPosition(headPos);
+                    } else if (this.camera) {
+                        this.camera.getWorldPosition(headPos);
+                    } else {
+                        headPos.set(0, 1.45, 0.4);
+                    }
+                    const forward = this.scratchVector2;
+                    if (this.camera) {
+                        this.camera.getWorldDirection(forward);
+                    } else {
+                        forward.set(0, 0, -1);
+                    }
+                    forward.normalize();
+                    const hudPos = this.scratchVector1;
+                    hudPos.copy(headPos).addScaledVector(forward, 1.5);
+                    hudPos.y += 0.2;
+                    this.domainHudMesh.position.copy(hudPos);
+                    this.domainHudMesh.lookAt(headPos);
                 }
             }
         }
@@ -9725,7 +9853,7 @@ export class DomainExpansionSystem extends createSystem({
         // --- Construction of 3D Apex Rumble Strips ---
         const createApexRumbleStrip = (centerU: number, innerOffsetDirection: number) => {
             const segCount = 10;
-            const roadWidth = 0.0082;
+            const roadWidth = 0.0102; // Shifted outward to be completely clear of the road
             const boxGeo = new THREE.BoxGeometry(0.0016, 0.0003, 0.002);
             const redMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
             const whiteMat = new THREE.MeshBasicMaterial({ color: 0xfafafa });
@@ -9825,6 +9953,8 @@ export class DomainExpansionSystem extends createSystem({
                 progress: startProgress,
                 speed: 0.052,
                 wheels: built.wheels,
+                frontLeftSteer: built.frontLeftSteer,
+                frontRightSteer: built.frontRightSteer,
                 colorType,
                 driverId,
                 rimMat: built.car.userData.rimMat
@@ -9850,7 +9980,7 @@ export class DomainExpansionSystem extends createSystem({
         this.f1MarkerOpacity = 1.0;
         this.f1RosterCanvas = document.createElement('canvas');
         this.f1RosterCanvas.width = 512;
-        this.f1RosterCanvas.height = 600; // Aspect ratio for 0.24 x 0.28
+        this.f1RosterCanvas.height = 900; // Aspect ratio for 0.24 x 0.42
         this.f1RosterCtx = this.f1RosterCanvas.getContext('2d')!;
 
         this.f1RosterTexture = new THREE.CanvasTexture(this.f1RosterCanvas);
@@ -9867,7 +9997,7 @@ export class DomainExpansionSystem extends createSystem({
         // Roster billboard — added to tableGroup's scene-root parent so it is NEVER
         // affected by tableGroup scale or nurburgringGroup rotation.
         // World position is recalculated every frame in the update loop.
-        const rosterGeom = new THREE.PlaneGeometry(0.24, 0.28);
+        const rosterGeom = new THREE.PlaneGeometry(0.24, 0.42);
         this.f1RosterMesh = new THREE.Mesh(rosterGeom, this.f1RosterMat);
         // Temporary world position — will be overridden in update() every frame
         this.f1RosterMesh.position.set(0, 1.3, -0.4);
@@ -9883,7 +10013,26 @@ export class DomainExpansionSystem extends createSystem({
         // --- Create F1 Spawning Active Player Card Group ---
         this.f1ActiveCardGroup = new THREE.Group();
         this.f1ActiveCardGroup.visible = false;
-        this.nurburgringGroup.add(this.f1ActiveCardGroup);
+        // Add to the THREE.js scene root parent (tableGroup.parent) so scale is fully independent
+        if (this.tableGroup.parent) {
+            this.tableGroup.parent.add(this.f1ActiveCardGroup);
+        } else {
+            this.nurburgringGroup.add(this.f1ActiveCardGroup);
+        }
+
+        // --- Glowing Holographic Highlight Ring for Selected Car ---
+        const highlightGeom = new THREE.RingGeometry(0.008, 0.010, 32);
+        highlightGeom.rotateX(-Math.PI / 2); // lie flat on track
+        const highlightMat = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.8,
+            depthWrite: false
+        });
+        this.f1ActiveCarHighlight = new THREE.Mesh(highlightGeom, highlightMat);
+        this.f1ActiveCarHighlight.visible = false;
+        this.nurburgringGroup.add(this.f1ActiveCarHighlight);
 
         // Left Panel: Player Card Image
         // Aspect ratio 3:4. size: 0.06m wide by 0.08m high.
@@ -10268,32 +10417,67 @@ export class DomainExpansionSystem extends createSystem({
         car.add(rearAxle);
 
         // 4 Wheels
-        const wheelOffsets = [
-            { x: -0.0037, z: 0.0048 },
-            { x: 0.0037, z: 0.0048 },
-            { x: -0.0037, z: -0.0048 },
-            { x: 0.0037, z: -0.0048 }
-        ];
+        // Front Steer Groups
+        const frontLeftSteer = new THREE.Group();
+        frontLeftSteer.position.set(-0.0037, 0.001, 0.0048);
+        car.add(frontLeftSteer);
+
+        const frontRightSteer = new THREE.Group();
+        frontRightSteer.position.set(0.0037, 0.001, 0.0048);
+        car.add(frontRightSteer);
 
         // Rim cover geometry (slightly thinner outer cylinder cover)
         const rimCoverGeo = new THREE.CylinderGeometry(0.0010, 0.0010, 0.0003, 8);
         rimCoverGeo.rotateZ(Math.PI / 2);
 
         const rimMat = new THREE.MeshBasicMaterial({ color: bodyColor });
+
+        // Add 3 visible dark spokes to make rotation visible
+        const spokeMat = new THREE.MeshBasicMaterial({ color: 0x18181b }); // dark spokes
+        const spokeGeo = new THREE.BoxGeometry(0.0002, 0.0024, 0.0002);
+
+        // 4 Wheels
+        const wheelOffsets = [
+            { x: -0.0037, z: 0.0048, isFront: true, isLeft: true },
+            { x: 0.0037, z: 0.0048, isFront: true, isLeft: false },
+            { x: -0.0037, z: -0.0048, isFront: false, isLeft: true },
+            { x: 0.0037, z: -0.0048, isFront: false, isLeft: false }
+        ];
+
         wheelOffsets.forEach((offset) => {
             const wMat = new THREE.MeshBasicMaterial({ color: 0x09090b });
             if (colorType === 'merc') {
                 this.nurburgringF1WheelMats.push(wMat);
             }
             const wheel = new THREE.Mesh(wheelGeo, wMat);
-            wheel.position.set(offset.x, 0.001, offset.z);
-            car.add(wheel);
+
+            if (offset.isFront) {
+                // Front wheels go inside their respective steer groups at origin
+                wheel.position.set(0, 0, 0);
+                if (offset.isLeft) {
+                    frontLeftSteer.add(wheel);
+                } else {
+                    frontRightSteer.add(wheel);
+                }
+            } else {
+                // Rear wheels go directly onto the car chassis
+                wheel.position.set(offset.x, 0.001, offset.z);
+                car.add(wheel);
+            }
             wheels.push(wheel);
 
             const rim = new THREE.Mesh(rimCoverGeo, rimMat);
             const rimOffsetX = offset.x > 0 ? 0.0005 : -0.0005;
             rim.position.set(rimOffsetX, 0.0, 0.0);
             wheel.add(rim);
+
+            // Add 3 visible spokes inside the wheel
+            for (let s = 0; s < 3; s++) {
+                const spoke = new THREE.Mesh(spokeGeo, spokeMat);
+                spoke.rotation.x = s * (2 * Math.PI / 3);
+                spoke.position.x = rimOffsetX * 1.2;
+                wheel.add(spoke);
+            }
 
             // Sidewall Pirelli compound stripe
             const stripeGeo = new THREE.RingGeometry(0.0012, 0.0014, 16);
@@ -10312,7 +10496,7 @@ export class DomainExpansionSystem extends createSystem({
         car.scale.setScalar(0.384);
         car.userData.rimMat = rimMat;
 
-        return { car, wheels };
+        return { car, wheels, frontLeftSteer, frontRightSteer };
     }
 
     private getF1Telemetry(fProgress: number): { speed: number, gear: number, rpm: number, throttle: number, brake: number } {
@@ -10442,13 +10626,28 @@ export class DomainExpansionSystem extends createSystem({
         const rosterNurburgring = [
             { id: "f1_gr", name: "G. Russell", team: "Mercedes", rcbCardKey: "f1GeorgeRussell" },
             { id: "f1_cl", name: "C. Leclerc", team: "Ferrari", rcbCardKey: "f1CharlesLeclerc" },
-            { id: "f1_ln", name: "L. Norris", team: "McLaren", rcbCardKey: "f1LandoNorris" }
+            { id: "f1_ln", name: "L. Norris", team: "McLaren", rcbCardKey: "f1LandoNorris" },
+            { id: "f1_lh", name: "L. Hamilton", team: "Ferrari", rcbCardKey: "f1LewisHamilton" },
+            { id: "f1_op", name: "O. Piastri", team: "McLaren", rcbCardKey: "f1OscarPiastri" },
+            { id: "f1_ka", name: "K. Antonelli", team: "Mercedes", rcbCardKey: "f1KimiAntonelli" },
+            { id: "f1_mv", name: "M. Verstappen", team: "Red Bull", rcbCardKey: "f1CharlesLeclerc" },
+            { id: "f1_cs", name: "C. Sainz", team: "Williams", rcbCardKey: "f1CharlesLeclerc" },
+            { id: "f1_fa", name: "F. Alonso", team: "Aston Martin", rcbCardKey: "f1GeorgeRussell" },
+            { id: "f1_pg", name: "P. Gasly", team: "Alpine", rcbCardKey: "f1GeorgeRussell" }
         ];
 
-        const drivers = rosterNurburgring.map(d => {
+        const drivers = rosterNurburgring.map((d, index) => {
             const car = this.nurburgringCars.find(c => c.driverId === d.id);
-            const progress = car ? (car as any).progress ?? 0 : 0;
-            const lap = this.f1CarLaps[d.id] ?? 1;
+            let progress = car ? (car as any).progress ?? 0 : 0;
+            let lap = this.f1CarLaps[d.id] ?? 1;
+
+            // Simulate progress for the other 7 drivers who don't have active meshes
+            if (!car) {
+                const leadProgress = this.nurburgringF1Progress;
+                progress = (leadProgress - 0.08 * (index + 1) + 1.0) % 1.0;
+                lap = Math.max(1, Math.floor(leadProgress - 0.08 * (index + 1)) + 1);
+            }
+
             const totalProgress = (lap - 1) + progress;
             return {
                 driverId: d.id,
@@ -10545,17 +10744,17 @@ export class DomainExpansionSystem extends createSystem({
             ctx.lineCap = 'round';
             ctx.stroke();
         } else {
-            ctx.clearRect(0, 0, 512, 600);
+            ctx.clearRect(0, 0, 512, 900);
 
             if (this.f1RosterBgImage && this.f1RosterBgImage.complete && this.f1RosterBgImage.naturalHeight > 0) {
-                ctx.drawImage(this.f1RosterBgImage, 0, 0, 512, 600);
+                ctx.drawImage(this.f1RosterBgImage, 0, 0, 512, 900);
             } else {
                 // Fallback backing panel
                 ctx.fillStyle = 'rgba(6, 10, 24, 0.88)';
-                ctx.fillRect(0, 0, 512, 600);
+                ctx.fillRect(0, 0, 512, 900);
                 ctx.strokeStyle = 'rgba(34, 211, 238, 0.8)';
                 ctx.lineWidth = 6;
-                ctx.strokeRect(6, 6, 500, 588);
+                ctx.strokeRect(6, 6, 500, 888);
             }
 
             // Title Text
@@ -10563,29 +10762,29 @@ export class DomainExpansionSystem extends createSystem({
             ctx.fillStyle = '#22d3ee'; // Cyan
             ctx.textAlign = 'left';
             ctx.textBaseline = 'alphabetic';
-            ctx.fillText('JUGNU F1 LIVE', 48, 80);
+            ctx.fillText('JUGNU F1 LIVE', 48, 60); // Adjusted height to Y=60 to clear row 1
 
             // Current maximum lap count
             const maxLap = Object.keys(this.f1CarLaps).length > 0 ? Math.max(...Object.values(this.f1CarLaps)) : 0;
             ctx.font = 'bold 16px "Courier New", monospace';
             ctx.fillStyle = '#f59e0b'; // Amber
             ctx.textAlign = 'right';
-            ctx.fillText(`LAP ${maxLap}`, 464, 80);
+            ctx.fillText(`LAP ${maxLap}`, 390, 60); // Moved to the left to clear top-right minimize button
 
             // Separator line
             ctx.strokeStyle = 'rgba(34, 211, 238, 0.4)';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(32, 100);
-            ctx.lineTo(480, 100);
+            ctx.moveTo(32, 80);
+            ctx.lineTo(480, 80);
             ctx.stroke();
 
-            // Draw Rows vertically (3 rows for 3 cars)
+            // Draw Rows vertically (10 rows for 10 drivers)
             const sortedDrivers = this.getSortedDrivers();
-            const rowH = 80;
-            const startY = 110;
+            const rowH = 64;
+            const startY = 90;
 
-            for (let i = 0; i < 3; i++) {
+            for (let i = 0; i < 10; i++) {
                 const driver = sortedDrivers[i];
                 if (!driver) continue;
 
@@ -10594,26 +10793,26 @@ export class DomainExpansionSystem extends createSystem({
                 // Active/selected driver card highlight
                 if (this.f1ActiveCardDriverId === driver.driverId) {
                     ctx.fillStyle = 'rgba(0, 255, 255, 0.12)';
-                    ctx.fillRect(32, rowTop + 4, 448, rowH - 8);
+                    ctx.fillRect(32, rowTop + 2, 448, rowH - 4);
                     ctx.strokeStyle = '#00ffff';
-                    ctx.lineWidth = 2.5;
-                    ctx.strokeRect(32, rowTop + 4, 448, rowH - 8);
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(32, rowTop + 2, 448, rowH - 4);
 
                     // Vertical neon indicator bar on the left edge
                     ctx.fillStyle = '#00ffff';
-                    ctx.fillRect(32, rowTop + 4, 6, rowH - 8);
+                    ctx.fillRect(32, rowTop + 2, 6, rowH - 4);
                 }
                 // Hover state backing card highlight
                 else if (this.f1RosterHoveredRowIndex === i) {
                     ctx.fillStyle = 'rgba(34, 211, 238, 0.15)';
-                    ctx.fillRect(32, rowTop + 4, 448, rowH - 8);
+                    ctx.fillRect(32, rowTop + 2, 448, rowH - 4);
                     ctx.strokeStyle = 'rgba(34, 211, 238, 0.6)';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(32, rowTop + 4, 448, rowH - 8);
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(32, rowTop + 2, 448, rowH - 4);
                 }
 
                 // Subtle divider between rows
-                if (i < sortedDrivers.length - 1) {
+                if (i < 9) {
                     ctx.strokeStyle = 'rgba(34, 211, 238, 0.1)';
                     ctx.lineWidth = 1;
                     ctx.beginPath();
@@ -10623,12 +10822,12 @@ export class DomainExpansionSystem extends createSystem({
                 }
 
                 // A. Position number block
-                ctx.fillStyle = i === 0 ? '#f59e0b' : '#cbd5e1';
-                ctx.fillRect(48, rowTop + 25, 30, 30);
+                ctx.fillStyle = i === 0 ? '#f59e0b' : i === 1 ? '#cbd5e1' : i === 2 ? '#b45309' : '#1f2937';
+                ctx.fillRect(48, rowTop + 17, 30, 30);
                 ctx.font = 'bold 18px monospace';
                 ctx.fillStyle = '#090d16';
                 ctx.textAlign = 'center';
-                ctx.fillText(`${i + 1}`, 63, rowTop + 46);
+                ctx.fillText(`${i + 1}`, 63, rowTop + 38);
 
                 // B. Driver name & Jersey
                 const rosterNurburgringRaw = [
@@ -10637,53 +10836,61 @@ export class DomainExpansionSystem extends createSystem({
                     { id: "f1_ln", jersey: "4" },
                     { id: "f1_op", jersey: "81" },
                     { id: "f1_gr", jersey: "63" },
-                    { id: "f1_ka", jersey: "12" }
+                    { id: "f1_ka", jersey: "12" },
+                    { id: "f1_mv", jersey: "33" },
+                    { id: "f1_cs", jersey: "55" },
+                    { id: "f1_fa", jersey: "14" },
+                    { id: "f1_pg", jersey: "10" }
                 ];
                 const jersey = rosterNurburgringRaw.find(r => r.id === driver.driverId)?.jersey ?? "";
-                ctx.font = 'bold 18px "Courier New", monospace';
+                ctx.font = 'bold 16px "Courier New", monospace';
                 ctx.fillStyle = '#ffffff';
                 ctx.textAlign = 'left';
-                ctx.fillText(`${driver.name} #${jersey}`, 96, rowTop + 40);
+                ctx.fillText(`${driver.name} #${jersey}`, 96, rowTop + 32);
 
                 // C. Team logo tag (color coded border)
                 let teamColor = '#00ffff'; // Mercedes cyan
                 if (driver.team === 'Ferrari') teamColor = '#e11d48'; // Red
                 else if (driver.team === 'McLaren') teamColor = '#ea580c'; // Orange
+                else if (driver.team === 'Red Bull') teamColor = '#3b82f6'; // Blue
+                else if (driver.team === 'Aston Martin') teamColor = '#10b981'; // Green
+                else if (driver.team === 'Williams') teamColor = '#2563eb'; // Deep Blue
+                else if (driver.team === 'Alpine') teamColor = '#ec4899'; // Pink
 
                 ctx.strokeStyle = teamColor;
-                ctx.lineWidth = 2;
-                ctx.strokeRect(96, rowTop + 50, 86, 20);
-                ctx.font = '11px monospace';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(96, rowTop + 40, 86, 16);
+                ctx.font = '9px monospace';
                 ctx.fillStyle = teamColor;
                 ctx.textAlign = 'center';
-                ctx.fillText(driver.team.toUpperCase(), 139, rowTop + 64);
+                ctx.fillText(driver.team.toUpperCase(), 139, rowTop + 51);
 
                 // D. Telemetry Snippet: Lap and Live Speed
                 const tel = this.getF1Telemetry(driver.progress);
-                ctx.font = 'bold 16px "Courier New", monospace';
+                ctx.font = 'bold 15px "Courier New", monospace';
                 ctx.fillStyle = '#22d3ee';
                 ctx.textAlign = 'right';
-                ctx.fillText(`${tel.speed} KM/H`, 464, rowTop + 40);
+                ctx.fillText(`${tel.speed} KM/H`, 464, rowTop + 32);
 
-                ctx.font = '14px "Courier New", monospace';
+                ctx.font = '12px "Courier New", monospace';
                 ctx.fillStyle = '#a1a1aa';
-                ctx.fillText(`LAP ${driver.lap}`, 464, rowTop + 64);
+                ctx.fillText(`LAP ${driver.lap}`, 464, rowTop + 51);
             }
 
-            // ── Turn Marker Toggle Button (Y = 370 to 440) ──
-            const mkrBtnY = 370;
+            // ── Turn Marker Toggle Button (Y = 750 to 810) ──
+            const mkrBtnY = 750;
             const mkrActive = this.f1MarkersVisible;
             ctx.fillStyle = mkrActive ? 'rgba(34, 211, 238, 0.18)' : 'rgba(80, 80, 90, 0.18)';
-            ctx.fillRect(32, mkrBtnY, 448, 70);
+            ctx.fillRect(32, mkrBtnY, 448, 60);
             ctx.strokeStyle = mkrActive ? '#22d3ee' : '#555566';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(32, mkrBtnY, 448, 70);
+            ctx.lineWidth = 2.5;
+            ctx.strokeRect(32, mkrBtnY, 448, 60);
 
             // Bullet-list icon (3 dots + lines to represent a list/map markers)
             const iconX = 72;
-            const iconY = mkrBtnY + 35;
-            const dotR = 5;
-            [0, -18, 18].forEach((dy) => {
+            const iconY = mkrBtnY + 30;
+            const dotR = 4;
+            [0, -14, 14].forEach((dy) => {
                 ctx.beginPath();
                 ctx.arc(iconX, iconY + dy, dotR, 0, Math.PI * 2);
                 ctx.fillStyle = mkrActive ? '#22d3ee' : '#555566';
@@ -10697,10 +10904,10 @@ export class DomainExpansionSystem extends createSystem({
             ctx.fillStyle = mkrActive ? '#22d3ee' : '#555566';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            ctx.fillText('TURN MARKERS', 130, mkrBtnY + 25);
+            ctx.fillText('TURN MARKERS', 130, mkrBtnY + 20);
 
             // Status pill
-            const pillX = 370, pillY = mkrBtnY + 13, pillW = 72, pillH = 24;
+            const pillX = 370, pillY = mkrBtnY + 18, pillW = 72, pillH = 24;
             ctx.fillStyle = mkrActive ? 'rgba(34,211,238,0.3)' : 'rgba(80,80,90,0.3)';
             ctx.beginPath();
             ctx.roundRect(pillX, pillY, pillW, pillH, 10);
@@ -10714,12 +10921,12 @@ export class DomainExpansionSystem extends createSystem({
             ctx.font = '13px monospace';
             ctx.fillStyle = mkrActive ? 'rgba(34,211,238,0.6)' : 'rgba(100,100,115,0.6)';
             ctx.textAlign = 'left';
-            ctx.fillText('SECTOR / TURN OVERLAYS', 130, mkrBtnY + 50);
+            ctx.fillText('SECTOR / TURN OVERLAYS', 130, mkrBtnY + 42);
 
-            // ── Circular HIDE Button at the bottom center (Y = 540) ──
-            const hideBtnCX = 256;
-            const hideBtnCY = 540;
-            const hideBtnR = 52;
+            // ── Circular HIDE Button at the top-right (CX = 465, CY = 70) ──
+            const hideBtnCX = 465;
+            const hideBtnCY = 70;
+            const hideBtnR = 24;
 
             // Button circle background
             ctx.beginPath();
@@ -10727,25 +10934,13 @@ export class DomainExpansionSystem extends createSystem({
             ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
             ctx.fill();
             ctx.strokeStyle = '#ef4444';
-            ctx.lineWidth = 4;
+            ctx.lineWidth = 3;
             ctx.stroke();
 
-            // Bullet-list icon inside circle (represents roster/list)
-            const bCX = hideBtnCX;
-            const bCY = hideBtnCY - 8;
-            [0, -13, 13].forEach((dy) => {
-                ctx.beginPath();
-                ctx.arc(bCX - 18, bCY + dy, 4, 0, Math.PI * 2);
-                ctx.fillStyle = '#ef4444';
-                ctx.fill();
-                ctx.fillRect(bCX - 11, bCY + dy - 2, 26, 4);
-            });
-
-            // Chevron-down under bullet icon
+            // Draw a small "X" or "-" (minimize symbol) inside
             ctx.beginPath();
-            ctx.moveTo(bCX - 12, hideBtnCY + 24);
-            ctx.lineTo(bCX, hideBtnCY + 34);
-            ctx.lineTo(bCX + 12, hideBtnCY + 24);
+            ctx.moveTo(hideBtnCX - 8, hideBtnCY);
+            ctx.lineTo(hideBtnCX + 8, hideBtnCY);
             ctx.strokeStyle = '#ef4444';
             ctx.lineWidth = 3;
             ctx.lineCap = 'round';
@@ -10753,6 +10948,34 @@ export class DomainExpansionSystem extends createSystem({
         }
 
         this.f1RosterTexture.needsUpdate = true;
+    }
+
+    private drawDomainHud(stadiumName: string, viewName: string) {
+        if (!this.domainHudCtx) return;
+        const ctx = this.domainHudCtx;
+        ctx.clearRect(0, 0, 512, 128);
+
+        // Glassmorphic backing
+        ctx.fillStyle = 'rgba(6, 12, 32, 0.85)';
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.roundRect(10, 10, 492, 108, 16);
+        ctx.fill();
+        ctx.stroke();
+
+        // Title
+        ctx.font = 'bold 16px "Orbitron", monospace';
+        ctx.fillStyle = '#f59e0b'; // Gold/Amber
+        ctx.textAlign = 'center';
+        ctx.fillText(stadiumName.toUpperCase(), 256, 42);
+
+        // View Name
+        ctx.font = 'bold 24px "Orbitron", monospace';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(viewName, 256, 84);
+
+        this.domainHudTexture.needsUpdate = true;
     }
 
     private triggerPlayerCard(driverId: string) {

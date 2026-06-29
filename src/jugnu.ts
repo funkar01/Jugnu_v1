@@ -211,8 +211,6 @@ export class JugnuSystem extends createSystem({
   private leftThumbTipWorld = new THREE.Vector3();
   private threadCooldownTimer = 0.0;
   private lockEscapeTimer = 0.0;
-  private leftPinchCount = 0;
-  private leftPinchTimer = 0.0;
 
 
   // Optimized Fireflies instanced particle system
@@ -683,99 +681,83 @@ export class JugnuSystem extends createSystem({
     let isPinchingLeft = this.getPinchData('left', this.leftPinchTip);
     let isPinchingRight = this.getPinchData('right', this.rightPinchTip);
 
-    // Tick the double pinch timer
-    if (this.leftPinchCount > 0) {
-        this.leftPinchTimer += safeDt;
-        if (this.leftPinchTimer >= 1.0) {
-            this.leftPinchCount = 0;
-            this.leftPinchTimer = 0.0;
-        }
-    }
-
-    // ── LOCK ESCAPE: double left index pinch in under 1 second while locked → unlock + come to fingertips ──
+    // ── LOCK ESCAPE: Hold left index pinch for 3 seconds while locked → unlock + come to fingertips ──
     if (this.isGridLocked) {
-        if (isPinchingLeft && !this.wasPinchingLeft) {
-            if (this.leftPinchCount === 0) {
-                this.leftPinchCount = 1;
-                this.leftPinchTimer = 0.0;
-                console.log('[Jugnu] Left hand pinch start. Waiting for second pinch to break lock...');
-            } else if (this.leftPinchCount === 1) {
-                if (this.leftPinchTimer < 1.0) {
-                    console.log('[Jugnu] Double left index pinch detected in under 1s — breaking lock!');
-                    this.leftPinchCount = 0;
-                    this.leftPinchTimer = 0.0;
+        if (isPinchingLeft) {
+            this.lockEscapeTimer += safeDt;
+            if (this.lockEscapeTimer >= 3.0) {
+                console.log('[Jugnu] Left hand pinch held for 3s — breaking lock!');
+                this.lockEscapeTimer = 0.0;
 
-                    // 1. Trigger Lock Breaking animation
-                    this.isLockBreaking = true;
-                    this.lockBreakAnimationTime = 0.0;
+                // 1. Trigger Lock Breaking animation
+                this.isLockBreaking = true;
+                this.lockBreakAnimationTime = 0.0;
 
-                    let jugnuPos = new THREE.Vector3();
-                    for (const entity of this.queries.jugnu.entities) {
-                        if (entity.object3D) {
-                            jugnuPos.copy(entity.object3D.position);
-                            break;
-                        }
-                    }
-                    const spatialFX = (window as any).spatialFX;
-                    if (spatialFX) {
-                        spatialFX.stopLockVibrationSound();
-                        spatialFX.playPositionalSound('lockBreak', jugnuPos);
-                        spatialFX.triggerSpark(jugnuPos, new THREE.Color(0x00ffcc), 30);
-                    }
-
-                    // Trigger 3-frame chromatic aberration glitch
-                    this.glitchFrameCount = 3;
-
-                    // 2. Unlock & reset mood to happy orange
-                    this.isGridLocked = false;
-                    this.lockedCompassPos = null;
-                    this.lockedCompassQuat = null;
-                    this.setExpression(2); // Happy orange expression!
-
-                    // 3. Close compass UI so it respawns cleanly on next open
-                    this.isCompassOpen = false;
-                    this.isStadiumMenuOpen = false;
-                    this.isChatOpen = false;
-                    this.isTutorialOpen = false;
-                    this.isDebugOpen = false;
-                    this.indexPinchTimer = 0.0;
-                    this.pinchReleasedTimer = 0.0;
-
-                    const targetHand = 'left';
-                    const targetTip = this.leftPinchTip;
-
-                    // 4. Pull Jugnu to fingertip
-                    let lockedJugnuPos = this.scratchV3_1;
-                    lockedJugnuPos.set(0, 0, 0);
-                    for (const entity of this.queries.jugnu.entities) {
-                        if (!entity.object3D) continue;
-                        lockedJugnuPos.copy(entity.object3D.position);
+                let jugnuPos = new THREE.Vector3();
+                for (const entity of this.queries.jugnu.entities) {
+                    if (entity.object3D) {
+                        jugnuPos.copy(entity.object3D.position);
                         break;
                     }
-
-                    this.interactionState = 'LerpingToHand';
-                    this.attachedHand = targetHand;
-                    this.startPos.copy(lockedJugnuPos);
-                    this.targetPos.copy(targetTip);
-                    this.previousHandPos.copy(targetTip);
-                    this.handVelocity.set(0, 0, 0);
-                    this.lerpTime = 0;
-                    this.velocity.set(0, 0, 0);
-
-                    this.queries.jugnu.entities.forEach(e => {
-                        const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
-                        if (currentState !== PhysicsState.Kinematic) {
-                            if (e.hasComponent(PhysicsShape)) e.removeComponent(PhysicsShape);
-                            if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
-                            e.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
-                            e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
-                        }
-                    });
-                } else {
-                    this.leftPinchCount = 1;
-                    this.leftPinchTimer = 0.0;
                 }
+                const spatialFX = (window as any).spatialFX;
+                if (spatialFX) {
+                    spatialFX.stopLockVibrationSound();
+                    spatialFX.playPositionalSound('lockBreak', jugnuPos);
+                    spatialFX.triggerSpark(jugnuPos, new THREE.Color(0x00ffcc), 30);
+                }
+
+                // Trigger 3-frame chromatic aberration glitch
+                this.glitchFrameCount = 3;
+
+                // 2. Unlock & reset mood to happy orange
+                this.isGridLocked = false;
+                this.lockedCompassPos = null;
+                this.lockedCompassQuat = null;
+                this.setExpression(2); // Happy orange expression!
+
+                // 3. Close compass UI so it respawns cleanly on next open
+                this.isCompassOpen = false;
+                this.isStadiumMenuOpen = false;
+                this.isChatOpen = false;
+                this.isTutorialOpen = false;
+                this.isDebugOpen = false;
+                this.indexPinchTimer = 0.0;
+                this.pinchReleasedTimer = 0.0;
+
+                const targetHand = 'left';
+                const targetTip = this.leftPinchTip;
+
+                // 4. Pull Jugnu to fingertip
+                let lockedJugnuPos = this.scratchV3_1;
+                lockedJugnuPos.set(0, 0, 0);
+                for (const entity of this.queries.jugnu.entities) {
+                    if (!entity.object3D) continue;
+                    lockedJugnuPos.copy(entity.object3D.position);
+                    break;
+                }
+
+                this.interactionState = 'LerpingToHand';
+                this.attachedHand = targetHand;
+                this.startPos.copy(lockedJugnuPos);
+                this.targetPos.copy(targetTip);
+                this.previousHandPos.copy(targetTip);
+                this.handVelocity.set(0, 0, 0);
+                this.lerpTime = 0;
+                this.velocity.set(0, 0, 0);
+
+                this.queries.jugnu.entities.forEach(e => {
+                    const currentState = e.hasComponent(PhysicsBody) ? e.getValue(PhysicsBody, 'state') : null;
+                    if (currentState !== PhysicsState.Kinematic) {
+                        if (e.hasComponent(PhysicsShape)) e.removeComponent(PhysicsShape);
+                        if (e.hasComponent(PhysicsBody)) e.removeComponent(PhysicsBody);
+                        e.addComponent(PhysicsShape, { shape: PhysicsShapeType.Sphere, dimensions: [0.15, 0.15, 0.15] });
+                        e.addComponent(PhysicsBody, { state: PhysicsState.Kinematic, gravityFactor: 0.0 });
+                    }
+                });
             }
+        } else {
+            this.lockEscapeTimer = 0.0;
         }
     }
 
@@ -1188,12 +1170,23 @@ export class JugnuSystem extends createSystem({
             } else {
                 // Locked but not breaking: reset to default
                 this.lockIconGroup.visible = true;
-                this.lockLeftMesh.position.set(-0.009, 0, 0);
-                this.lockLeftMesh.rotation.set(0, 0, 0);
+                
+                // Shake factor based on lockEscapeTimer (0.0 to 3.0)
+                // Intensity increases as timer approaches 3.0
+                const progress = Math.min(this.lockEscapeTimer / 3.0, 1.0);
+                const shakeIntensity = progress * 0.005; // up to 5mm of translation shake
+                const rotShakeIntensity = progress * 0.2; // up to ~11 degrees of rotation shake
+                
+                const shakeX = progress > 0.0 ? (Math.random() - 0.5) * shakeIntensity : 0.0;
+                const shakeY = progress > 0.0 ? (Math.random() - 0.5) * shakeIntensity : 0.0;
+                const shakeRot = progress > 0.0 ? (Math.random() - 0.5) * rotShakeIntensity : 0.0;
+
+                this.lockLeftMesh.position.set(-0.009 + shakeX, shakeY, 0);
+                this.lockLeftMesh.rotation.set(0, 0, shakeRot);
                 this.lockLeftMat.opacity = 1.0;
 
-                this.lockRightMesh.position.set(0.009, 0, 0);
-                this.lockRightMesh.rotation.set(0, 0, 0);
+                this.lockRightMesh.position.set(0.009 + shakeX, shakeY, 0);
+                this.lockRightMesh.rotation.set(0, 0, shakeRot);
                 this.lockRightMat.opacity = 1.0;
             }
         } else {
@@ -2248,7 +2241,7 @@ export class JugnuSystem extends createSystem({
       },
       "STADIUM_SEL": {
           title: "VENUE",
-          detail: "Select from Wankhede, Nürburgring, or other stadiums."
+          detail: "Select from Wankhede, Monaco GP, or other stadiums."
       },
       "LOCK": {
           title: "GRID LOCK",
@@ -3419,7 +3412,7 @@ export class JugnuSystem extends createSystem({
           { key: 'berlin',      name: 'UEFA',       sub: 'Berlin, Germany',      img: this.stadiumImages[1] },
           { key: 'inuit',       name: 'NBA',        sub: 'Los Angeles, USA',     img: this.stadiumImages[2] },
           { key: 'butterflies', name: 'FIFA',       sub: 'Munich, Germany',      img: this.stadiumImages[3] },
-          { key: 'nurburgring', name: 'F1',         sub: 'Nürburg, Germany',     img: this.stadiumImages[4] },
+          { key: 'nurburgring', name: 'F1',         sub: 'Monte Carlo, Monaco',  img: this.stadiumImages[4] },
       ];
 
       const targetAngles = [
@@ -3664,7 +3657,7 @@ export class JugnuSystem extends createSystem({
       let desc = "";
       if (step === 0) {
           title = "SUMMON COMPASS";
-          desc = "Pinch and hold your left index finger and thumb near Jugnu for 2 seconds to summon or dismiss the main holographic Compass UI.";
+          desc = "Pinch and hold your left index finger and thumb near Jugnu for 2 seconds to summon or dismiss the main holographic Compass UI. Use the VENUE spoke on the Compass to load stadiums.";
       } else if (step === 1) {
           title = "ROTATE MINIMAP";
           desc = "Pinch with your middle finger and thumb, then rotate your hand to orient the tactical 3D stadium minimap table.";
@@ -3672,8 +3665,8 @@ export class JugnuSystem extends createSystem({
           title = "ZOOM MINIMAP";
           desc = "Pinch with the middle fingers of both hands and spread them apart to zoom in, or bring them together to zoom out.";
       } else if (step === 3) {
-          title = "ACCESS STADIUMS";
-          desc = "Point and pinch the VENUE spoke on the main Compass UI to open the stadium selector, then select a stadium to load it.";
+          title = "DOMAINS";
+          desc = "Hover and hold your index finger over any floating 360° camera bubble on the minimap to enter the immersive 360° sphere view.";
       } else if (step === 4) {
           title = "REPLAY EVENT";
           desc = "Point and pinch the PLAY SEQ spoke on the Action Deck to run high-fidelity replay animations of the sports events.";

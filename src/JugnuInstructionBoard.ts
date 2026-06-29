@@ -90,7 +90,7 @@ export class JugnuInstructionBoard extends THREE.Group {
         } else if (step === 2) {
             instructionText = "Middle finger pinch both hands & spread to zoom!";
         } else if (step === 3) {
-            instructionText = "Use the VENUE spoke on the Compass to load stadiums!";
+            instructionText = "Pinch & hold a 360 domain bubble on the minimap to enter the immersive view!";
         } else if (step === 4) {
             instructionText = "Use the PLAY SEQ spoke on the Action Deck to run replays!";
         } else if (step === 5) {
