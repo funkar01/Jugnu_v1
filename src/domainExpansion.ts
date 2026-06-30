@@ -1629,12 +1629,12 @@ export class DomainExpansionSystem extends createSystem({
 
             // Add procedural goalposts to berlinGroup (both asset and fallback paths)
             const pGoal1 = this.createGoalPost('proceduralGoal1');
-            pGoal1.position.set(0.0, 0.0005, 0.061);
+            pGoal1.position.set(0.0, 0.009, 0.061);
             pGoal1.rotation.y = Math.PI; // Face field center
             berlinGroup.add(pGoal1);
 
             const pGoal2 = this.createGoalPost('proceduralGoal2');
-            pGoal2.position.set(0.0, 0.0005, -0.061); // Behind goalie
+            pGoal2.position.set(0.0, 0.009, -0.061); // Behind goalie
             berlinGroup.add(pGoal2);
 
             this.berlinMesh = berlinGroup as any;
@@ -2827,10 +2827,12 @@ export class DomainExpansionSystem extends createSystem({
                         const leftVec = new THREE.Vector3().crossVectors(toPlayer, new THREE.Vector3(0, 1, 0)).normalize();
                         this.f1RosterMesh.position.addScaledVector(leftVec, 0.22);
 
-                        // LookAt: front face (+Z of PlaneGeometry) → player
-                        // lookAt(headPos) points the local -Z toward the target, so we add 180 degrees to flip the +Z front face to face the user
-                        this.f1RosterMesh.lookAt(headPos);
-                        this.f1RosterMesh.rotation.y += Math.PI;
+                        // Yaw-only lookAt in world space to prevent tilting (locked correctly on Y-axis)
+                        const rosterWorldPos = this.scratchVector4;
+                        this.f1RosterMesh.getWorldPosition(rosterWorldPos);
+                        const rosterTarget = this.scratchVector5.copy(headPos);
+                        rosterTarget.y = rosterWorldPos.y;
+                        this.f1RosterMesh.lookAt(rosterTarget);
 
                         if (this.f1RosterCloseButton) {
                             this.f1RosterCloseButton.visible = !this.f1RosterMinimized;
@@ -2868,17 +2870,17 @@ export class DomainExpansionSystem extends createSystem({
                                 }
                             } else {
                                 // Maximized size: 0.24m wide by 0.42m high. localTip Y range: -0.21 to 0.21
-                                const isOverCloseButton = (localTip.x >= 0.11 && localTip.x <= 0.17 && localTip.y >= 0.20 && localTip.y <= 0.26);
+                                const isOverCloseButton = (localTip.x >= -0.17 && localTip.x <= -0.11 && localTip.y >= 0.20 && localTip.y <= 0.26);
                                 if (Math.abs(localTip.z) < 0.015 && ((Math.abs(localTip.x) < 0.12 && Math.abs(localTip.y) < 0.21) || isOverCloseButton)) {
                                     isTouchingRoster = true;
                                     touchTipUsed = tip;
 
-                                    // Map local coordinates to Canvas space (512 x 900)
-                                    const cx = (localTip.x + 0.12) / 0.24 * 512;
+                                    // Map local coordinates to Canvas space (512 x 900) - X axis is inverted due to Y flip
+                                    const cx = (0.12 - localTip.x) / 0.24 * 512;
                                     const cy = (0.21 - localTip.y) / 0.42 * 900;
 
-                                    // Check close button touch (floating at top-right: x = 0.135, y = 0.225)
-                                    const distToCloseBtn = localTip.distanceTo(new THREE.Vector3(0.135, 0.225, 0));
+                                    // Check close button touch (floating at top-right/left: x = -0.135, y = 0.225)
+                                    const distToCloseBtn = localTip.distanceTo(new THREE.Vector3(-0.135, 0.225, 0));
                                     if (distToCloseBtn < 0.02) {
                                         touchedMinimize = true;
                                     }
@@ -3049,7 +3051,7 @@ export class DomainExpansionSystem extends createSystem({
                         }
                         this.f1ActiveCardGroup.scale.setScalar(scale);
 
-                        // Card Billboarding (always face user directly in world space)
+                        // Card Billboarding (always face user directly in world space - Yaw-only to prevent tilting!)
                         const headPos = this.scratchVector3;
                         if (this.player && this.player.head) {
                             this.player.head.getWorldPosition(headPos);
@@ -3059,8 +3061,11 @@ export class DomainExpansionSystem extends createSystem({
                             headPos.set(0, 1.45, 0.4);
                         }
 
-                        this.f1ActiveCardGroup.lookAt(headPos);
-                        this.f1ActiveCardGroup.rotation.y += Math.PI; // Flip 180 degrees so PlaneGeometry front (+Z) faces user
+                        const cardWorldPos = this.scratchVector4;
+                        this.f1ActiveCardGroup.getWorldPosition(cardWorldPos);
+                        const cardTarget = this.scratchVector5.copy(headPos);
+                        cardTarget.y = cardWorldPos.y;
+                        this.f1ActiveCardGroup.lookAt(cardTarget);
                     }
                 } else {
                     if (this.f1ActiveCardGroup && this.f1ActiveCardGroup.visible) {
@@ -3710,7 +3715,7 @@ export class DomainExpansionSystem extends createSystem({
                 if (shouldUpdateCard) {
                     let targetOpacity = 0.0;
                     if (this.currentStadiumType === 'nurburgring' && this.isSportSequenceActive) {
-                        if (p.id === 'f1_cl' || p.id === 'f1_gr') {
+                        if (p.id === 'f1_cl' || p.id === 'f1_gr' || p.id === 'f1_ln') {
                             targetOpacity = 0.95;
                         }
                     } else {
@@ -6282,7 +6287,10 @@ export class DomainExpansionSystem extends createSystem({
             }
 
             const cardMesh = new THREE.Mesh(planeGeom, planeMat);
-            const BASE_Y = 0.075;
+            let BASE_Y = 0.075;
+            if (rcbCardKey && rcbCardKey.startsWith("f1")) {
+                BASE_Y = 0.15; // Raised to prevent clipping into F1 car meshes
+            }
             cardMesh.position.y = BASE_Y;
             cardMesh.position.z = 0.001; // offset forward
             cardMesh.userData.baseZ = 0.001;
@@ -9858,43 +9866,7 @@ export class DomainExpansionSystem extends createSystem({
         this.nurburgringGroup.add(drsBadge);
         this.f1Markers.push(drsBadge);
 
-        // --- Construction of 3D Apex Rumble Strips ---
-        const createApexRumbleStrip = (centerU: number, innerOffsetDirection: number) => {
-            const segCount = 10;
-            const roadWidth = 0.0102; // Shifted outward to be completely clear of the road
-            const boxGeo = new THREE.BoxGeometry(0.0016, 0.0003, 0.002);
-            const redMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
-            const whiteMat = new THREE.MeshBasicMaterial({ color: 0xfafafa });
-
-            for (let i = 0; i < segCount; i++) {
-                const u = centerU - 0.008 + (i / segCount) * 0.016;
-                const progress = (u + 1.0) % 1.0;
-                const p = this.nurburgringCurve.getPointAt(progress);
-                
-                const frameIdx = Math.floor(progress * segments) % segments;
-                const binormal = this.nurburgringFrenetFrames.binormals[frameIdx];
-                const tangent = this.nurburgringFrenetFrames.tangents[frameIdx];
-                
-                const pos = p.clone().addScaledVector(binormal, roadWidth * innerOffsetDirection);
-                pos.y += 0.0003 + (i % 2) * 0.0001;
-
-                const box = new THREE.Mesh(boxGeo, i % 2 === 0 ? redMat : whiteMat);
-                box.position.copy(pos);
-
-                const upVec = this.scratchVector3.set(0, 1, 0);
-                const rMat = new THREE.Matrix4().makeBasis(binormal, upVec, tangent);
-                box.quaternion.setFromRotationMatrix(rMat);
-
-                this.nurburgringGroup!.add(box);
-            }
-        };
-
-        // Spawn rumble strips at key Monaco corners
-        createApexRumbleStrip(0.182, 1.0);  // Turn 5 Apex Left
-        createApexRumbleStrip(0.227, -1.0); // Turn 6 Apex Right
-        createApexRumbleStrip(0.591, 1.0);  // Turn 12 Apex Left
-        createApexRumbleStrip(0.727, -1.0); // Turn 15 Apex Right
-        createApexRumbleStrip(0.864, 1.0);  // Turn 18 Apex Left
+        // Removed 3D Apex Rumble Strips (curbs) to keep the road clean
 
         // --- Construction of Neon DRS Gantry Arches ---
         this.drsGantryMats = [];
@@ -10017,9 +9989,9 @@ export class DomainExpansionSystem extends createSystem({
             this.nurburgringGroup.add(this.f1RosterMesh);
         }
 
-        // Sleek 3D close button floating at top-right of roster (floating outside the frame)
+        // Sleek 3D close button floating at top-left/right of roster (placed at x = -0.135 and z = -0.002 to match flipped roster orientation)
         this.f1RosterCloseButton = new THREE.Group();
-        this.f1RosterCloseButton.position.set(0.135, 0.225, 0.002);
+        this.f1RosterCloseButton.position.set(-0.135, 0.225, -0.002);
         this.f1RosterMesh.add(this.f1RosterCloseButton);
 
         // Circular background disk (red)
@@ -10032,12 +10004,12 @@ export class DomainExpansionSystem extends createSystem({
 
         // Draw "X" inside the close button
         const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
-        const xPoints1 = [new THREE.Vector3(-0.005, -0.005, 0.0015), new THREE.Vector3(0.005, 0.005, 0.0015)];
+        const xPoints1 = [new THREE.Vector3(-0.005, -0.005, -0.0015), new THREE.Vector3(0.005, 0.005, -0.0015)];
         const xGeo1 = new THREE.BufferGeometry().setFromPoints(xPoints1);
         const xLine1 = new THREE.Line(xGeo1, lineMat);
         this.f1RosterCloseButton.add(xLine1);
 
-        const xPoints2 = [new THREE.Vector3(0.005, -0.005, 0.0015), new THREE.Vector3(-0.005, 0.005, 0.0015)];
+        const xPoints2 = [new THREE.Vector3(0.005, -0.005, -0.0015), new THREE.Vector3(-0.005, 0.005, -0.0015)];
         const xGeo2 = new THREE.BufferGeometry().setFromPoints(xPoints2);
         const xLine2 = new THREE.Line(xGeo2, lineMat);
         this.f1RosterCloseButton.add(xLine2);

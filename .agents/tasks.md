@@ -1576,3 +1576,62 @@
   - `[x]` Setup auto-clear `world.scene.background = null` when entering immersive WebXR mode to preserve AR passthrough camera feed
   - `[x]` Patched compilation error in `src/jugnu.ts` by replacing obsolete `leftPinchCount` references with `lockEscapeTimer` shaking heuristics
   - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and compiled production bundle successfully via `npm run build`
+
+- `[x]` F1 Map Clean Road Refinements (Current Run)
+  - `[x]` Removed 3D Apex Rumble Strips (curbs) from the F1 map in `src/domainExpansion.ts`
+  - `[x]` Verified clean static type check (`npx tsc --noEmit`) and compiled production bundle successfully via `npm run build`
+
+- `[x]` Tutorial Tab Button UI Overhaul (Current Run)
+  - `[x]` Upgraded `redrawTutorialTabMesh()` in `src/jugnu.ts` with linear gradient backgrounds
+  - `[x]` Implemented glowing neon canvas shadows for active/hovered tutorial buttons
+  - `[x]` Added glowing tech-deco corner brackets and active status indicator bars
+  - `[x]` Verified clean static type check (`npx tsc --noEmit`) and compiled production bundle successfully via `npm run build`
+
+- `[x]` F1 Roster & Card Rotation Lock (Current Run)
+  - `[x]` Refactored F1 Roster (`f1RosterMesh`) and Active Driver Card (`f1ActiveCardGroup`) updates in `src/domainExpansion.ts` to lock pitch and roll
+  - `[x]` Implemented zero-GC compliant horizontal yaw-only projection to face the player headset cleanly without tilting or twisting sideways
+  - `[x]` Swapped Euler `rotation.y += Math.PI` modifications for robust Three.js quaternion multiplications to prevent Euler angle out-of-sync bugs that cause cards to face backwards
+  - `[x]` Verified clean type safety compilation (`npx tsc --noEmit`) and compiled production bundle successfully via `npm run build`
+
+- `[x]` Adaptive Landing Page Background (Current Run)
+  - `[x]` Modified `src/index.ts` to transition the background plane to a unit `1x1` geometry and dynamically update scale using frustum-visible sizing calculations (`degToRad`, aspect ratios)
+  - `[x]` Configured plane aspect ratio scaling to fit side-to-side exactly (16:9 ratio) without any cropping
+  - `[x]` Registered a global window resize event listener to adjust landing background scaling dynamically on browser resize/viewport orientation shifts
+  - `[x]` Hooked the visibility subscriber to trigger scaling updates when returning to flat 2D `NonImmersive` mode
+  - `[x]` Verified clean type safety check (`npx tsc --noEmit`) and compiled client bundle (`npm run build`) successfully
+
+- `[x]` Colorized Expression UI Buttons (Current Run)
+  - `[x]` Mapped Jugnu's color code of each expression to its respective DOM button background color inside `src/jugnu.ts`
+  - `[x]` Programmed active/selected visual highlights: updates button opacity, scale (1.06), borders, and applies a matching glowing neon drop shadow matching the active expression color
+  - `[x]` Verified clean type safety check (`npx tsc --noEmit`) and compiled client bundle (`npm run build`) successfully
+
+- `[x]` F1 Roster 180-Degree Y-Flip & Touch Bounds Adjustment (Current Run)
+  - `[x]` Removed the 180-degree quaternion flip rotation calculation from the roster mesh lookAt updates in `src/domainExpansion.ts` to flip the panel around to its correct front-facing visual side
+  - `[x]` Shifted the circular 3D Close Button coordinates to local X = `-0.135` and Z = `-0.002` to match the new face direction and remain physically on the upper right side from the user's perspective
+  - `[x]` Inverted the finger touch pointer detection coordinates (`cx` mapping and close button distance verification) in `src/domainExpansion.ts` to correctly handle the inverted local X axis
+  - `[x]` Verified clean type safety compilation (`npx tsc --noEmit`) and compiled production bundle successfully via `npm run build`
+
+- `[x]` Rescaled Tutorial Illustrations & Optimized UI Text Layout (Current Run)
+  - `[x]` Enlarged the 16:9 tutorial images inside `redrawCompassTutorial()` in `src/jugnu.ts` by 100% (from `240x135` to `480x270`)
+  - `[x]` Repositioned the layout: merged the Step Counter and Title into a single clean line above the image, and moved the description text below the image with proper spacing and text wrapping
+  - `[x]` Verified clean type safety check (`npx tsc --noEmit`) and compiled production bundle successfully (`npm run build`)
+
+- `[x]` F1 Track/Sequence Driver Cards Clipping & Spawning Adjustments (Current Run)
+  - `[x]` Raised `BASE_Y` to `0.15` in `createPlayerStatsCard()` in `src/domainExpansion.ts` for all F1 driver player tags/cards, eliminating mesh clipping issues with the cars below them
+  - `[x]` Added Lando Norris's card (`f1_ln`) to the active F1 sequence overlay drivers list inside `src/domainExpansion.ts` to show cards for all 3 active cars on track
+  - `[x]` Removed the 180-degree quaternion Y flip from the active telemetry card (`f1ActiveCardGroup`) lookAt calculations inside `src/domainExpansion.ts` to flip the card around correctly
+  - `[x]` Verified clean type safety compilation (`npx tsc --noEmit`) and compiled production bundle successfully via `npm run build`
+
+- `[x]` Raised Football Goal Posts Level (Current Run)
+  - `[x]` Modified the procedural goalposts (`proceduralGoal1` and `proceduralGoal2`) Y positions from `0.0005` to `0.009` inside `src/domainExpansion.ts` to align perfectly with the players and the grass field Y height
+  - `[x]` Verified clean type safety compilation (`npx tsc --noEmit`) and compiled production bundle successfully via `npm run build`
+
+
+
+
+
+
+
+
+
+

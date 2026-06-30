@@ -85,6 +85,7 @@ export class JugnuSystem extends createSystem({
   // Expression UI
   private expressionList: Mood[] = ['bored', 'calm', 'happy', 'sad', 'bright', 'blushing', 'winking'];
   private currentExpressionIndex = 2; // Default to happy
+  private expressionButtons: HTMLButtonElement[] = [];
 
   private instructionBoard!: JugnuInstructionBoard;
 
@@ -180,7 +181,8 @@ export class JugnuSystem extends createSystem({
   private iconTintCanvas!: HTMLCanvasElement;
   private iconTintCtx!: CanvasRenderingContext2D;
 
-  private tutorialVideo?: HTMLVideoElement;
+
+  private tutorialImages: (HTMLImageElement | null)[] = [null, null, null, null, null, null];
   private tutorialTabs = [
       { label: "SUMMON COMPASS", step: 0, x: -0.35, y: 0.12, canvas: null as any, texture: null as any, mesh: null as any },
       { label: "ROTATE MAP",     step: 1, x: -0.35, y: 0.00, canvas: null as any, texture: null as any, mesh: null as any },
@@ -363,6 +365,17 @@ export class JugnuSystem extends createSystem({
     label.style.fontFamily = "sans-serif";
     container.appendChild(label);
 
+    const moodColorHex: Record<Mood, string> = {
+        'bored': '#a1c4fd',
+        'calm': '#fcf4a3',
+        'happy': '#ffb347',
+        'sad': '#c1a1fd',
+        'bright': '#ffff66',
+        'blushing': '#ffb6c1',
+        'winking': '#90ee90'
+    };
+
+    this.expressionButtons = [];
     this.expressionList.forEach((mood, i) => {
         const btn = document.createElement("button");
         btn.innerText = mood;
@@ -371,17 +384,46 @@ export class JugnuSystem extends createSystem({
         btn.style.textTransform = "capitalize";
         btn.style.borderRadius = "5px";
         btn.style.border = "none";
+        
         // Give hover and active effects for premium feel
-        btn.style.transition = "background-color 0.2s, transform 0.1s";
-        btn.onmouseenter = () => btn.style.backgroundColor = "#e0e0e0";
-        btn.onmouseleave = () => btn.style.backgroundColor = "white";
+        btn.style.transition = "transform 0.1s, opacity 0.2s, box-shadow 0.2s, border 0.2s";
         btn.onmousedown = () => btn.style.transform = "scale(0.95)";
-        btn.onmouseup = () => btn.style.transform = "scale(1)";
+        btn.onmouseup = () => btn.style.transform = (i === this.currentExpressionIndex) ? "scale(1.06)" : "scale(1.0)";
         btn.onclick = () => this.setExpression(i);
+        
         container.appendChild(btn);
+        this.expressionButtons.push(btn);
     });
 
     document.body.appendChild(container);
+    this.updateExpressionUI(); // Apply initial styling
+  }
+
+  updateExpressionUI() {
+    const moodColorHex: Record<Mood, string> = {
+        'bored': '#a1c4fd',
+        'calm': '#fcf4a3',
+        'happy': '#ffb347',
+        'sad': '#c1a1fd',
+        'bright': '#ffff66',
+        'blushing': '#ffb6c1',
+        'winking': '#90ee90'
+    };
+    
+    this.expressionList.forEach((mood, i) => {
+        const btn = this.expressionButtons[i];
+        if (!btn) return;
+        const isSelected = (i === this.currentExpressionIndex);
+        const baseColor = moodColorHex[mood];
+        
+        btn.style.backgroundColor = baseColor;
+        btn.style.color = '#0f172a'; // High contrast text on pastel background
+        btn.style.opacity = isSelected ? "1.0" : "0.6";
+        btn.style.border = isSelected ? "2px solid #ffffff" : "2px solid transparent";
+        btn.style.fontWeight = isSelected ? "bold" : "normal";
+        btn.style.boxShadow = isSelected ? `0 0 12px ${baseColor}` : "none";
+        btn.style.transform = isSelected ? "scale(1.06)" : "scale(1.0)";
+    });
   }
 
   handleKeyDown(e: KeyboardEvent) {
@@ -405,6 +447,7 @@ export class JugnuSystem extends createSystem({
               jugModel.setMood(mood);
           }
       });
+      this.updateExpressionUI();
   }
 
   async startRecording() {
@@ -2860,6 +2903,30 @@ export class JugnuSystem extends createSystem({
           this.redrawCompassTutorial(currentStep);
       };
       tutorialImg.src = '/textures/TutorialTab.png';
+      
+      // Preload 6 tutorial step illustration images
+      const tutImageSrcs = [
+          '/textures/TUTui PINCH.png',
+          '/textures/TUTui ROTATE.png',
+          '/textures/TUTui SCALE.png',
+          '/textures/TUTui DOMAIN.png',
+          '/textures/TUTui PLYSEQ.png',
+          '/textures/TUTui WEATHER.png'
+      ];
+      tutImageSrcs.forEach((src, i) => {
+          const img = new Image();
+          img.onload = () => {
+              this.tutorialImages[i] = img;
+              let currentStep = 0;
+              this.queries.jugnu.entities.forEach(entity => {
+                  currentStep = entity.getValue(Jugnu, "instructionStep") as number;
+              });
+              if (this.isTutorialOpen && currentStep === i) {
+                  this.redrawCompassTutorial(currentStep);
+              }
+          };
+          img.src = src;
+      });
 
       // Draw initial grid
       this.redrawCompassGrid(-1);
@@ -3523,8 +3590,31 @@ export class JugnuSystem extends createSystem({
       const h = 96;
       ctx.clearRect(0, 0, w, h);
 
+      // Create linear gradient for the glassmorphic background
+      const grad = ctx.createLinearGradient(0, 0, w, 0);
+      if (isSelected) {
+          grad.addColorStop(0, 'rgba(34, 211, 238, 0.35)');
+          grad.addColorStop(1, 'rgba(5, 5, 25, 0.7)');
+      } else if (isHovered) {
+          grad.addColorStop(0, 'rgba(255, 255, 255, 0.18)');
+          grad.addColorStop(1, 'rgba(5, 5, 25, 0.7)');
+      } else {
+          grad.addColorStop(0, 'rgba(5, 5, 25, 0.6)');
+          grad.addColorStop(1, 'rgba(15, 23, 42, 0.85)');
+      }
+
+      // Save context state to apply neon glow to background & border
+      ctx.save();
+      if (isSelected) {
+          ctx.shadowColor = '#22d3ee';
+          ctx.shadowBlur = 12;
+      } else if (isHovered) {
+          ctx.shadowColor = 'rgba(34, 211, 238, 0.45)';
+          ctx.shadowBlur = 8;
+      }
+
       // Draw glassmorphic background
-      ctx.fillStyle = isSelected ? 'rgba(34, 211, 238, 0.25)' : (isHovered ? 'rgba(255, 255, 255, 0.15)' : 'rgba(5, 5, 25, 0.6)');
+      ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.roundRect(4, 4, w - 8, h - 8, 12);
       ctx.fill();
@@ -3536,8 +3626,55 @@ export class JugnuSystem extends createSystem({
       ctx.roundRect(4, 4, w - 8, h - 8, 12);
       ctx.stroke();
 
-      // Label text
+      ctx.restore(); // Restore context to avoid shadow blur on text and tech accents
+
+      // Tech-Deco Corner Accents
+      if (isSelected || isHovered) {
+          ctx.strokeStyle = isSelected ? '#22d3ee' : 'rgba(34, 211, 238, 0.7)';
+          ctx.lineWidth = 2.5;
+          const cornerLen = 12;
+          const pad = 6;
+          
+          // Top Left Corner
+          ctx.beginPath();
+          ctx.moveTo(pad + cornerLen, pad);
+          ctx.lineTo(pad, pad);
+          ctx.lineTo(pad, pad + cornerLen);
+          ctx.stroke();
+
+          // Top Right Corner
+          ctx.beginPath();
+          ctx.moveTo(w - pad - cornerLen, pad);
+          ctx.lineTo(w - pad, pad);
+          ctx.lineTo(w - pad, pad + cornerLen);
+          ctx.stroke();
+
+          // Bottom Left Corner
+          ctx.beginPath();
+          ctx.moveTo(pad + cornerLen, h - pad);
+          ctx.lineTo(pad, h - pad);
+          ctx.lineTo(pad, h - pad - cornerLen);
+          ctx.stroke();
+
+          // Bottom Right Corner
+          ctx.beginPath();
+          ctx.moveTo(w - pad - cornerLen, h - pad);
+          ctx.lineTo(w - pad, h - pad);
+          ctx.lineTo(w - pad, h - pad - cornerLen);
+          ctx.stroke();
+      }
+
+      // Left Status Indicator Bar (neon bar for active button)
+      if (isSelected) {
+          ctx.fillStyle = '#22d3ee';
+          ctx.beginPath();
+          ctx.roundRect(8, 16, 5, h - 32, 2.5);
+          ctx.fill();
+      }
+
+      // Label text (Shift slightly to the right if selected to balance left indicator bar)
       ctx.fillStyle = isSelected ? '#22d3ee' : (isHovered ? '#ffffff' : 'rgba(255, 255, 255, 0.7)');
+      const textX = isSelected ? w / 2 + 4 : w / 2;
       
       // Split text on spaces to wrap neatly on two lines inside the small tab canvas
       const words = tab.label.split(' ');
@@ -3545,39 +3682,15 @@ export class JugnuSystem extends createSystem({
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       if (words.length > 1) {
-          ctx.fillText(words.slice(0, Math.ceil(words.length / 2)).join(' '), w / 2, h / 2 - 16);
-          ctx.fillText(words.slice(Math.ceil(words.length / 2)).join(' '), w / 2, h / 2 + 16);
+          ctx.fillText(words.slice(0, Math.ceil(words.length / 2)).join(' '), textX, h / 2 - 16);
+          ctx.fillText(words.slice(Math.ceil(words.length / 2)).join(' '), textX, h / 2 + 16);
       } else {
-          ctx.fillText(tab.label, w / 2, h / 2);
+          ctx.fillText(tab.label, textX, h / 2);
       }
 
       tab.texture.needsUpdate = true;
   }
 
-  private setTutorialVideo(step: number) {
-      if (!this.tutorialVideo) {
-          this.tutorialVideo = document.createElement('video');
-          this.tutorialVideo.crossOrigin = 'anonymous';
-          this.tutorialVideo.loop = true;
-          this.tutorialVideo.muted = true;
-          this.tutorialVideo.playsInline = true;
-          this.tutorialVideo.autoplay = true;
-          this.tutorialVideo.play().catch(() => {});
-      }
-      
-      let src = "./JugnuV4/JugnuPinched.mp4";
-      if (step === 1) src = "./JugnuV4/JugnuRotate.mp4";
-      else if (step === 2) src = "./JugnuV4/JugnuPinched.mp4";
-      else if (step === 3) src = "./JugnuV4/JugnuRotate.mp4";
-      else if (step === 4 || step === 5) src = "./360Videos/view1.mp4";
-      
-      const absSrc = new URL(src, window.location.href).href;
-      if (this.tutorialVideo.src !== absSrc) {
-          this.tutorialVideo.src = src;
-          this.tutorialVideo.load();
-          this.tutorialVideo.play().catch(() => {});
-      }
-  }
 
   private redrawCompassTutorial(step: number) {
       const ctx = this.compassTutorialCtx;
@@ -3611,48 +3724,18 @@ export class JugnuSystem extends createSystem({
           ctx.stroke();
       }
 
-      // Console Header text
+      // Console Header text (scaled/positioned to save space)
       ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 20px monospace';
+      ctx.font = 'bold 16px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText("HOLOGRAPHIC TUTORIAL", w / 2, 36 + dy);
+      ctx.fillText("HOLOGRAPHIC TUTORIAL", w / 2, 118);
 
       // Divider line
       ctx.strokeStyle = 'rgba(255, 215, 0, 0.3)';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(24 + dx, 48 + dy); ctx.lineTo(w - 24 - dx, 48 + dy);
+      ctx.moveTo(24 + dx, 126); ctx.lineTo(w - 24 - dx, 126);
       ctx.stroke();
-
-      // Current Active Instruction
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 15px monospace';
-      ctx.fillText(`STEP ${step + 1} OF 6`, w / 2, 72 + dy);
-
-      // Ensure video is set
-      this.setTutorialVideo(step);
-
-      // Video Frame Box
-      const videoW = 240;
-      const videoH = 135;
-      const videoX = (w - videoW) / 2;
-      const videoY = 90 + dy;
-
-      if (this.tutorialVideo && this.tutorialVideo.readyState >= 2) {
-          ctx.drawImage(this.tutorialVideo, videoX, videoY, videoW, videoH);
-      } else {
-          // Loading fallback
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-          ctx.fillRect(videoX, videoY, videoW, videoH);
-          ctx.fillStyle = '#00ffff';
-          ctx.font = '14px monospace';
-          ctx.fillText("LOADING VIDEO...", w / 2, videoY + videoH / 2);
-      }
-
-      // Cyan neon border
-      ctx.strokeStyle = '#00ffff';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(videoX, videoY, videoW, videoH);
 
       let title = "";
       let desc = "";
@@ -3679,13 +3762,42 @@ export class JugnuSystem extends createSystem({
           desc = "All core gestures learned successfully! You are fully configured to operate Jugnu XR Core features. Use the Compass UI for stadium controls at any time.";
       }
 
-      ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 18px monospace';
-      ctx.fillText(title, w / 2, 252 + dy);
+      // Title & Step indicator (combined below header)
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 14px monospace';
+      if (step >= 0 && step <= 5) {
+          ctx.fillText(`STEP ${step + 1} OF 6: ${title}`, w / 2, 142);
+      } else {
+          ctx.fillText(title, w / 2, 142);
+      }
 
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-      ctx.font = '14px monospace';
-      this.wrapText(desc, w / 2, 280 + dy, 440, 18);
+      // Image Frame Box (100% larger size: 480x270)
+      const imgW = 480;
+      const imgH = 270;
+      const imgX = (w - imgW) / 2;
+      const imgY = 152;
+
+      const tutImg = this.tutorialImages[step];
+      if (tutImg && tutImg.complete && tutImg.naturalWidth > 0) {
+          ctx.drawImage(tutImg, imgX, imgY, imgW, imgH);
+      } else {
+          // Loading fallback
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+          ctx.fillRect(imgX, imgY, imgW, imgH);
+          ctx.fillStyle = '#00ffff';
+          ctx.font = '14px monospace';
+          ctx.fillText("LOADING IMAGE...", w / 2, imgY + imgH / 2);
+      }
+
+      // Cyan neon border
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(imgX, imgY, imgW, imgH);
+
+      // Description text wrapped neatly at the bottom
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.font = '13px monospace';
+      this.wrapText(desc, w / 2, 436, 460, 16);
 
       this.compassTutorialTexture.needsUpdate = true;
   }

@@ -261,19 +261,42 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   // so CSS div tricks don't work. We use a Three.js plane in world space instead.
   // It sits far behind the camera and Jugnu, rendered before everything else.
   let landingBgMesh: Mesh | null = null;
+
+  const resizeLandingBg = () => {
+    if (!landingBgMesh || !camera) return;
+    
+    // Distance from camera to plane
+    const d = Math.abs(camera.position.z - landingBgMesh.position.z);
+    
+    // Frustum height and width at distance d
+    const visibleHeight = 2 * Math.tan(((camera as any).fov * Math.PI) / 360) * d;
+    const visibleWidth = visibleHeight * (camera as any).aspect;
+    
+    // Fit side-to-side (width fills screen width exactly)
+    const scaleX = visibleWidth;
+    // Compute height proportionally for 16:9 aspect ratio to avoid any crop
+    const scaleY = scaleX / (16 / 9);
+    
+    landingBgMesh.scale.set(scaleX, scaleY, 1);
+  };
+
   {
     const texLoader = new TextureLoader();
     texLoader.load('./textures/JugnuLandingBG.png', (bgTex: any) => {
       bgTex.colorSpace = SRGBColorSpace;
-      const bgGeo = new PlaneGeometry(30, 17); // fills ~FOV at z=-8 from camera
+      const bgGeo = new PlaneGeometry(1, 1); // Unit geometry so we scale directly
       const bgMat = new MeshBasicMaterial({ map: bgTex, depthWrite: false, depthTest: false });
       landingBgMesh = new Mesh(bgGeo, bgMat);
       // Position: camera looks toward z=-0.8, place plane well behind at z=-8, same height
       landingBgMesh.position.set(0, 1.45, -8);
       landingBgMesh.renderOrder = -999; // render before everything in the scene
       world.createTransformEntity(landingBgMesh);
+      
+      resizeLandingBg();
     });
   }
+
+  window.addEventListener('resize', resizeLandingBg);
 
   // floor grid helper removed
 
@@ -451,7 +474,10 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   world.visibilityState.subscribe((state) => {
     if (state === VisibilityState.NonImmersive) {
       // Show landing background plane and UI
-      if (landingBgMesh) landingBgMesh.visible = true;
+      if (landingBgMesh) {
+        landingBgMesh.visible = true;
+        resizeLandingBg();
+      }
       if (landingPage) {
         landingPage.style.display = "flex";
         requestAnimationFrame(() => {
