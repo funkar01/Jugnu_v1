@@ -1022,9 +1022,10 @@ export class JugnuSystem extends createSystem({
           if (this.isGridLocked) {
               // Rigid Lock: perfectly frozen with zero floating/noise/drift
               obj.position.copy(this.centerPos);
-              if (this.leftPinchCount === 1) {
-                  // High-frequency vibration breakout feedback on first pinch
-                  const vibrationIntensity = 0.003;
+              if (this.lockEscapeTimer > 0) {
+                  // High-frequency vibration breakout feedback proportional to lock hold progress
+                  const progress = Math.min(this.lockEscapeTimer / 3.0, 1.0);
+                  const vibrationIntensity = progress * 0.005;
                   obj.position.x += (Math.random() - 0.5) * vibrationIntensity;
                   obj.position.y += (Math.random() - 0.5) * vibrationIntensity;
                   obj.position.z += (Math.random() - 0.5) * vibrationIntensity;

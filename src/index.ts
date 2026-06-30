@@ -45,7 +45,7 @@ import { DomainExpansionSystem } from "./domainExpansion.js";
 import { CityMapSystem } from "./cityMapSystem.js";
 import { ObjectDetectionSystem } from "./objectDetectionSystem.js";
 import { SpatialFXSystem } from "./spatialFX.js";
-import { ACESFilmicToneMapping, Color, GridHelper, Material } from "three";
+import { ACESFilmicToneMapping, Color, GridHelper, Material, TextureLoader } from "three";
 
 export const IS_DEV = ((import.meta as any).env.VITE_DEBUG_MODE === "true") || (import.meta as any).env.DEV;
 
@@ -59,6 +59,11 @@ const assets: AssetManifest = {
   },
   webxr: {
     url: "./textures/webxr.png", // Changed from /textures/
+    type: AssetType.Texture,
+    priority: "critical",
+  },
+  jugnuLandingBG: {
+    url: "./textures/JugnuLandingBG.png",
     type: AssetType.Texture,
     priority: "critical",
   },
@@ -248,8 +253,27 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
       renderer.outputColorSpace = SRGBColorSpace;
   }
 
-  // Set premium B2B dark slate-navy scene background
+  // Restore scene background (dark navy for XR/fallback)
   world.scene.background = new Color(0x020617);
+
+  // --- Landing Page Background Plane ---
+  // The IWSDK renders its passthrough/emulator background INSIDE the WebGL canvas,
+  // so CSS div tricks don't work. We use a Three.js plane in world space instead.
+  // It sits far behind the camera and Jugnu, rendered before everything else.
+  let landingBgMesh: Mesh | null = null;
+  {
+    const texLoader = new TextureLoader();
+    texLoader.load('./textures/JugnuLandingBG.png', (bgTex: any) => {
+      bgTex.colorSpace = SRGBColorSpace;
+      const bgGeo = new PlaneGeometry(30, 17); // fills ~FOV at z=-8 from camera
+      const bgMat = new MeshBasicMaterial({ map: bgTex, depthWrite: false, depthTest: false });
+      landingBgMesh = new Mesh(bgGeo, bgMat);
+      // Position: camera looks toward z=-0.8, place plane well behind at z=-8, same height
+      landingBgMesh.position.set(0, 1.45, -8);
+      landingBgMesh.renderOrder = -999; // render before everything in the scene
+      world.createTransformEntity(landingBgMesh);
+    });
+  }
 
   // floor grid helper removed
 
@@ -423,16 +447,21 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   // Start polling compilation states
   requestAnimationFrame(checkShaderCompilation);
 
-  // Handle visibility transitions to dynamically hide/show landing page
+  // Handle visibility transitions to dynamically hide/show landing page + bg plane
   world.visibilityState.subscribe((state) => {
-    if (landingPage) {
-      if (state === VisibilityState.NonImmersive) {
+    if (state === VisibilityState.NonImmersive) {
+      // Show landing background plane and UI
+      if (landingBgMesh) landingBgMesh.visible = true;
+      if (landingPage) {
         landingPage.style.display = "flex";
-        // Let display apply before opacity transition
         requestAnimationFrame(() => {
           landingPage.style.opacity = "1";
         });
-      } else {
+      }
+    } else {
+      // In XR/AR mode: hide the background plane so passthrough camera is unobstructed
+      if (landingBgMesh) landingBgMesh.visible = false;
+      if (landingPage) {
         landingPage.style.opacity = "0";
         setTimeout(() => {
           if (world.visibilityState.value !== VisibilityState.NonImmersive) {

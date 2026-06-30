@@ -1567,3 +1567,12 @@
   - `[x]` Fixed the 512x900 canvas resizing bug on maximizing the roster menu
   - `[x]` Rotated both `f1RosterMesh` and `f1ActiveCardGroup` by 180 degrees (`Math.PI` around local Y axis) after their respective `lookAt(headPos)` updates, ensuring their front faces and textures look toward the user rather than backwards/mirrored
   - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled Vite client production bundle via `npm run build`
+
+- `[x]` Landing Page Background Customization (Current Run)
+  - `[x]` Copied `JugnuLandingBG.png` from `C:\Users\SSD\Pictures\Jugnu\` to `public/textures/`
+  - `[x]` Added `jugnuLandingBG` to `AssetManifest` in `src/index.ts`
+  - `[x]` Programmed dynamic background texture mapping on `world.scene.background` inside `src/index.ts` for flat-screen 2D landing mode
+  - `[x]` Implemented cover aspect-ratio calculation inside a window resize event to prevent image distortion/stretching
+  - `[x]` Setup auto-clear `world.scene.background = null` when entering immersive WebXR mode to preserve AR passthrough camera feed
+  - `[x]` Patched compilation error in `src/jugnu.ts` by replacing obsolete `leftPinchCount` references with `lockEscapeTimer` shaking heuristics
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and compiled production bundle successfully via `npm run build`
