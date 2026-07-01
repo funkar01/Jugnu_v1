@@ -51,7 +51,7 @@ export default function TelemetryHub() {
           FULLSTACK ARCHITECTURE HUB: "How It Works"
         </h2>
         <p className="mt-2 text-slate-400 max-w-xl mx-auto text-sm">
-          A deep dive into the frontend rendering loops and globally distributed Edge serverless endpoints powering Jugnu XR.
+          Deep dive into the frontend rendering loop and edge serverless architecture.
         </p>
       </div>
 
@@ -102,7 +102,7 @@ export default function TelemetryHub() {
                     <div>
                       <h4 className="text-sm font-mono text-orange-400 uppercase tracking-wider">Runtime Environment</h4>
                       <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                        Built on <strong className="text-white font-semibold">IWSDK</strong> (Immersive Web SDK) which wraps <strong className="text-white font-semibold">Three.js</strong> and manages standard WebXR integrations (hand tracking, spatial inputs, physical boundaries, and Edge visibility transitions).
+                        Immersive Web SDK wrapping Three.js to manage hand tracking, inputs, and boundaries.
                       </p>
                     </div>
                   </div>
@@ -114,7 +114,7 @@ export default function TelemetryHub() {
                     <div>
                       <h4 className="text-sm font-mono text-orange-400 uppercase tracking-wider">Pattern Architecture</h4>
                       <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                        Strict <strong className="text-white font-semibold">Entity-Component-System (ECS)</strong> pattern for a highly modular, clean render loop and deterministic lifecycle management.
+                        Entity-Component-System pattern for a clean, modular render loop.
                       </p>
                     </div>
                   </div>
@@ -131,7 +131,7 @@ export default function TelemetryHub() {
                         <span>ZERO-GC LOOPS</span>
                       </div>
                       <p className="text-[11px] text-slate-300 leading-relaxed">
-                        Eliminates frame drops (maintaining 72-90 FPS in VR) by pre-allocating memory pools (scratch vectors, matrices, instanced mesh sparks) instead of making allocations inside the runtime update loops.
+                        Eliminates frame drops by pre-allocating scratch matrices and particle vectors.
                       </p>
                     </div>
 
@@ -141,7 +141,7 @@ export default function TelemetryHub() {
                         <span>PRE-COMPILATION</span>
                       </div>
                       <p className="text-[11px] text-slate-300 leading-relaxed">
-                        Polls and compiles shaders during the landing page phase so entering XR has zero micro-stutters.
+                        Pre-compiles WebGL shaders on load for stutter-free entry into XR.
                       </p>
                     </div>
 
@@ -151,7 +151,7 @@ export default function TelemetryHub() {
                         <span>SPATIAL FX ENGINE</span>
                       </div>
                       <p className="text-[11px] text-slate-300 leading-relaxed">
-                        Real-time spatial audio oscillators and panning nodes (hover/vibration feedback) coupled with instanced particle systems.
+                        Spatial WebAudio oscillators paired with instanced particle FX.
                       </p>
                     </div>
                   </div>
@@ -185,7 +185,7 @@ export default function TelemetryHub() {
                       </div>
                       <div className="font-sans font-bold text-xs text-slate-200 mt-1">Gemini Edge Proxy</div>
                       <p className="text-[11px] text-slate-300 leading-relaxed">
-                        A secure serverless proxy that forwards client requests directly to the <strong className="text-white">Gemini 2.5 Flash API</strong> using Edge functions. This handles voice transcription, conversational responses, and stadium telemetry instructions without exposing API keys to the client.
+                        Edge proxy that forwards client voice queries directly to the Gemini 2.5 Flash API securely.
                       </p>
                     </div>
 
@@ -196,7 +196,7 @@ export default function TelemetryHub() {
                       </div>
                       <div className="font-sans font-bold text-xs text-slate-200 mt-1">Street View Session Cache</div>
                       <p className="text-[11px] text-slate-300 leading-relaxed">
-                        Fetches and caches Google Maps Street View session credentials on the Edge serverless layer, rotating keys on expiry.
+                        Caches and rotates Street View session credentials on the Edge serverless layer.
                       </p>
                     </div>
 
@@ -207,7 +207,7 @@ export default function TelemetryHub() {
                       </div>
                       <div className="font-sans font-bold text-xs text-slate-200 mt-1">Panorama Resolution Endpoint</div>
                       <p className="text-[11px] text-slate-300 leading-relaxed">
-                        Translates coordinate points (<code className="text-slate-300 font-mono">lat, lng</code>) to specific Google Maps Panorama IDs (<code className="text-slate-300 font-mono">panoId</code>).
+                        Resolves latitude and longitude coordinates into Google Maps Panorama IDs.
                       </p>
                     </div>
 
@@ -218,7 +218,7 @@ export default function TelemetryHub() {
                       </div>
                       <div className="font-sans font-bold text-xs text-slate-200 mt-1">Tile Proxy</div>
                       <p className="text-[11px] text-slate-300 leading-relaxed">
-                        Streams 512x512 JPEG street view panorama tiles directly to the client canvas in parallel, utilizing Edge caching (<code className="text-slate-300 font-mono">public, max-age=86400</code>) to accelerate loading and optimize API costs.
+                        Streams panorama tiles directly to the client canvas with high-performance Edge caching.
                       </p>
                     </div>
                   </div>
@@ -249,7 +249,7 @@ export default function TelemetryHub() {
                   WIRELESS INSTANT TESTING
                 </div>
                 <p className="text-[10px] text-slate-400 leading-relaxed">
-                  No cables, side-loading, or developer certificates. Standard secure local channels hot-reload code builds wirelessly to all headsets (Vision Pro, Quest 3, Pico 4) and mobiles simultaneously.
+                  Wireless hot-reload to Quest 3, Vision Pro, and mobiles instantly without sideloading.
                 </p>
               </div>
 
@@ -259,7 +259,7 @@ export default function TelemetryHub() {
                   UNIFIED CROSS-HARDWARE
                 </div>
                 <p className="text-[10px] text-slate-400 leading-relaxed">
-                  A single unified TypeScript and WebGL codebase runs natively on mobile WebAR pipelines, high-end desktop web browser engines, and stand-alone spatial hardware.
+                  Single unified codebase running natively on WebAR, browsers, and spatial hardware.
                 </p>
               </div>
 
@@ -269,7 +269,7 @@ export default function TelemetryHub() {
                   URL-BASED MASS SCALABILITY
                 </div>
                 <p className="text-[10px] text-slate-400 leading-relaxed">
-                  Distribute live sports streams instantly via simple web links. Scale to millions of concurrent spectators without App Store approvals or gigabyte installation barriers.
+                  Stream live games instantly via web links without App Store approval or installs.
                 </p>
               </div>
             </div>

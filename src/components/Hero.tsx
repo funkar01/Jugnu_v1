@@ -35,7 +35,7 @@ export default function Hero({ onTriggerScan, isScanning, activeSportName }: Her
         </h1>
         
         <p className="mt-6 text-sm md:text-base text-blue-100/80 tracking-wide max-w-2xl mx-auto leading-relaxed">
-          Volumetric Mixed Reality Sports Broadcasting powered by the Immersive Web. Experience live games as 3D holographic dioramas in your living room, directly on your desk. Built by <span className="text-orange-400 font-bold">Team Jugnu</span>, Rush XR Studios.
+          Volumetric Mixed Reality sports broadcasting. Experience live games as interactive 3D holographic dioramas directly on your desk. Built by <span className="text-orange-400 font-bold">Team Jugnu</span>.
         </p>
       </div>
 
@@ -66,11 +66,11 @@ export default function Hero({ onTriggerScan, isScanning, activeSportName }: Her
                 Reclaiming "Hyper-Reality" for Spatial Telemetry
               </h3>
               <p className="mt-3 text-sm text-slate-300 leading-relaxed italic font-sans font-light">
-                "We saw Keiichi Matsuda's chaotic Hyper-Reality vision and asked: <strong className="text-white font-medium">What if we harnessed that visual density for something spectacular?</strong> We extracted the pure telemetry and built a premium spatial HUD."
+                "Harnessing chaotic augmented vision to build a clean, premium spatial telemetry HUD."
               </p>
               <div className="mt-4 flex items-center gap-2 text-[10px] font-mono text-slate-500">
                 <span className="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
-                <span>CONTRASTING OVERWHELMING ADVERTISING WITH HIGH-FIDELITY UTILITY</span>
+                <span>HIGH-FIDELITY SPATIAL TELEMETRY UTILITY</span>
               </div>
             </div>
           </div>

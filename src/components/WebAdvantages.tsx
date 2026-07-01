@@ -42,7 +42,7 @@ export default function WebAdvantages() {
                 Zero-Install Live Testing Cycle
               </h3>
               <p className="text-sm text-slate-300 leading-relaxed max-w-xl">
-                Forget side-loading, compiler waiting lists, and weeks of App Store reviews. Our developers code on a desktop, hit save, and the Meta Quest 3, Pico 4, or Apple Vision Pro headsets instantly hot-reload changes over secure local web channels.
+                Debug directly in the browser and hot-reload changes wirelessly to Quest 3, Vision Pro, and mobiles in seconds.
               </p>
             </div>
 
@@ -75,7 +75,7 @@ export default function WebAdvantages() {
                 Immediate Link Sharing
               </h3>
               <p className="text-sm text-slate-300 leading-relaxed">
-                Distribution is as simple as sharing a URL. Send a live sports moments trajectory or final wickets compilation over SMS or WhatsApp. Tapping the link opens the immersive stadium immediately, without any heavy gigabyte installations.
+                Launch live streams instantly via web links without App Store installs or setup barriers.
               </p>
             </div>
 
@@ -101,7 +101,7 @@ export default function WebAdvantages() {
                 Multi-Platform Range
               </h3>
               <p className="text-sm text-slate-300 leading-relaxed">
-                A single unified TypeScript and WebGL codebase runs effortlessly on low-end mobile browsers, high-end PC engines, flat screen laptops, standalone Quest VR headsets, and premium high-pixel spatial computers.
+                One codebase runs natively on mobile WebAR, high-end desktop browsers, standalone Quest headsets, and Vision Pro.
               </p>
             </div>
 
@@ -128,7 +128,7 @@ export default function WebAdvantages() {
                 True Architectural Independence
               </h3>
               <p className="text-sm text-slate-300 leading-relaxed max-w-xl">
-                By building on the standard Immersive Web architecture, we bypass developer license subscriptions, proprietary OS walls, and licensing updates. Your content remains yours, fully protected under standard web encryption protocols.
+                Built on open standards to guarantee compatibility and longevity across Chrome, Safari, and VR browsers.
               </p>
             </div>
 

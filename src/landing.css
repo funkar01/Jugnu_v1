@@ -69,10 +69,10 @@ body, p, li, button, a {
 
 /* Force all typography to exactly 4 distinct font-sizes, no more */
 :root {
-  --size-1: clamp(2rem, 5.5vw, 3.5rem);
-  --size-2: clamp(1.25rem, 3.5vw, 1.875rem);
-  --size-3: 0.9375rem;
-  --size-4: 0.75rem;
+  --size-1: clamp(2.5rem, 6.5vw, 4.25rem);
+  --size-2: clamp(1.5rem, 4vw, 2.25rem);
+  --size-3: 1.0625rem;
+  --size-4: 0.875rem;
 }
 
 /* Size 1: Big Headings */

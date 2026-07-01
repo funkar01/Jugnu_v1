@@ -283,7 +283,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
               Jugnu: Your Spatial Guide
             </h2>
             <p className="text-slate-300 text-sm md:text-base leading-relaxed">
-              Meet Jugnu—a responsive, voice-controlled, gesture-enabled spatial assistant. Engineered to follow the player on a virtual table, Jugnu reacts dynamically with physics, shifts facial matrices to display emotional telemetry, and acts as your direct audio-visual HUD anchor.
+              A voice-controlled, gesture-enabled spatial assistant. Reacts dynamically with physics and shifts facial expressions to represent game emotions.
             </p>
           </div>
 
@@ -295,8 +295,8 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
                 <Brain className="w-5 h-5 text-orange-400" />
               </div>
               <div>
-                <h4 className="font-sans font-bold text-sm text-slate-100">Intelligent Eye Expressions</h4>
-                <p className="text-xs text-slate-400 mt-1">Changes visual facial matrices based on match events, scores, dismissals, or gesture pinch states.</p>
+                <h4 className="font-sans font-bold text-sm text-slate-100">Intelligent Expressions</h4>
+                <p className="text-xs text-slate-400 mt-1">Shifts facial matrices based on match events and gesture states.</p>
               </div>
             </div>
 
@@ -306,7 +306,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
               </div>
               <div>
                 <h4 className="font-sans font-bold text-sm text-slate-100">Voice-Controlled Panning</h4>
-                <p className="text-xs text-slate-400 mt-1">Responds to conversational vocal cues with built-in real-time spatial panning audio nodes.</p>
+                <p className="text-xs text-slate-400 mt-1">Responds to vocal cues with built-in real-time spatial panning audio nodes.</p>
               </div>
             </div>
 
@@ -315,8 +315,8 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
                 <Activity className="w-5 h-5 text-orange-400" />
               </div>
               <div>
-                <h4 className="font-sans font-bold text-sm text-slate-100">Cross-Platform Shader Alignment</h4>
-                <p className="text-xs text-slate-400 mt-1">Our mobile AR tracking app runs the exact same 3D fluid video-blend shader pipeline as the immersive headset app, aligning aesthetics perfectly.</p>
+                <h4 className="font-sans font-bold text-sm text-slate-100">Shader Alignment</h4>
+                <p className="text-xs text-slate-400 mt-1">Runs the same fluid shader rendering pipeline on both mobile and spatial headsets.</p>
               </div>
             </div>
 
@@ -326,7 +326,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
               </div>
               <div>
                 <h4 className="font-sans font-bold text-sm text-slate-100">Autonomous Physics Orbit</h4>
-                <p className="text-xs text-slate-400 mt-1">Orbits stadium centers or floats above batting pads without colliding with 3D boundary walls.</p>
+                <p className="text-xs text-slate-400 mt-1">Orbits stadium coordinates smoothly without colliding with virtual bounds.</p>
               </div>
             </div>
 

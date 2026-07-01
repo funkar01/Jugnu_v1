@@ -278,12 +278,12 @@ export default function App() {
                     YOUR TABLETOP
                   </h1>
                   <p className="text-slate-300 text-sm md:text-base leading-relaxed">
-                    Why settle for flat, passive streaming? <strong>Jugnu XR</strong> — by Rush XR Studios — is redefining the spatial broadcast medium. We capture volumetric coordinates of athletic action, transforming live stadiums into interactive 3D dioramas delivered over light-weight web frameworks.
+                    Redefining live sports. We transform raw athletic coordinates into interactive 3D dioramas delivered instantly to lightweight web browsers.
                   </p>
                   <div className="p-4 rounded-xl bg-slate-950/80 border border-orange-500/10 flex items-center gap-3">
                     <Terminal className="w-5 h-5 text-orange-500" />
                     <div className="text-xs font-mono text-slate-400">
-                      SYS_LOG: Tabletop coordinates syncing @ 90Hz directly to your web browser frames. No headset downloads required.
+                      SYS_LOG: Tabletop coordinates syncing @ 90Hz directly to your browser.
                     </div>
                   </div>
                   <div className="pt-2">
@@ -319,9 +319,9 @@ export default function App() {
                 <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
                   IMPOSSIBLE PERFORMANCE ON LIGHTWEIGHT WEB BROWSERS
                 </h2>
-                <p className="text-slate-300 text-xs md:text-sm max-w-3xl leading-relaxed">
-                  Most spatial headsets suffer from slow initial setups and high native storage requirements. We engineered our entire spatial client in pure JavaScript, enabling immediate loading times with no store downloads.
-                </p>
+                  <p className="text-slate-300 text-xs md:text-sm max-w-3xl leading-relaxed">
+                    Skip heavy store downloads. Our pure WebGL client runs directly in the browser with near-zero loading latency.
+                  </p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
                   <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
@@ -331,7 +331,7 @@ export default function App() {
                       </div>
                       <h3 className="text-sm font-sans font-bold text-slate-100">Zero-GC Rendering</h3>
                       <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
-                        Pre-allocated memory pooling patterns prevent Garbage Collection runs in the browser, guaranteeing zero frame-drops during peak trajectories.
+                        Pre-allocated vectors ensure zero frame drops.
                       </p>
                     </div>
                     <span className="text-[10px] font-mono text-orange-500/70 mt-4 uppercase">STABILIZED THREADS</span>
@@ -344,10 +344,10 @@ export default function App() {
                       </div>
                       <h3 className="text-sm font-sans font-bold text-slate-100">Dynamic Voxel Splines</h3>
                       <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
-                        Compresses multi-camera stadium footage into procedural voxel splines on-the-fly, reducing server-to-client payloads from gigabytes to mere megabytes.
+                        Procedural compression for fast real-time streaming.
                       </p>
                     </div>
-                    <span className="text-[10px] font-mono text-orange-400/70 mt-4 uppercase">COMPRESSION RATIO: 120:1</span>
+                    <span className="text-[10px] font-mono text-orange-400/70 mt-4 uppercase">120:1 COMPRESSION</span>
                   </div>
 
                   <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
@@ -355,9 +355,9 @@ export default function App() {
                       <div className="w-10 h-10 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-3 group-hover:bg-orange-500/20 transition-all">
                         <Radio className="w-5 h-5 text-orange-405 text-orange-400" />
                       </div>
-                      <h3 className="text-sm font-sans font-bold text-slate-100">Synchronized Spatial Audio</h3>
+                      <h3 className="text-sm font-sans font-bold text-slate-100">Spatial Audio</h3>
                       <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
-                        Procedural WebAudio oscillators generate synthesized contact noises (ball-on-bat, motor engines, hardwood bounces) map-located relative to head poses.
+                        Procedural oscillators localized by head movement.
                       </p>
                     </div>
                     <span className="text-[10px] font-mono text-orange-500/70 mt-4 uppercase">WEBAUDIO APIS</span>
@@ -416,17 +416,17 @@ export default function App() {
                     YOUR SPATIAL CO-PILOT
                   </h2>
                   <p className="text-slate-300 text-sm leading-relaxed">
-                    <strong>Jugnu</strong> is our spatial AI system that sits right inside your volumetric diorama. It calculates real-time pitch parameters, analyzes team coordinates, and translates raw coordinates into engaging spoken insights.
+                    A spatial AI system inside your diorama that calculates game parameters and translates raw data into real-time spoken insights.
                   </p>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="p-4 rounded-xl bg-slate-950/80 border border-orange-500/10">
                       <h4 className="font-sans font-bold text-slate-200 text-xs">Acoustics Synthesis</h4>
-                      <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">Synthesizes ball friction angles, bounce velocities, and telemetry sounds.</p>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">Real-time velocity and sound mapping.</p>
                     </div>
                     <div className="p-4 rounded-xl bg-slate-950/80 border border-orange-500/10">
                       <h4 className="font-sans font-bold text-slate-200 text-xs">Adaptive Expressions</h4>
-                      <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">Reacts instantly to broadcast incidents and spectator gesture inputs.</p>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">Dynamic reaction to events and gestures.</p>
                     </div>
                   </div>
 
@@ -450,9 +450,9 @@ export default function App() {
                 <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
                   TELEMETRY TUNER & CALIBRATION HUB
                 </h2>
-                <p className="text-slate-300 text-xs md:text-sm max-w-3xl leading-relaxed">
-                  We give broadcasters total control over active rendering priorities. Adjust thread capabilities, track CPU loads, and observe garbage-collection metrics dynamically below.
-                </p>
+                  <p className="text-slate-300 text-xs md:text-sm max-w-3xl leading-relaxed">
+                    Real-time rendering priority dashboard. Adjust thread loads and inspect live performance metrics.
+                  </p>
 
                 <div className="pt-2">
                   <TelemetryHub />
@@ -545,7 +545,7 @@ export default function App() {
                   SPATIAL BROADCAST HUD
                 </h2>
                 <p className="text-slate-300 text-sm md:text-base leading-relaxed">
-                  Why settle for flat screens? Tapping the Action Compass dials shifts the broadcast feed to any stadium. Instantly spawn Wankhede’s ball flight arcs or Monaco’s Monaco silver racing chicane. Customize your live workspace by locking onto stadiums and let Jugnu calculate instant voxel angles for your headsets.
+                  Shift live feeds instantly between stadiums. Lock onto venues, view ball flight arcs, and calculate real-time diorama angles on your desk.
                 </p>
               </div>
 
@@ -554,19 +554,19 @@ export default function App() {
                 <div className="p-4 rounded-xl bg-slate-950/45 border border-orange-500/20 backdrop-blur-md">
                   <div className="text-xl font-mono font-bold text-orange-400">Jugnu</div>
                   <div className="text-[10px] font-mono text-orange-500/80 uppercase mt-1">VISUAL COMPANION</div>
-                  <p className="text-[11px] text-slate-400 mt-1">Interactive floating 3D assistant rendering live emotional telemetry, voice cues, and gesture updates.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Interactive floating 3D companion rendering emotional telemetry and voice updates.</p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-950/45 border border-orange-500/20 backdrop-blur-md">
                   <div className="text-xl font-mono font-bold text-orange-400">Minimaps</div>
                   <div className="text-[10px] font-mono text-orange-500/80 uppercase mt-1">LIVE SPORTS VIEW</div>
-                  <p className="text-[11px] text-slate-400 mt-1">Procedural tactical overlays, stadium coordinate maps, and real-time trajectories displaying live plays.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Procedural overlays, stadium coordinate maps, and real-time play trajectories.</p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-950/45 border border-orange-500/20 backdrop-blur-md">
                   <div className="text-2xl font-mono font-bold text-orange-400">WebXR</div>
                   <div className="text-[10px] font-mono text-orange-500/80 uppercase mt-1">OPEN PROTOCOLS</div>
-                  <p className="text-[11px] text-slate-400 mt-1">One codebase runs across Quest 3, Apple Vision Pro, mobile browser frames.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">A single unified codebase running across Quest 3, Apple Vision Pro, and mobiles.</p>
                 </div>
 
               </div>
