@@ -1,6 +1,17 @@
-
 # Task List - Minimap & Gesture Refinements
 
+- `[x]` PC Desktop Landing Page Integration
+  - `[x]` Extracted React showcase codebase from `rush-xr.zip`
+  - `[x]` Integrated React 19, Lucide React, Framer Motion, and Tailwind CSS v4 plugins into Vite compiler
+  - `[x]` Configured absolute HTML layering to stack React `#root` on top of Three.js `#scene-container`
+  - `[x]` Exposed global `launchWebXR` action hooks so React buttons can launch the volumetric companion app
+  - `[x]` Programmed automatic platform-adaptive routing: PC/Desktop loads the React site, XR Headsets load the lightweight static card overlay, and Mobiles redirect to the AR app (`sticker.html`)
+- `[x]` F1 Map Zoom Bugfixes and UI Refinements
+  - `[x]` Fixed random 3D glitch line in F1 map by pre-initializing McLaren/RB car vortex points and hiding trails when car is invisible
+  - `[x]` Hid F1 roster driver billboard mesh when zoomed into the 3rd zoom level (`isImmersive` is true)
+  - `[x]` Hid F1 active player profile card (telemetry HUD) when zoomed into the 3rd zoom level (`isImmersive` is true)
+  - `[x]` Made George Russell Mercedes car visible on minimap zoom level 1 (non-immersive mode)
+  - `[x]` Restricted Mercedes slipstream sparks and enabled active wet spray particles for all cars only when `weatherMode === 'rain'`
 - `[x]` Step 1 -> 2 Tutorial progression in `src/jugnu.ts`
 - `[x]` Raising Stadium Mesh vertically by 1cm (`-0.012` to `-0.002`)
   - `[x]` In `src/cityMapSystem.ts`
@@ -1625,6 +1636,10 @@
 - `[x]` Raised Football Goal Posts Level (Current Run)
   - `[x]` Modified the procedural goalposts (`proceduralGoal1` and `proceduralGoal2`) Y positions from `0.0005` to `0.009` inside `src/domainExpansion.ts` to align perfectly with the players and the grass field Y height
   - `[x]` Verified clean type safety compilation (`npx tsc --noEmit`) and compiled production bundle successfully via `npm run build`
+
+- `[x]` Git Push v26 (Current Run)
+  - `[x]` Staged all changes (`git add .`), committed with message `"v26"`, and pushed successfully to remote branch `Jugnu_V26`
+
 
 
 

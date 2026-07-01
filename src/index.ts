@@ -428,12 +428,16 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
   logoBanner.rotateY(Math.PI);
   */
 
-  // Wire landing page interactive controls
-  const enterXrBtn = document.getElementById("enter-xr-btn");
-  const landingPage = document.getElementById("landing-page");
-  const shaderStatus = document.getElementById("shader-status-val");
-  const beaconText = document.querySelector(".status-beacon span");
+  // Expose global variables and callbacks for the React landing page
+  (window as any).webxrSystemReady = false;
+  (window as any).shaderCompilationProgress = "Compiling Shaders...";
+  (window as any).launchWebXR = () => {
+    console.log("[Index] launchWebXR invoked globally.");
+    world.launchXR();
+  };
 
+  // Wire VR/AR landing page interactive controls (for headsets)
+  const enterXrBtn = document.getElementById("enter-xr-btn");
   if (enterXrBtn) {
     enterXrBtn.addEventListener("click", () => {
       world.launchXR();
@@ -446,13 +450,20 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
     const domainCompiled = (window as any).domainExpansionShadersCompiled;
 
     if (cityCompiled && domainCompiled) {
-      if (enterXrBtn) {
-        (enterXrBtn as HTMLButtonElement).disabled = false;
-        enterXrBtn.innerHTML = `
+      (window as any).webxrSystemReady = true;
+      (window as any).shaderCompilationProgress = "Ready";
+
+      const enterXrBtnEl = document.getElementById("enter-xr-btn");
+      const shaderStatus = document.getElementById("shader-status-val");
+      const beaconText = document.querySelector(".status-beacon span");
+
+      if (enterXrBtnEl) {
+        (enterXrBtnEl as HTMLButtonElement).disabled = false;
+        enterXrBtnEl.innerHTML = `
           <svg style="width: 20px; height: 20px; fill: currentColor; margin-right: 8px;" viewBox="0 0 24 24">
             <path d="M21 5c-1.11-.01-2 .89-2 2v2.5l-2-2V5c0-1.11-.89-2-2-2H9c-1.11 0-2 .89-2 2v2.5l-2-2V5c0-1.11-.89-2-2-2s-2 .89-2 2v14c0 1.11.89 2 2 2s2-.89 2-2v-2.5l2 2V19c0 1.11.89 2 2 2h6c1.11 0 2-.89 2-2v-2.5l2 2V19c0 1.11.89 2 2 2s2-.89 2-2V5c0-1.11-.89-2-2-2zM9 19H5v-4.5l2 2V19zm10 0h-4v-2.5l2-2V19zM7 7.5L5 5.5V5h4v2.5zM19 5v2.5h-4V5h4z"/>
           </svg>
-          <span>Enter XR</span>
+          <span>Enter Volumetric Stadium</span>
         `;
       }
       if (shaderStatus) {
@@ -472,26 +483,31 @@ World.create(document.getElementById("scene-container") as HTMLDivElement, {
 
   // Handle visibility transitions to dynamically hide/show landing page + bg plane
   world.visibilityState.subscribe((state) => {
+    const rootEl = document.getElementById("root");
+    const landingPageEl = document.getElementById("landing-page");
+    const isPC = (window as any).isDesktopPC;
+    const activeEl = isPC ? rootEl : landingPageEl;
+
     if (state === VisibilityState.NonImmersive) {
       // Show landing background plane and UI
       if (landingBgMesh) {
         landingBgMesh.visible = true;
         resizeLandingBg();
       }
-      if (landingPage) {
-        landingPage.style.display = "flex";
+      if (activeEl) {
+        activeEl.style.display = isPC ? "block" : "flex";
         requestAnimationFrame(() => {
-          landingPage.style.opacity = "1";
+          activeEl.style.opacity = "1";
         });
       }
     } else {
       // In XR/AR mode: hide the background plane so passthrough camera is unobstructed
       if (landingBgMesh) landingBgMesh.visible = false;
-      if (landingPage) {
-        landingPage.style.opacity = "0";
+      if (activeEl) {
+        activeEl.style.opacity = "0";
         setTimeout(() => {
           if (world.visibilityState.value !== VisibilityState.NonImmersive) {
-            landingPage.style.display = "none";
+            activeEl.style.display = "none";
           }
         }, 500);
       }

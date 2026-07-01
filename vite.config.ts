@@ -3,6 +3,8 @@ import { compileUIKit } from "@iwsdk/vite-plugin-uikitml";
 import { defineConfig, loadEnv } from "vite";
 import mkcert from "vite-plugin-mkcert";
 import type { Plugin } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 // ── Street View Server-Side Proxy Plugin ────────────────────────────────────
 // All requests to tile.googleapis.com are made server-side (key never exposed).
@@ -145,6 +147,8 @@ export default defineConfig(({ mode }) => {
     base: './',
 
     plugins: [
+      react(),
+      tailwindcss(),
       mkcert(),
       iwsdkDev({
         emulator: { device: "metaQuest3" },

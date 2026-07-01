@@ -12,7 +12,16 @@
   "dependencies": {
     "@google/genai": "^1.50.1",
     "@iwsdk/core": "0.3.1",
+    "@tailwindcss/vite": "^4.3.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
     "@webspatial/core-sdk": "^1.7.0",
+    "lucide-react": "^0.475.0",
+    "motion": "^12.42.2",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwindcss": "^4.3.2",
     "three": "npm:super-three@0.181.0"
   },
   "devDependencies": {

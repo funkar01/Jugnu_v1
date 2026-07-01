@@ -2472,8 +2472,8 @@ export class DomainExpansionSystem extends createSystem({
                     car.rimMat.color.copy(this.scratchColor);
                 }
 
-                // Spawn Slipstream Trails behind Russell when Leclerc drafts closely
-                if (car.driverId === 'f1_gr' && this._lecGapCurrent < 0 && Math.abs(this._lecGapCurrent) < 0.02) {
+                // Spawn Slipstream Trails behind Russell when Leclerc drafts closely (only if it's raining)
+                if (car.driverId === 'f1_gr' && this._lecGapCurrent < 0 && Math.abs(this._lecGapCurrent) < 0.02 && this.weatherMode === 'rain') {
                     const spatialFX = (window as any).spatialFX;
                     if (spatialFX && Math.random() < 0.25) {
                         car.group.updateMatrixWorld(true);
@@ -2638,31 +2638,41 @@ export class DomainExpansionSystem extends createSystem({
 
                 // ── 5. VORTEX VAPOR TRAILS ──
                 if (this.f1VortexLeft && this.f1VortexRight) {
-                    this.f1VortexLeft.visible = true;
-                    this.f1VortexRight.visible = true;
-                    (this.f1VortexLeft.material as THREE.LineBasicMaterial).opacity = 0.85;
-                    (this.f1VortexRight.material as THREE.LineBasicMaterial).opacity = 0.85;
+                    const isGrVisible = this.nurburgringF1Car.visible;
+                    this.f1VortexLeft.visible = isGrVisible;
+                    this.f1VortexRight.visible = isGrVisible;
+                    if (isGrVisible) {
+                        (this.f1VortexLeft.material as THREE.LineBasicMaterial).opacity = 0.85;
+                        (this.f1VortexRight.material as THREE.LineBasicMaterial).opacity = 0.85;
+                    }
 
                     const rbCar = this.nurburgringCars.find(c => c.colorType === 'mclaren')?.group;
                     if (rbCar && this.f1VortexLeft_RB) {
-                        this.f1VortexLeft_RB.visible = true;
-                        this.f1VortexRight_RB.visible = true;
-                        (this.f1VortexLeft_RB.material as THREE.LineBasicMaterial).opacity = 0.85;
-                        (this.f1VortexRight_RB.material as THREE.LineBasicMaterial).opacity = 0.85;
+                        const isRbVisible = rbCar.visible;
+                        this.f1VortexLeft_RB.visible = isRbVisible;
+                        this.f1VortexRight_RB.visible = isRbVisible;
+                        if (isRbVisible) {
+                            (this.f1VortexLeft_RB.material as THREE.LineBasicMaterial).opacity = 0.85;
+                            (this.f1VortexRight_RB.material as THREE.LineBasicMaterial).opacity = 0.85;
+                        }
                     }
 
                     const feCar = this.nurburgringCars.find(c => c.colorType === 'ferrari')?.group;
                     if (feCar && this.f1VortexLeft_FE) {
-                        this.f1VortexLeft_FE.visible = true;
-                        this.f1VortexRight_FE.visible = true;
-                        (this.f1VortexLeft_FE.material as THREE.LineBasicMaterial).opacity = 0.85;
-                        (this.f1VortexRight_FE.material as THREE.LineBasicMaterial).opacity = 0.85;
+                        const isFeVisible = feCar.visible;
+                        this.f1VortexLeft_FE.visible = isFeVisible;
+                        this.f1VortexRight_FE.visible = isFeVisible;
+                        if (isFeVisible) {
+                            (this.f1VortexLeft_FE.material as THREE.LineBasicMaterial).opacity = 0.85;
+                            (this.f1VortexRight_FE.material as THREE.LineBasicMaterial).opacity = 0.85;
+                        }
                     }
 
                     // Pre-initialize vortex trail points using world matrix to prevent centroid glitch
                     if (!this.f1VortexInitialized) {
                         this.nurburgringF1Car.updateMatrixWorld(true);
                         if (feCar) feCar.updateMatrixWorld(true);
+                        if (rbCar) rbCar.updateMatrixWorld(true);
 
                         for (let i = 0; i < 25; i++) {
                             this.f1VortexLeftPoints[i].set(-0.0037, 0.0030, -0.0050).applyMatrix4(this.nurburgringF1Car.matrixWorld);
@@ -2671,6 +2681,11 @@ export class DomainExpansionSystem extends createSystem({
                             if (feCar) {
                                 this.f1VortexLeftPoints_FE[i].set(-0.0037, 0.0030, -0.0050).applyMatrix4(feCar.matrixWorld);
                                 this.f1VortexRightPoints_FE[i].set( 0.0037, 0.0030, -0.0050).applyMatrix4(feCar.matrixWorld);
+                            }
+
+                            if (rbCar) {
+                                this.f1VortexLeftPoints_RB[i].set(-0.0037, 0.0030, -0.0050).applyMatrix4(rbCar.matrixWorld);
+                                this.f1VortexRightPoints_RB[i].set( 0.0037, 0.0030, -0.0050).applyMatrix4(rbCar.matrixWorld);
                             }
                         }
                         this.f1VortexInitialized = true;
@@ -2748,9 +2763,91 @@ export class DomainExpansionSystem extends createSystem({
                     (this.f1VortexRight_FE.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
                 }
 
-                // ── 6. WET SPRAY INSTANCED PARTICLES (DISABLED BY USER REQUEST) ──
+                // ── 6. WET SPRAY INSTANCED PARTICLES ──
                 if (this.f1SprayMesh) {
-                    this.f1SprayMesh.visible = false;
+                    if (this.weatherMode === 'rain') {
+                        this.f1SprayMesh.visible = true;
+                        (this.f1SprayMesh.material as THREE.MeshBasicMaterial).opacity = 0.45;
+
+                        const heading = this.scratchVector3;
+                        heading.copy(this.f1zAxis);
+
+                        // Emit spray for the active cars
+                        this.nurburgringCars.forEach((car, carIdx) => {
+                            if (!car.group.visible) return; // skip if car hidden
+                            car.group.updateMatrix();
+                            const lRearPos = this.scratchVector1.set(-0.0037, 0.0002, -0.0048).applyMatrix4(car.group.matrix);
+                            const rRearPos = this.scratchVector2.set(0.0037, 0.0002, -0.0048).applyMatrix4(car.group.matrix);
+
+                            let emitSlot = this.f1SprayEmitSlots[carIdx];
+
+                            let idx = (carIdx * 60 + emitSlot) * 8;
+                            this.f1SprayData[idx + 0] = lRearPos.x;
+                            this.f1SprayData[idx + 1] = lRearPos.y;
+                            this.f1SprayData[idx + 2] = lRearPos.z;
+                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
+                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 6] = 0.0;
+                            this.f1SprayData[idx + 7] = 1.0;
+
+                            idx = (carIdx * 60 + ((emitSlot + 1) % 60)) * 8;
+                            this.f1SprayData[idx + 0] = rRearPos.x;
+                            this.f1SprayData[idx + 1] = rRearPos.y;
+                            this.f1SprayData[idx + 2] = rRearPos.z;
+                            this.f1SprayData[idx + 3] = heading.x * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 4] = 0.002 + Math.random() * 0.003;
+                            this.f1SprayData[idx + 5] = heading.z * -0.008 + (Math.random() - 0.5) * 0.002;
+                            this.f1SprayData[idx + 6] = 0.0;
+                            this.f1SprayData[idx + 7] = 1.0;
+
+                            this.f1SprayEmitSlots[carIdx] = (emitSlot + 2) % 60;
+                        });
+
+                        // Update all 360 spray particles
+                        for (let i = 0; i < 360; i++) {
+                            const offset = i * 8;
+                            if (this.f1SprayData[offset + 7] === 1.0) {
+                                // move
+                                this.f1SprayData[offset + 0] += this.f1SprayData[offset + 3];
+                                this.f1SprayData[offset + 1] += this.f1SprayData[offset + 4];
+                                this.f1SprayData[offset + 2] += this.f1SprayData[offset + 5];
+
+                                // apply gravity / drag
+                                this.f1SprayData[offset + 4] -= 0.005 * dt;
+                                this.f1SprayData[offset + 3] *= 0.94;
+                                this.f1SprayData[offset + 5] *= 0.94;
+
+                                this.f1SprayData[offset + 6] += dt; // age
+                                if (this.f1SprayData[offset + 6] > 0.35) {
+                                    this.f1SprayData[offset + 7] = 0.0; // deactivate
+                                    this.f1SprayDummy.position.set(0, -999, 0); // hide
+                                    this.f1SprayDummy.updateMatrix();
+                                    this.f1SprayMesh.setMatrixAt(i, this.f1SprayDummy.matrix);
+                                } else {
+                                    // Scale down as it ages
+                                    const ageRatio = this.f1SprayData[offset + 6] / 0.35;
+                                    const scale = 1.0 - ageRatio;
+
+                                    this.f1SprayDummy.position.set(
+                                        this.f1SprayData[offset + 0],
+                                        this.f1SprayData[offset + 1],
+                                        this.f1SprayData[offset + 2]
+                                    );
+                                    this.f1SprayDummy.scale.set(scale, scale, scale);
+                                    this.f1SprayDummy.updateMatrix();
+                                    this.f1SprayMesh.setMatrixAt(i, this.f1SprayDummy.matrix);
+                                }
+                            } else {
+                                this.f1SprayDummy.position.set(0, -999, 0);
+                                this.f1SprayDummy.updateMatrix();
+                                this.f1SprayMesh.setMatrixAt(i, this.f1SprayDummy.matrix);
+                            }
+                        }
+                        this.f1SprayMesh.instanceMatrix.needsUpdate = true;
+                    } else {
+                        this.f1SprayMesh.visible = false;
+                    }
                 }
 
                 // Hide floating markers in immersive mode (scale >= 2.5)
@@ -2759,8 +2856,8 @@ export class DomainExpansionSystem extends createSystem({
                 }
 
             } else {
-                // Hide F1 car in non-immersive mode
-                this.nurburgringF1Car.visible = false;
+                // Keep F1 car visible in non-immersive mode (minimap zoom level 1)
+                this.nurburgringF1Car.visible = true;
                 if (this.f1HudMesh) this.f1HudMesh.visible = false;
 
                 // Smooth opacity animation for turn markers based on toggle state
@@ -2795,9 +2892,15 @@ export class DomainExpansionSystem extends createSystem({
 
                 // ── F1 LIVE ROSTER & ACTIVE PLAYER CARD SPATIAL UPDATES ──
                 if (this.f1RosterMesh) {
-                    this.f1RosterMesh.visible = true;
-                    // A. Draw/refresh roster list
-                    this.drawF1Roster();
+                    if (isImmersive) {
+                        this.f1RosterMesh.visible = false;
+                        if (this.f1RosterCloseButton) {
+                            this.f1RosterCloseButton.visible = false;
+                        }
+                    } else {
+                        this.f1RosterMesh.visible = true;
+                        // A. Draw/refresh roster list
+                        this.drawF1Roster();
 
                     // B. Roster World-Space Position & Billboarding
                     // The mesh is a scene-root child (NOT inside nurburgringGroup) so it never
@@ -3012,14 +3115,21 @@ export class DomainExpansionSystem extends createSystem({
                         }
                     }
 
-                    if (this.f1TouchCooldown > 0.0) {
-                        this.f1TouchCooldown -= dt;
+                        if (this.f1TouchCooldown > 0.0) {
+                            this.f1TouchCooldown -= dt;
+                        }
                     }
                 }
 
                 // D. Spawned Player Card Updates
                 if (this.f1ActiveCardDriverId !== null && this.f1ActiveCardGroup) {
-                    // Find driver's F1 car
+                    if (isImmersive) {
+                        this.f1ActiveCardGroup.visible = false;
+                        if (this.f1ActiveCarHighlight) {
+                            this.f1ActiveCarHighlight.visible = false;
+                        }
+                    } else {
+                        // Find driver's F1 car
                     const activeCar = this.nurburgringCars.find(c => c.driverId === this.f1ActiveCardDriverId);
                     if (activeCar) {
                         // Update timer
@@ -3066,6 +3176,7 @@ export class DomainExpansionSystem extends createSystem({
                         const cardTarget = this.scratchVector5.copy(headPos);
                         cardTarget.y = cardWorldPos.y;
                         this.f1ActiveCardGroup.lookAt(cardTarget);
+                    }
                     }
                 } else {
                     if (this.f1ActiveCardGroup && this.f1ActiveCardGroup.visible) {
