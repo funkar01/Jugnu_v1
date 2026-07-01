@@ -1637,8 +1637,8 @@
   - `[x]` Modified the procedural goalposts (`proceduralGoal1` and `proceduralGoal2`) Y positions from `0.0005` to `0.009` inside `src/domainExpansion.ts` to align perfectly with the players and the grass field Y height
   - `[x]` Verified clean type safety compilation (`npx tsc --noEmit`) and compiled production bundle successfully via `npm run build`
 
-- `[x]` Git Push v26 (Current Run)
-  - `[x]` Staged all changes (`git add .`), committed with message `"v26"`, and pushed successfully to remote branch `Jugnu_V26`
+- `[x]` Git Push v27 (Current Run)
+  - `[x]` Staged all changes (`git add .`), committed with message `"PC Landing Page & Platform-Adaptive Routing"`, and pushed successfully to remote branch `Jugnu_V27`
 
 
 
