@@ -337,17 +337,17 @@ export default function App() {
                     <span className="text-[10px] font-mono text-orange-500/70 mt-4 uppercase">STABILIZED THREADS</span>
                   </div>
 
-                  <div className="p-5 rounded-2xl bg-slate-950/60 border border-blue-500/15 flex flex-col justify-between hover:border-blue-500/40 transition-all duration-300 group">
+                  <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
                     <div>
-                      <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-3 group-hover:bg-blue-500/20 transition-all">
-                        <Layers className="w-5 h-5 text-blue-400" />
+                      <div className="w-10 h-10 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-3 group-hover:bg-orange-500/20 transition-all">
+                        <Layers className="w-5 h-5 text-orange-400" />
                       </div>
                       <h3 className="text-sm font-sans font-bold text-slate-100">Dynamic Voxel Splines</h3>
                       <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
                         Compresses multi-camera stadium footage into procedural voxel splines on-the-fly, reducing server-to-client payloads from gigabytes to mere megabytes.
                       </p>
                     </div>
-                    <span className="text-[10px] font-mono text-blue-400/70 mt-4 uppercase">COMPRESSION RATIO: 120:1</span>
+                    <span className="text-[10px] font-mono text-orange-400/70 mt-4 uppercase">COMPRESSION RATIO: 120:1</span>
                   </div>
 
                   <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
@@ -552,20 +552,20 @@ export default function App() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left pt-2">
                 
                 <div className="p-4 rounded-xl bg-slate-950/45 border border-orange-500/20 backdrop-blur-md">
-                  <div className="text-2xl font-mono font-bold text-orange-400">90 HZ</div>
-                  <div className="text-[10px] font-mono text-orange-500/80 uppercase mt-1">REFRESH GUARANTEE</div>
-                  <p className="text-[11px] text-slate-400 mt-1">Zero latency browser synchronization for fluid physical head-tracking updates.</p>
+                  <div className="text-xl font-mono font-bold text-orange-400">Jugnu</div>
+                  <div className="text-[10px] font-mono text-orange-500/80 uppercase mt-1">VISUAL COMPANION</div>
+                  <p className="text-[11px] text-slate-400 mt-1">Interactive floating 3D assistant rendering live emotional telemetry, voice cues, and gesture updates.</p>
                 </div>
 
-                <div className="p-4 rounded-xl bg-slate-950/45 border border-blue-500/20 backdrop-blur-md">
-                  <div className="text-2xl font-mono font-bold text-blue-400">Zero-GC</div>
-                  <div className="text-[10px] font-mono text-blue-500/80 uppercase mt-1">MEMORY RECYCLING</div>
-                  <p className="text-[11px] text-slate-400 mt-1">Pre-allocated memory vectors eliminate garbage-collection frame drops.</p>
+                <div className="p-4 rounded-xl bg-slate-950/45 border border-orange-500/20 backdrop-blur-md">
+                  <div className="text-xl font-mono font-bold text-orange-400">Minimaps</div>
+                  <div className="text-[10px] font-mono text-orange-500/80 uppercase mt-1">LIVE SPORTS VIEW</div>
+                  <p className="text-[11px] text-slate-400 mt-1">Procedural tactical overlays, stadium coordinate maps, and real-time trajectories displaying live plays.</p>
                 </div>
 
-                <div className="p-4 rounded-xl bg-slate-950/45 border border-purple-500/20 backdrop-blur-md">
-                  <div className="text-2xl font-mono font-bold text-purple-400">WebXR</div>
-                  <div className="text-[10px] font-mono text-purple-500/80 uppercase mt-1">OPEN PROTOCOLS</div>
+                <div className="p-4 rounded-xl bg-slate-950/45 border border-orange-500/20 backdrop-blur-md">
+                  <div className="text-2xl font-mono font-bold text-orange-400">WebXR</div>
+                  <div className="text-[10px] font-mono text-orange-500/80 uppercase mt-1">OPEN PROTOCOLS</div>
                   <p className="text-[11px] text-slate-400 mt-1">One codebase runs across Quest 3, Apple Vision Pro, mobile browser frames.</p>
                 </div>
 

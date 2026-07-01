@@ -88,14 +88,14 @@ export default function WebAdvantages() {
         {/* Box 3: Cross-Platform Range (4 Cols on md) */}
         <div 
           onClick={triggerBeep}
-          className="md:col-span-4 p-8 bg-slate-950/60 border border-purple-500/20 hover:border-purple-400/50 rounded-3xl transition-all duration-300 relative group cursor-pointer backdrop-blur-md shadow-xl"
+          className="md:col-span-4 p-8 bg-slate-950/60 border border-orange-500/20 hover:border-orange-400/50 rounded-3xl transition-all duration-300 relative group cursor-pointer backdrop-blur-md shadow-xl"
         >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-purple-400/5 rounded-full filter blur-[40px]" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-orange-400/5 rounded-full filter blur-[40px]" />
 
           <div className="flex flex-col h-full justify-between gap-6">
             <div className="space-y-3">
-              <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-2xl w-fit">
-                <Smartphone className="w-6 h-6 text-purple-400" />
+              <div className="p-3 bg-orange-500/10 border border-orange-500/20 rounded-2xl w-fit">
+                <Smartphone className="w-6 h-6 text-orange-400" />
               </div>
               <h3 className="text-xl font-sans font-bold text-slate-100">
                 Multi-Platform Range
@@ -105,8 +105,8 @@ export default function WebAdvantages() {
               </p>
             </div>
 
-            <div className="pt-4 border-t border-purple-500/10 flex items-center gap-2 text-[10px] font-mono text-slate-500">
-              <Globe2 className="w-3.5 h-3.5 text-purple-400" />
+            <div className="pt-4 border-t border-orange-500/10 flex items-center gap-2 text-[10px] font-mono text-slate-500">
+              <Globe2 className="w-3.5 h-3.5 text-orange-400" />
               <span>STANDARDIZED WEBXR LAYERS</span>
             </div>
           </div>

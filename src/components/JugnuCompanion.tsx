@@ -11,10 +11,10 @@ interface JugnuCompanionProps {
 }
 
 export default function JugnuCompanion({ compact = false }: JugnuCompanionProps) {
-  const [expression, setExpression] = useState<ExpressionState>('calm');
+  const [expression, setExpression] = useState<ExpressionState>('happy');
   const [isPinchTracking, setIsPinchTracking] = useState(false);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
-  const [speechText, setSpeechText] = useState('Welcome to Wankhede. Spatial telemetry is synced.');
+  const [speechText, setSpeechText] = useState('Spectacular shot! Ball speed peaked at 144 KM/H.');
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Expressions database with specific color tones
@@ -280,7 +280,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
               AI SPATIAL COMPANION
             </span>
             <h2 className="text-3xl md:text-4xl font-sans font-extrabold uppercase tracking-tight text-white mt-2">
-              JUGNU CORE: YOUR FLOATING HUD
+              Jugnu: Your Spatial Guide
             </h2>
             <p className="text-slate-300 text-sm md:text-base leading-relaxed">
               Meet Jugnu—a responsive, voice-controlled, gesture-enabled spatial assistant. Engineered to follow the player on a virtual table, Jugnu reacts dynamically with physics, shifts facial matrices to display emotional telemetry, and acts as your direct audio-visual HUD anchor.
@@ -300,9 +300,9 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-950/45 border border-blue-500/20 flex gap-3 backdrop-blur-md">
-              <div className="p-2.5 bg-blue-500/10 rounded-lg h-fit">
-                <MessageSquareCode className="w-5 h-5 text-blue-400" />
+            <div className="p-4 rounded-xl bg-slate-950/45 border border-orange-500/20 flex gap-3 backdrop-blur-md">
+              <div className="p-2.5 bg-orange-500/10 rounded-lg h-fit">
+                <MessageSquareCode className="w-5 h-5 text-orange-400" />
               </div>
               <div>
                 <h4 className="font-sans font-bold text-sm text-slate-100">Voice-Controlled Panning</h4>
@@ -320,9 +320,9 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-950/45 border border-purple-500/20 flex gap-3 backdrop-blur-md">
-              <div className="p-2.5 bg-purple-500/10 rounded-lg h-fit">
-                <ShieldCheck className="w-5 h-5 text-purple-400" />
+            <div className="p-4 rounded-xl bg-slate-950/45 border border-orange-500/20 flex gap-3 backdrop-blur-md">
+              <div className="p-2.5 bg-orange-500/10 rounded-lg h-fit">
+                <ShieldCheck className="w-5 h-5 text-orange-400" />
               </div>
               <div>
                 <h4 className="font-sans font-bold text-sm text-slate-100">Autonomous Physics Orbit</h4>
@@ -376,7 +376,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
                 onClick={() => handleExpressionChange('wink')}
                 className={`px-4 py-2 rounded-lg text-xs font-mono border transition-all cursor-pointer ${
                   expression === 'wink' 
-                    ? 'bg-purple-500/15 border-purple-500/40 text-purple-400 font-bold shadow-[0_0_10px_rgba(139,92,246,0.1)]' 
+                    ? 'bg-orange-500/15 border-orange-500/40 text-orange-400 font-bold shadow-[0_0_10px_rgba(240,125,0,0.1)]' 
                     : 'bg-slate-950 border-orange-500/20 text-slate-400 hover:text-slate-300'
                 }`}
               >

@@ -108,11 +108,11 @@ export default function TelemetryHub() {
                   </div>
 
                   <div className="flex items-start gap-3">
-                    <div className="p-2.5 bg-purple-500/10 rounded-xl shrink-0">
-                      <Layers className="w-5 h-5 text-purple-400" />
+                    <div className="p-2.5 bg-orange-500/10 rounded-xl shrink-0">
+                      <Layers className="w-5 h-5 text-orange-400" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-mono text-purple-400 uppercase tracking-wider">Pattern Architecture</h4>
+                      <h4 className="text-sm font-mono text-orange-400 uppercase tracking-wider">Pattern Architecture</h4>
                       <p className="text-xs text-slate-300 mt-1 leading-relaxed">
                         Strict <strong className="text-white font-semibold">Entity-Component-System (ECS)</strong> pattern for a highly modular, clean render loop and deterministic lifecycle management.
                       </p>
@@ -136,7 +136,7 @@ export default function TelemetryHub() {
                     </div>
 
                     <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/40 flex flex-col gap-2">
-                      <div className="flex items-center gap-2 text-purple-400 font-mono text-xs font-bold">
+                      <div className="flex items-center gap-2 text-orange-400 font-mono text-xs font-bold">
                         <RefreshCw className="w-4 h-4 shrink-0" />
                         <span>PRE-COMPILATION</span>
                       </div>
@@ -190,8 +190,8 @@ export default function TelemetryHub() {
                     </div>
 
                     <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/40 flex flex-col gap-2">
-                      <div className="flex items-center justify-between text-purple-400 font-mono text-[10px] font-bold">
-                        <span className="bg-purple-500/10 px-1.5 py-0.5 rounded">CACHE</span>
+                      <div className="flex items-center justify-between text-orange-400 font-mono text-[10px] font-bold">
+                        <span className="bg-orange-500/10 px-1.5 py-0.5 rounded">CACHE</span>
                         <span className="text-slate-400">/api/sv/session</span>
                       </div>
                       <div className="font-sans font-bold text-xs text-slate-200 mt-1">Street View Session Cache</div>
@@ -212,8 +212,8 @@ export default function TelemetryHub() {
                     </div>
 
                     <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/40 flex flex-col gap-2">
-                      <div className="flex items-center justify-between text-blue-400 font-mono text-[10px] font-bold">
-                        <span className="bg-blue-500/10 px-1.5 py-0.5 rounded">STREAM</span>
+                      <div className="flex items-center justify-between text-orange-400 font-mono text-[10px] font-bold">
+                        <span className="bg-orange-500/10 px-1.5 py-0.5 rounded">STREAM</span>
                         <span className="text-slate-400">/api/sv/tile/...</span>
                       </div>
                       <div className="font-sans font-bold text-xs text-slate-200 mt-1">Tile Proxy</div>
@@ -228,7 +228,7 @@ export default function TelemetryHub() {
           </div>
 
           {/* Web-Based Testing & Scalability Advantages Section */}
-          <div className="p-5 rounded-2xl bg-gradient-to-r from-orange-500/10 to-blue-500/5 border border-orange-500/20 space-y-4">
+          <div className="p-5 rounded-2xl bg-gradient-to-r from-orange-500/10 to-orange-500/5 border border-orange-500/20 space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="text-[10px] font-mono uppercase tracking-[0.2em] text-orange-400 font-bold">
                 Web-Based Testing & Scalability Advantages
@@ -265,7 +265,7 @@ export default function TelemetryHub() {
 
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-xs font-mono text-slate-200 font-bold">
-                  <Share2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                  <Share2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
                   URL-BASED MASS SCALABILITY
                 </div>
                 <p className="text-[10px] text-slate-400 leading-relaxed">
