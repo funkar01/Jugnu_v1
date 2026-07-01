@@ -16,6 +16,9 @@ export function playBeep(
     if (!AudioCtxClass) return;
     
     if (!audioCtx) {
+      if (typeof navigator !== 'undefined' && 'userActivation' in navigator) {
+        if (!(navigator as any).userActivation.hasBeenActive) return;
+      }
       audioCtx = new AudioCtxClass();
     }
     
@@ -63,6 +66,9 @@ export function playScanSweep() {
     if (!AudioCtxClass) return;
     
     if (!audioCtx) {
+      if (typeof navigator !== 'undefined' && 'userActivation' in navigator) {
+        if (!(navigator as any).userActivation.hasBeenActive) return;
+      }
       audioCtx = new AudioCtxClass();
     }
     

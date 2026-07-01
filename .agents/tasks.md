@@ -1669,6 +1669,9 @@
   - `[x]` Integrated automatic bounds calculation via `THREE.Box3` to dynamically center and scale the vastly different stadium GLTF models to fit perfectly within the viewport
   - `[x]` Verified clean type safety compilation (`npx tsc --noEmit`) with zero errors
 
+- `[x]` Fix Web Audio Autoplay Policy Warnings (Current Run)
+  - `[x]` Added `navigator.userActivation.hasBeenActive` checks before calling `new AudioContext()` in `src/utils/audio.ts` and `src/spatialFX.ts` to suppress Chrome's strict autoplay policy console errors on page load.
+
 
 
 

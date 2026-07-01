@@ -83,6 +83,14 @@ export class SpatialFXSystem extends createSystem({}) {
 
     private initAudio() {
         if (this.ctx) return;
+        
+        // Prevent AudioContext creation before user interaction to avoid Chrome autoplay warnings
+        if (typeof navigator !== 'undefined' && 'userActivation' in navigator) {
+            if (!(navigator as any).userActivation.hasBeenActive) {
+                return;
+            }
+        }
+
         try {
             this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
         } catch (e) {
