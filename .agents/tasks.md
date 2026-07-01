@@ -1719,3 +1719,9 @@
   - `[x]` Updated the main section title in [JugnuCompanion.tsx](file:///i:/AntiGravities/Jugnu_v1/src/components/JugnuCompanion.tsx) to "Jugnu: Your Spatial Guide".
   - `[x]` Changed default expression state to `'happy'` and default speaking telemetry text to `'Spectacular shot! Ball speed peaked at 144 KM/H.'` in [JugnuCompanion.tsx](file:///i:/AntiGravities/Jugnu_v1/src/components/JugnuCompanion.tsx).
   - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled client production bundle via `npm run build`.
+
+- `[x]` Typography & Font Size Design System Overhaul (Current Run)
+  - `[x]` Loaded Oxanium, Plus Jakarta Sans, and JetBrains Mono fonts in [index.html](file:///i:/AntiGravities/Jugnu_v1/index.html) and [landing.css](file:///i:/AntiGravities/Jugnu_v1/src/landing.css).
+  - `[x]` Configured the Tailwind v4 theme variables to use Plus Jakarta Sans as the default sans font and JetBrains Mono as the default monospaced font.
+  - `[x]` Restricted the entire HTML document to exactly 4 distinct font sizes (`--size-1` through `--size-4`) using CSS variable overrides with `!important` to eliminate sizing discrepancies.
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled client production bundle via `npm run build`.
