@@ -197,12 +197,12 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse"></span>
             <span className="text-white font-extrabold tracking-widest text-lg font-sans">
-              RUSH <span className="text-red-500 font-light">XR</span>
+              JUGNU <span className="text-red-500 font-light">XR</span>
             </span>
           </div>
           <div className="h-5 w-px bg-slate-800"></div>
           <span className="font-mono text-xs text-red-500/70 uppercase tracking-tighter hidden md:inline-block">
-            STATION LOCKED: MUMBAI // pitch deck active
+            JUGNU CORE ACTIVE // team jugnu pitch deck
           </span>
         </div>
 
@@ -254,7 +254,7 @@ export default function App() {
             <div className="flex justify-between text-[11px] font-mono text-slate-400">
               <span className="flex items-center gap-1.5">
                 <Presentation className="w-3.5 h-3.5 text-red-500" />
-                <span>RUSH XR PRODUCT DISCOVERY DECK</span>
+                <span>JUGNU XR PRODUCT DISCOVERY DECK</span>
               </span>
               <span>SLIDE {currentSlide + 1} OF {totalSlides}</span>
             </div>
@@ -304,7 +304,7 @@ export default function App() {
                     YOUR TABLETOP
                   </h1>
                   <p className="text-slate-300 text-sm md:text-base leading-relaxed">
-                    Why settle for flat, passive streaming? <strong>Rush XR (rushxr.in)</strong> is redefining the spatial broadcast medium. We capture volumetric coordinates of athletic action, transforming live stadiums into interactive 3D dioramas delivered over light-weight web frameworks.
+                    Why settle for flat, passive streaming? <strong>Jugnu XR</strong> — by Rush XR Studios — is redefining the spatial broadcast medium. We capture volumetric coordinates of athletic action, transforming live stadiums into interactive 3D dioramas delivered over light-weight web frameworks.
                   </p>
                   <div className="p-4 rounded-xl bg-slate-950/80 border border-red-500/10 flex items-center gap-3">
                     <Terminal className="w-5 h-5 text-red-500" />
@@ -326,7 +326,7 @@ export default function App() {
                   <div className="relative w-full max-w-[340px] aspect-square rounded-full border border-dashed border-red-500/20 flex items-center justify-center animate-spin" style={{ animationDuration: '40s' }}>
                     <div className="absolute inset-8 rounded-full border border-red-500/10 flex items-center justify-center animate-spin" style={{ animationDuration: '15s', animationDirection: 'reverse' }}>
                       <div className="absolute inset-12 rounded-full bg-slate-950 border border-red-500/20 flex flex-col items-center justify-center text-center p-4">
-                        <span className="text-[10px] font-mono text-red-500 font-bold tracking-widest uppercase">Rush Volumetrics</span>
+                        <span className="text-[10px] font-mono text-red-500 font-bold tracking-widest uppercase">Jugnu Volumetrics</span>
                         <span className="text-2xl font-sans font-black text-white mt-1">90 FPS</span>
                         <span className="text-[9px] font-mono text-slate-500 mt-1">ZERO LATENCY DECODING</span>
                       </div>
@@ -641,10 +641,10 @@ export default function App() {
           <div className="space-y-3">
             <span className="font-sans font-bold text-red-500 uppercase tracking-widest text-sm flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
-              RUSH XR
+              JUGNU XR
             </span>
             <p className="text-slate-400 leading-relaxed">
-              Volumetric Mixed Reality Sports Broadcasting powered by the Immersive Web. Redefining sports entertainment under premium open web standards.
+              Jugnu XR — Volumetric Mixed Reality Sports Broadcasting. Built by Team Jugnu at Rush XR Studios. Redefining sports entertainment under premium open web standards.
             </p>
           </div>
 
@@ -685,7 +685,7 @@ export default function App() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 mt-8 pt-8 border-t border-red-500/10 flex flex-wrap justify-between items-center gap-4 text-slate-500 font-mono text-[10px]">
-          <span>© 2026 RUSH XR SYSTEMS. ALL RIGHTS RESERVED.</span>
+          <span>© 2026 JUGNU XR // Rush XR Studios. All Rights Reserved.</span>
           <span>LAT: 18.926N, LON: 72.822E // PORT: 3000</span>
         </div>
 

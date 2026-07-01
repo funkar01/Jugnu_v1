@@ -47,7 +47,7 @@ export default function Hero({ onTriggerScan, isScanning, activeSportName }: Her
         </h1>
         
         <p className="mt-6 text-sm md:text-base text-red-100/80 tracking-wide max-w-2xl mx-auto leading-relaxed">
-          Volumetric Mixed Reality Sports Broadcasting powered by the Immersive Web. Experience live games as 3D holographic dioramas in your living room, directly on your desk. Built by <span className="text-red-400 font-bold">Rush XR</span>.
+          Volumetric Mixed Reality Sports Broadcasting powered by the Immersive Web. Experience live games as 3D holographic dioramas in your living room, directly on your desk. Built by <span className="text-red-400 font-bold">Team Jugnu</span>, Rush XR Studios.
         </p>
       </div>
 

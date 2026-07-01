@@ -80,7 +80,7 @@ export default function WebAdvantages() {
             </div>
 
             <div className="pt-2 text-xs font-mono text-orange-400 flex items-center gap-1">
-              <span>https://rushxr.in/broadcast/wankhede-live</span>
+              <span>https://jugnuxr.in/broadcast/wankhede-live</span>
             </div>
           </div>
         </div>

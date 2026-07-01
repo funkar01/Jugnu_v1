@@ -78,8 +78,8 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
   useEffect(() => {
     if (!canvasContainerRef.current) return;
 
-    const width = 144;
-    const height = 144;
+    const width = 280;
+    const height = 280;
     const scene = new THREE.Scene();
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 10);
@@ -91,7 +91,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
     canvasContainerRef.current.appendChild(renderer.domElement);
 
     const jugnuModel = new JugnuV3Model();
-    jugnuModel.scale.setScalar(0.42); // Fits 144x144 viewport frustum perfectly without edge clipping
+    jugnuModel.scale.setScalar(0.44); // Fits 280x280 viewport frustum perfectly
     scene.add(jugnuModel);
     modelRef.current = jugnuModel;
 
@@ -198,7 +198,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
           {/* Live WebGL canvas — transparent background, front-facing, no circle mask */}
           <div 
             ref={canvasContainerRef} 
-            className="relative w-36 h-36 flex items-center justify-center"
+            className="relative w-[280px] h-[280px] flex items-center justify-center"
             style={{ background: 'transparent' }}
           />
 

@@ -51,7 +51,7 @@ export default function TelemetryHub() {
           FULLSTACK ARCHITECTURE HUB: "How It Works"
         </h2>
         <p className="mt-2 text-slate-400 max-w-xl mx-auto text-sm">
-          A deep dive into the frontend rendering loops and globally distributed Edge serverless endpoints behind Rush XR.
+          A deep dive into the frontend rendering loops and globally distributed Edge serverless endpoints powering Jugnu XR.
         </p>
       </div>
 

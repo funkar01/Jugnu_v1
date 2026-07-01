@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { SportType } from '../types';
 import { playBeep } from '../utils/audio';
 import { Trophy, Dribbble, Flame, Gauge, Zap, Play, RotateCcw, UserCheck, BarChart2 } from 'lucide-react';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 interface SportShowcaseProps {
   activeSport: SportType;
@@ -9,7 +12,7 @@ interface SportShowcaseProps {
 }
 
 export default function SportShowcase({ activeSport, onChangeSport }: SportShowcaseProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const mountRef = useRef<HTMLDivElement | null>(null);
   const [isSimulating, setIsSimulating] = useState(true);
   const [triggerReset, setTriggerReset] = useState(0);
 
@@ -19,549 +22,103 @@ export default function SportShowcase({ activeSport, onChangeSport }: SportShowc
     onChangeSport(sport);
   };
 
-  // Canvas-based animations for the selected sport
+  // Three.js 3D Viewport logic
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const mount = mountRef.current;
+    if (!mount) return;
 
-    // Handle responsive sizing
-    let animationId: number;
-    const resizeObserver = new ResizeObserver(() => {
-      if (canvas && canvas.parentElement) {
-        canvas.width = canvas.parentElement.clientWidth;
-        canvas.height = Math.min(360, canvas.parentElement.clientHeight || 360);
-      }
-    });
-    if (canvas.parentElement) {
-      resizeObserver.observe(canvas.parentElement);
+    // Set up Scene, Camera, Renderer
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, mount.clientWidth / mount.clientHeight, 0.1, 100);
+    camera.position.set(0, 5, 10);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(mount.clientWidth, mount.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    mount.appendChild(renderer.domElement);
+
+    // Set up OrbitControls
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 - 0.05; // Prevent camera going below ground
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(5, 10, 5);
+    scene.add(dirLight);
+
+    // Load Model based on activeSport
+    let currentModel: THREE.Group | null = null;
+    const loader = new GLTFLoader();
+
+    let modelPath = '';
+    switch (activeSport) {
+      case 'cricket':
+        modelPath = './gltf/Wankhede Stadium/Wankhede.glb';
+        break;
+      case 'basketball':
+        modelPath = './gltf/Crypto.comStadium/Crypto.comStadium.glb';
+        break;
+      case 'football':
+        modelPath = './gltf/Olympiastadion/Olympiastadion.glb';
+        break;
+      case 'f1':
+        modelPath = './gltf/MonacoRoad.glb';
+        break;
     }
 
-    // Animation state variables
-    let frame = 0;
-    
-    // Cricket specific
-    let ballProgress = 0;
-    const cricketTrajectoryPoints: {x: number, y: number}[] = [];
-    const splineSteps = 100;
-    // Cricket stumps coordinates
-    const stumpX = 450;
-    const stumpY = 200;
-    
-    // F1 specific
-    let f1CarPosition = 0;
-    const f1Track: {x: number, y: number}[] = [
-      { x: 50, y: 150 },
-      { x: 150, y: 90 },
-      { x: 300, y: 100 },
-      { x: 350, y: 220 },
-      { x: 260, y: 260 },
-      { x: 160, y: 230 },
-      { x: 100, y: 310 },
-      { x: 50, y: 150 }
-    ];
+    if (modelPath) {
+      loader.load(modelPath, (gltf) => {
+        currentModel = gltf.scene;
+        // Center and scale the model so it fits the view
+        const box = new THREE.Box3().setFromObject(currentModel);
+        const center = box.getCenter(new THREE.Vector3());
+        
+        currentModel.position.x += (currentModel.position.x - center.x);
+        currentModel.position.y += (currentModel.position.y - center.y);
+        currentModel.position.z += (currentModel.position.z - center.z);
+        
+        const maxDim = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z);
+        const scale = 8 / maxDim; // Adjust scale to fit camera view
+        currentModel.scale.setScalar(scale);
 
-    // Basketball specific players
-    const players = [
-      { id: '32', x: 120, y: 160, vx: 0.5, vy: -0.3, name: 'S. Curry', label: 'ACC: 89%' },
-      { id: '23', x: 380, y: 220, vx: -0.4, vy: 0.4, name: 'LeBron J.', label: 'ACC: 94%' },
-      { id: '07', x: 250, y: 120, vx: 0.6, vy: 0.2, name: 'K. Durant', label: 'ACC: 91%' },
-    ];
+        scene.add(currentModel);
+      });
+    }
 
-    // Football players
-    const footballTactical = [
-      { id: '10', originX: 80, originY: 180, targetX: 280, targetY: 100, label: 'L. Messi' },
-      { id: '09', originX: 110, originY: 260, targetX: 310, targetY: 240, label: 'H. Kane' },
-      { id: '08', originX: 200, originY: 150, targetX: 420, targetY: 180, label: 'K. De Bruyne' },
-    ];
-
-    // Precalculate Cricket trajectory using Bezier or Spline (Catmull-Rom approximation)
-    const getCricketPoint = (t: number, w: number, h: number) => {
-      // Start of pitch at bottom left, bounce on pitch, hit/miss stump on right
-      const startX = w * 0.15;
-      const startY = h * 0.75;
-      
-      const bounceX = w * 0.65;
-      const bounceY = h * 0.85; // land grass
-      
-      const endX = w * 0.82;
-      const endY = h * 0.45; // stumps height
-      
-      if (t < 0.65) {
-        // First arc (from bowler release to landing grass bounce)
-        const localT = t / 0.65;
-        const x = startX + (bounceX - startX) * localT;
-        // Parabolic arc
-        const height = h * 0.4;
-        const y = startY + (bounceY - startY) * localT - Math.sin(localT * Math.PI) * height;
-        return { x, y };
-      } else {
-        // Second arc (from bounce upward to hit stumps)
-        const localT = (t - 0.65) / 0.35;
-        const x = bounceX + (endX - bounceX) * localT;
-        const height = h * 0.12;
-        const y = bounceY + (endY - bounceY) * localT - Math.sin(localT * Math.PI) * height;
-        return { x, y };
-      }
-    };
-
-    // Main render loop
+    // Animation Loop
+    let animationId: number;
     const render = () => {
-      const w = canvas.width;
-      const h = canvas.height;
-      
-      if (w === 0 || h === 0) {
-        animationId = requestAnimationFrame(render);
-        return;
-      }
-
-      ctx.clearRect(0, 0, w, h);
-      frame++;
-
-      // DRAW TECH GRID OVERLAY IN BACKGROUND
-      ctx.strokeStyle = 'rgba(255, 0, 60, 0.08)';
-      ctx.lineWidth = 1;
-      const gridSize = 25;
-      for (let x = 0; x < w; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h);
-        ctx.stroke();
-      }
-      for (let y = 0; y < h; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w, y);
-        ctx.stroke();
-      }
-
-      // RENDER SPORT-SPECIFIC HOLOGRAMS
-      if (activeSport === 'cricket') {
-        // --- 1. CRICKET (WANKHEDE STADIUM) ---
-        // Render isometric tabletop boundary
-        ctx.strokeStyle = 'rgba(255, 179, 71, 0.2)';
-        ctx.lineWidth = 2;
-        ctx.fillStyle = 'rgba(11, 15, 25, 0.65)';
-        
-        // Stadium Tabletop Oval Frame
-        ctx.beginPath();
-        ctx.ellipse(w / 2, h / 2, w * 0.45, h * 0.4, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        // Stadium Outer boundary rings
-        ctx.strokeStyle = 'rgba(255, 179, 71, 0.3)';
-        ctx.beginPath();
-        ctx.ellipse(w / 2, h / 2, w * 0.42, h * 0.37, 0, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Draw pitch center line
-        ctx.strokeStyle = 'rgba(255, 179, 71, 0.15)';
-        ctx.beginPath();
-        ctx.moveTo(w * 0.12, h * 0.72);
-        ctx.lineTo(w * 0.85, h * 0.42);
-        ctx.stroke();
-
-        // Draw Stumps
-        const stX = w * 0.82;
-        const stY = h * 0.48;
-        const bailsOn = ballProgress < 0.98;
-
-        // Draw stumps (3 vertical lines)
-        ctx.strokeStyle = bailsOn ? 'rgba(255, 255, 255, 0.7)' : 'rgba(239, 68, 68, 0.9)';
-        ctx.shadowColor = bailsOn ? 'transparent' : '#ef4444';
-        ctx.shadowBlur = bailsOn ? 0 : 12;
-        ctx.lineWidth = 3;
-        
-        for (let i = -6; i <= 6; i += 6) {
-          ctx.beginPath();
-          ctx.moveTo(stX + i, stY);
-          ctx.lineTo(stX + i, stY - 28);
-          ctx.stroke();
-        }
-        // Draw bails
-        ctx.beginPath();
-        ctx.moveTo(stX - 8, stY - 28);
-        ctx.lineTo(stX + 8, stY - 28);
-        ctx.stroke();
-        
-        ctx.shadowBlur = 0; // reset
-
-        // Draw Hawk-Eye Spline path
-        if (isSimulating) {
-          ballProgress += 0.006;
-          if (ballProgress > 1.2) ballProgress = 0; // Loop ball deliver
-        }
-
-        const ballPos = getCricketPoint(Math.min(ballProgress, 1), w, h);
-
-        // Draw historical path ribbon
-        ctx.beginPath();
-        ctx.lineWidth = 2.5;
-        ctx.strokeStyle = 'rgba(255, 0, 60, 0.85)';
-        ctx.shadowColor = '#ff003c';
-        ctx.shadowBlur = 6;
-        
-        for (let t = 0; t <= Math.min(ballProgress, 1); t += 0.02) {
-          const pt = getCricketPoint(t, w, h);
-          if (t === 0) ctx.moveTo(pt.x, pt.y);
-          else ctx.lineTo(pt.x, pt.y);
-        }
-        ctx.stroke();
-        ctx.shadowBlur = 0; // reset
-
-        // Landing grass bounce radar ripples
-        if (ballProgress >= 0.65) {
-          const bouncePt = getCricketPoint(0.65, w, h);
-          const rippleRadius = (ballProgress - 0.65) * 80;
-          const rippleOpacity = Math.max(0, 1 - (ballProgress - 0.65) * 2.5);
-          
-          ctx.strokeStyle = `rgba(255, 0, 60, ${rippleOpacity})`;
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.ellipse(bouncePt.x, bouncePt.y, rippleRadius, rippleRadius * 0.4, 0, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-
-        // Bowl impact stump alert (Wicket dismissal splash)
-        if (ballProgress >= 0.98 && ballProgress < 1.15) {
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
-          ctx.strokeStyle = '#ef4444';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.ellipse(stX, stY - 15, 35, 20, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-
-          // Spasm flashing stumps spark particles
-          ctx.fillStyle = '#ef4444';
-          for (let p = 0; p < 8; p++) {
-            const angle = (p / 8) * Math.PI * 2 + frame * 0.1;
-            const rx = stX + Math.cos(angle) * 25 * (ballProgress - 0.98 + 0.2);
-            const ry = (stY - 15) + Math.sin(angle) * 12 * (ballProgress - 0.98 + 0.2);
-            ctx.beginPath();
-            ctx.arc(rx, ry, 2, 0, Math.PI * 2);
-            ctx.fill();
-          }
-
-          // Wicket text box overlay
-          ctx.fillStyle = '#ef4444';
-          ctx.font = 'bold 10px monospace';
-          ctx.fillText('STUMPS DISMISSED', stX - 45, stY - 45);
-        }
-
-        // Active Delivery ball indicator
-        if (ballProgress <= 1.0) {
-          ctx.fillStyle = '#ffb347';
-          ctx.shadowColor = '#ffb347';
-          ctx.shadowBlur = 10;
-          ctx.beginPath();
-          ctx.arc(ballPos.x, ballPos.y, 5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0; // reset
-        }
-
-        // Live stats table tag
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-        ctx.strokeStyle = 'rgba(255, 179, 71, 0.4)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.rect(15, 15, 180, 50);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = '#f8fafc';
-        ctx.font = 'bold 9px monospace';
-        ctx.fillText('DELIVERY SPEED: 144.2 KM/H', 25, 30);
-        ctx.fillStyle = '#ff003c';
-        ctx.fillText('DEVIATION: +1.8° OUTSWING', 25, 42);
-        ctx.fillStyle = '#ef4444';
-        ctx.fillText('OUTCOME: WICKET (BOWLED)', 25, 54);
-
-      } else if (activeSport === 'basketball') {
-        // --- 2. BASKETBALL (CRYPTO.COM ARENA) ---
-        // Render high gloss court flooring representation
-        ctx.strokeStyle = 'rgba(109, 40, 217, 0.25)';
-        ctx.lineWidth = 2;
-        
-        // Render 3D angled court boundaries
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
-        ctx.beginPath();
-        ctx.moveTo(w * 0.1, h * 0.2);
-        ctx.lineTo(w * 0.9, h * 0.2);
-        ctx.lineTo(w * 0.8, h * 0.85);
-        ctx.lineTo(w * 0.2, h * 0.85);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Semi-circles and central hardwood line reflections
-        ctx.strokeStyle = 'rgba(255, 0, 60, 0.3)';
-        ctx.beginPath();
-        ctx.ellipse(w / 2, h / 2, w * 0.2, h * 0.15, 0, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // 3-point lines
-        ctx.strokeStyle = 'rgba(109, 40, 217, 0.4)';
-        ctx.beginPath();
-        ctx.ellipse(w * 0.15, h / 2, w * 0.15, h * 0.2, 0, -Math.PI/2, Math.PI/2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.ellipse(w * 0.85, h / 2, w * 0.15, h * 0.2, 0, Math.PI/2, -Math.PI/2);
-        ctx.stroke();
-
-        // Moving live player markers with telemetry lines
-        players.forEach((player, index) => {
-          if (isSimulating) {
-            // Boundary collision checks & update
-            player.x += player.vx;
-            player.y += player.vy;
-            if (player.x < w * 0.2 || player.x > w * 0.8) player.vx *= -1;
-            if (player.y < h * 0.25 || player.y > h * 0.75) player.vy *= -1;
-          }
-
-          const hoverPulse = Math.sin(frame * 0.05 + index) * 4;
-
-          // Draw cylinder holographic base
-          ctx.strokeStyle = 'rgba(255, 0, 60, 0.4)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.ellipse(player.x, player.y, 14, 6, 0, 0, Math.PI * 2);
-          ctx.stroke();
-          
-          // Draw cylinder stem
-          ctx.strokeStyle = 'rgba(255, 0, 60, 0.15)';
-          ctx.beginPath();
-          ctx.moveTo(player.x, player.y);
-          ctx.lineTo(player.x, player.y - 15 - hoverPulse);
-          ctx.stroke();
-
-          // Player Node Orb
-          ctx.fillStyle = index === 0 ? '#ff003c' : '#6d28d9';
-          ctx.beginPath();
-          ctx.arc(player.x, player.y - 15 - hoverPulse, 6, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Label Telemetry card next to player
-          ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
-          ctx.strokeStyle = 'rgba(109, 40, 217, 0.5)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.rect(player.x + 10, player.y - 30 - hoverPulse, 85, 26);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 8px monospace';
-          ctx.fillText(player.name, player.x + 14, player.y - 20 - hoverPulse);
-          ctx.fillStyle = '#ffb347';
-          ctx.fillText(player.label, player.x + 14, player.y - 11 - hoverPulse);
-        });
-
-        // Hoop 3D visual projection
-        ctx.strokeStyle = 'rgba(255, 179, 71, 0.6)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.ellipse(w * 0.85, h / 2 - 20, 10, 5, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        ctx.strokeStyle = 'rgba(255, 179, 71, 0.2)';
-        ctx.beginPath();
-        ctx.moveTo(w * 0.85, h / 2 - 20);
-        ctx.lineTo(w * 0.85, h / 2 + 10);
-        ctx.stroke();
-
-      } else if (activeSport === 'football') {
-        // --- 3. FOOTBALL (OLYMPIASTADION) ---
-        // Semi-transparent soccer field grid lines
-        ctx.fillStyle = 'rgba(2, 44, 25, 0.5)';
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.3)';
-        ctx.lineWidth = 1.5;
-        
-        // Drawing isometric grass lawn
-        ctx.beginPath();
-        ctx.moveTo(w * 0.15, h * 0.2);
-        ctx.lineTo(w * 0.85, h * 0.2);
-        ctx.lineTo(w * 0.75, h * 0.85);
-        ctx.lineTo(w * 0.25, h * 0.85);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Center line & center circle
-        ctx.beginPath();
-        ctx.ellipse(w / 2, h / 2, 45, 25, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        ctx.beginPath();
-        ctx.moveTo(w / 2, h * 0.2);
-        ctx.lineTo(w / 2, h * 0.85);
-        ctx.stroke();
-
-        // Penalty boxes
-        ctx.beginPath();
-        ctx.moveTo(w * 0.15, h * 0.4);
-        ctx.lineTo(w * 0.25, h * 0.4);
-        ctx.lineTo(w * 0.25, h * 0.65);
-        ctx.lineTo(w * 0.15, h * 0.65);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(w * 0.85, h * 0.4);
-        ctx.lineTo(w * 0.75, h * 0.4);
-        ctx.lineTo(w * 0.75, h * 0.65);
-        ctx.lineTo(w * 0.85, h * 0.65);
-        ctx.stroke();
-
-        // Render Tactical Run cycle overlays
-        footballTactical.forEach((tactic, idx) => {
-          // Progress ratio loops
-          const progress = isSimulating ? ((frame * 0.35 + idx * 30) % 100) / 100 : 0.5;
-          const currX = tactic.originX + (tactic.targetX - tactic.originX) * progress;
-          const currY = tactic.originY + (tactic.targetY - tactic.originY) * progress;
-
-          // Drawing dashed route vectors
-          ctx.strokeStyle = 'rgba(255, 0, 60, 0.4)';
-          ctx.setLineDash([4, 4]);
-          ctx.beginPath();
-          ctx.moveTo(tactic.originX, tactic.originY);
-          ctx.lineTo(tactic.targetX, tactic.targetY);
-          ctx.stroke();
-          ctx.setLineDash([]); // Reset line dash
-
-          // Draw vector arrow at target
-          ctx.fillStyle = 'rgba(255, 0, 60, 0.6)';
-          ctx.beginPath();
-          ctx.arc(tactic.targetX, tactic.targetY, 4, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Player Node
-          ctx.fillStyle = 'rgba(16, 185, 129, 0.85)';
-          ctx.beginPath();
-          ctx.arc(currX, currY, 6, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Player Tag Label
-          ctx.fillStyle = '#ffffff';
-          ctx.font = '7px monospace';
-          ctx.fillText(`${tactic.label} (${tactic.id})`, currX - 25, currY - 10);
-        });
-
-        // Volumetric visual overlay banner
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.rect(w - 190, 15, 175, 45);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = '#10b981';
-        ctx.font = 'bold 8px monospace';
-        ctx.fillText('TACTICAL ALGORITHM ENGAGED', w - 180, 28);
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText('SYSTEM: PRESSING-FORWARD_A', w - 180, 39);
-
-      } else if (activeSport === 'f1') {
-        // --- 4. FORMULA 1 (MONACO GP) ---
-        // Render 3D circuit spline
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
-        ctx.lineWidth = 8;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        // Monaco Chicane spline representation
-        ctx.beginPath();
-        f1Track.forEach((pt, index) => {
-          if (index === 0) ctx.moveTo(pt.x, pt.y);
-          else ctx.lineTo(pt.x, pt.y);
-        });
-        ctx.closePath();
-        ctx.stroke();
-
-        // Overlay circuit inner core glow
-        ctx.strokeStyle = 'rgba(255, 0, 60, 0.1)';
-        ctx.lineWidth = 14;
-        ctx.stroke();
-
-        // Calculate car coordinates along circuit
-        if (isSimulating) {
-          f1CarPosition += 0.003;
-          if (f1CarPosition > 1.0) f1CarPosition = 0;
-        }
-
-        // Get exact segment position
-        const trackLength = f1Track.length - 1;
-        const index = Math.floor(f1CarPosition * trackLength);
-        const segmentT = (f1CarPosition * trackLength) % 1;
-        const p1 = f1Track[index];
-        const p2 = f1Track[(index + 1) % f1Track.length];
-        
-        const carX = p1.x + (p2.x - p1.x) * segmentT;
-        const carY = p1.y + (p2.y - p1.y) * segmentT;
-
-        // Draw Car Glowing Beacon
-        ctx.fillStyle = '#ef4444';
-        ctx.shadowColor = '#ef4444';
-        ctx.shadowBlur = 12;
-        ctx.beginPath();
-        ctx.arc(carX, carY, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0; // reset
-
-        // Sector markers (S1, S2, Hairpin Chicane)
-        ctx.fillStyle = '#ffb347';
-        ctx.font = 'bold 8px font-sans';
-        ctx.fillText('NOUVELLE CHICANE', 220, 180);
-        
-        ctx.strokeStyle = '#ffb347';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(250, 190);
-        ctx.lineTo(320, 215);
-        ctx.stroke();
-
-        // Driver live leaderboard in canvas
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-        ctx.strokeStyle = 'rgba(255, 0, 60, 0.4)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.rect(15, 15, 185, 70);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = '#ff003c';
-        ctx.font = 'bold 9px monospace';
-        ctx.fillText('MONACO LEADERBOARD // LAP 54', 25, 28);
-        
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText('1. LEC  FERRARI  1:14.325 (ACTIVE)', 25, 42);
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText('2. VER  RED BULL +0.812s', 25, 54);
-        ctx.fillText('3. HAM  MERCEDES +1.443s', 25, 66);
-
-        // Speeds telemetry text block
-        const simulatedSpeed = Math.floor(180 + Math.sin(frame * 0.05) * 80);
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-        ctx.beginPath();
-        ctx.rect(w - 150, h - 55, 135, 40);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = '#ffb347';
-        ctx.fillText(`TELEMETRY: ${simulatedSpeed} KM/H`, w - 140, h - 40);
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText('GEAR: M5  RPM: 11400', w - 140, h - 25);
-      }
+      animationId = requestAnimationFrame(render);
+      controls.update();
+      renderer.render(scene, camera);
     };
+    render();
 
-    const animationFrameId = requestAnimationFrame(render);
+    // Handle Resize
+    const resizeObserver = new ResizeObserver(() => {
+      if (!mount) return;
+      camera.aspect = mount.clientWidth / mount.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(mount.clientWidth, mount.clientHeight);
+    });
+    resizeObserver.observe(mount);
+
+    // Cleanup
     return () => {
-      cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
+      cancelAnimationFrame(animationId);
+      if (mount.contains(renderer.domElement)) {
+        mount.removeChild(renderer.domElement);
+      }
+      renderer.dispose();
+      controls.dispose();
     };
-  }, [activeSport, isSimulating, triggerReset]);
+  }, [activeSport, triggerReset]);
 
   // Generate dynamic subtitle descriptions based on selected tab
   const getSportDetails = () => {
@@ -746,15 +303,15 @@ export default function SportShowcase({ activeSport, onChangeSport }: SportShowc
           </div>
 
           {/* Canvas Rendering Area */}
-          <div className="relative flex-grow flex items-center justify-center my-4 overflow-hidden rounded-xl bg-slate-950/80 border border-red-500/20 shadow-inner">
-            <canvas 
-              ref={canvasRef} 
-              className="absolute inset-0 w-full h-full block cursor-crosshair"
+          <div className="relative flex-grow flex items-center justify-center my-4 overflow-hidden rounded-xl bg-slate-950/80 border border-red-500/20 shadow-inner min-h-[360px]">
+            <div 
+              ref={mountRef} 
+              className="absolute inset-0 w-full h-full block cursor-move"
             />
             
             {/* Subtle Overlay text watermark */}
             <div className="absolute bottom-3 left-3 text-[9px] font-mono text-red-500/40 tracking-wider pointer-events-none uppercase">
-              RUSH_XR_SPATIAL_SIMULATOR // TYPE: {activeSport}
+              JUGNU_XR_SPATIAL_SIMULATOR // TYPE: {activeSport}
             </div>
           </div>
 
