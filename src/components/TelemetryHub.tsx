@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, Zap, Radio, Sliders, Layers, RefreshCw, Gauge, Waves, Server, Laptop, Code, Share2, Globe2, Shield } from 'lucide-react';
+import { Cpu, Zap, Radio, Sliders, Layers, RefreshCw, Gauge, Waves, Server, Laptop, Code, Share2, Globe2, Shield, Wifi, Smartphone } from 'lucide-react';
 import { playBeep } from '../utils/audio';
 
 export default function TelemetryHub() {
@@ -248,31 +248,31 @@ export default function TelemetryHub() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-xs font-mono text-slate-200 font-bold">
-                  <Shield className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                  ZERO-INSTALL TESTING
+                  <Wifi className="w-3.5 h-3.5 text-red-400 shrink-0 animate-pulse" />
+                  WIRELESS INSTANT TESTING
                 </div>
                 <p className="text-[10px] text-slate-400 leading-relaxed">
-                  No side-loading, App Store certifications, or developer license pipelines. Developers code on a desktop, hit save, and the Quest 3/Pico headset instantly hot-reloads the changes over a standard web address.
+                  No cables, side-loading, or developer certificates. Standard secure local channels hot-reload code builds wirelessly to all headsets (Vision Pro, Quest 3, Pico 4) and mobiles simultaneously.
                 </p>
               </div>
 
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-xs font-mono text-slate-200 font-bold">
-                  <Laptop className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                  CROSS-PLATFORM RANGE
+                  <Smartphone className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                  UNIFIED CROSS-HARDWARE
                 </div>
                 <p className="text-[10px] text-slate-400 leading-relaxed">
-                  A single unified TypeScript codebase runs on low-end mobile browsers, high-end VR headsets, and premium spatial computers (Quest 3, Apple Vision Pro, Pico 4).
+                  A single unified TypeScript and WebGL codebase runs natively on mobile WebAR pipelines, high-end desktop web browser engines, and stand-alone spatial hardware.
                 </p>
               </div>
 
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-xs font-mono text-slate-200 font-bold">
                   <Share2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                  IMMEDIATE DISTRIBUTION
+                  URL-BASED MASS SCALABILITY
                 </div>
                 <p className="text-[10px] text-slate-400 leading-relaxed">
-                  Share a live sports broadcast moments/stats trajectory simply by sending a URL link. No large downloads or installations required.
+                  Distribute live sports streams instantly via simple web links. Scale to millions of concurrent spectators without App Store approvals or gigabyte installation barriers.
                 </p>
               </div>
             </div>

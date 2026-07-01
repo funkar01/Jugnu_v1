@@ -624,22 +624,7 @@ export default function App() {
           />
 
           {/* Floating Spatial Companion: Jugnu Core */}
-          <div className="max-w-7xl mx-auto px-4 py-8 border-t border-slate-900">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-              <div className="lg:col-span-7 space-y-4">
-                <span className="px-2 py-1 text-[10px] font-mono tracking-widest bg-slate-950/80 border border-red-500/30 text-red-400 rounded-md">
-                  SPATIAL HELPER // AI INTERACTIVE ORB
-                </span>
-                <h2 className="text-3xl font-extrabold text-white">JUGNU AI SPATIAL COMPANION</h2>
-                <p className="text-slate-300 text-sm md:text-base leading-relaxed">
-                  Interact with Jugnu, our virtual assistant orb floating within your tabletop stream. Jugnu analyzes live coordinate feeds, reacts dynamically with emotional shifts, and calculates real-time trajectories to assist you with broadcast overlays.
-                </p>
-              </div>
-              <div className="lg:col-span-5 flex justify-center">
-                <JugnuCompanion />
-              </div>
-            </div>
-          </div>
+          <JugnuCompanion />
 
           {/* Software Development Cycle (SDC) & Telemetry Hub tuner */}
           <TelemetryHub />

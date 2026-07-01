@@ -548,159 +548,8 @@
             targetHueShift = (hue - 20 + 360) % 360;
         };
 
-        const jugnuBase = new Image();
-        jugnuBase.src = './stickar/Jugnu_base.png';
-
-        function render(timestamp = 0) {
-            // Jugnu body waves rotate continuously
-            waveRotation = timestamp * 0.0008;
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (!jugnuBase.complete || jugnuBase.naturalWidth === 0) return;
-
-            const imgWidth = jugnuBase.naturalWidth;
-            const imgHeight = jugnuBase.naturalHeight;
-            const aspectRatio = imgWidth / imgHeight;
-
-            let renderWidth, renderHeight;
-            if (aspectRatio > 1) {
-                renderWidth = canvas.width;
-                renderHeight = canvas.width / aspectRatio;
-            } else {
-                renderHeight = canvas.height;
-                renderWidth = canvas.height * aspectRatio;
-            }
-
-            const xOffset = (canvas.width - renderWidth) / 2;
-            const yOffset = (canvas.height - renderHeight) / 2;
-
-            const cx = canvas.width / 2;
-            const cy = yOffset + (renderHeight * 0.445); 
-
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.rotate(waveRotation);
-            // Boost saturation and contrast to make Jugnu vibrant, energetic, and attractive
-            ctx.filter = `hue-rotate(${targetHueShift}deg) saturate(1.85) contrast(1.2)`;
-            
-            // Volumetric glowing shades of the same custom color
-            ctx.shadowColor = colorPicker.value || '#ff6b35';
-            ctx.shadowBlur = 30;
-            
-            ctx.drawImage(jugnuBase, -renderWidth / 2, -renderHeight * 0.445, renderWidth, renderHeight);
-            ctx.restore();
-
-            // Make the facial expression float independently inside the rotating body to look alive
-            const floatX = Math.cos(timestamp / 350) * 8;
-            const floatY = Math.sin(timestamp / 250) * 10;
-            drawExpressionLayer(ctx, cx + floatX, cy + floatY, currentExpression);
-
-            // Dynamically dispatch tracking canvas map pipeline updates if requested by external modules
-            if (arActive && window.arTextureRef) {
-                window.arTextureRef.needsUpdate = true;
-            }
-
-            animationFrameId = requestAnimationFrame(render);
-        }
-
-        function drawExpressionLayer(ctx, cx, cy, type) {
-            // scale is the base resolution scaling factor (base canvas was 600x600)
-            const scale = canvas.width / 600;
-            
-            // strokeScale controls the line thickness (2.2x thicker for high visibility at distance)
-            const strokeScale = scale * 2.2;
-            
-            // featureScale controls position offsets and sizing of eyes/mouth 
-            // (1.25x larger to lie safely inside the central red core of the Jugnu body)
-            const featureScale = scale * 1.25;
-
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 6 * strokeScale;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.fillStyle = '#ffffff';
-
-            const eyeY = cy - (10 * featureScale);      
-            const mouthY = cy + (14 * featureScale);    
-            const eyeOffset = 42 * featureScale; 
-            const mouthWidth = 14 * featureScale; 
-
-            if (type === 'classic') {
-                ctx.beginPath(); 
-                ctx.moveTo(cx - eyeOffset - (12 * featureScale), eyeY + (6 * featureScale)); 
-                ctx.lineTo(cx - eyeOffset, eyeY - (6 * featureScale)); 
-                ctx.lineTo(cx - eyeOffset + (12 * featureScale), eyeY + (6 * featureScale)); 
-                ctx.stroke();
-
-                ctx.beginPath(); 
-                ctx.moveTo(cx + eyeOffset - (12 * featureScale), eyeY + (6 * featureScale)); 
-                ctx.lineTo(cx + eyeOffset, eyeY - (6 * featureScale)); 
-                ctx.lineTo(cx + eyeOffset + (12 * featureScale), eyeY + (6 * featureScale)); 
-                ctx.stroke();
-            } 
-            else if (type === 'happy') {
-                for (let offset of [-eyeOffset, eyeOffset]) {
-                    ctx.save(); 
-                    ctx.translate(cx + offset, eyeY); 
-                    ctx.scale(0.85 * featureScale, 0.85 * featureScale); 
-                    ctx.beginPath(); 
-                    ctx.moveTo(0, 8);
-                    ctx.bezierCurveTo(0, 6, -14, -6, -14, -14); 
-                    ctx.bezierCurveTo(-14, -24, -2, -24, 0, -12);
-                    ctx.bezierCurveTo(2, -24, 14, -24, 14, -14); 
-                    ctx.bezierCurveTo(14, -6, 0, 6, 0, 8); 
-                    ctx.fill(); 
-                    ctx.restore();
-                }
-            } 
-            else if (type === 'wink') {
-                ctx.beginPath(); 
-                ctx.arc(cx - eyeOffset, eyeY, 11 * featureScale, 0, Math.PI * 2); 
-                ctx.stroke();
-
-                ctx.beginPath(); 
-                ctx.moveTo(cx + eyeOffset + (10 * featureScale), eyeY - (10 * featureScale)); 
-                ctx.lineTo(cx + eyeOffset - (4 * featureScale), eyeY); 
-                ctx.lineTo(cx + eyeOffset + (10 * featureScale), eyeY + (10 * featureScale)); 
-                ctx.stroke();
-            } 
-            else if (type === 'shocked') {
-                ctx.beginPath(); 
-                ctx.arc(cx - eyeOffset, eyeY, 11 * featureScale, 0, Math.PI * 2); 
-                ctx.stroke();
-
-                ctx.beginPath(); 
-                ctx.arc(cx + eyeOffset, eyeY, 11 * featureScale, 0, Math.PI * 2); 
-                ctx.stroke();
-            }
-
-            ctx.fillStyle = 'transparent'; 
-            if (type === 'classic' || type === 'happy') {
-                ctx.beginPath(); 
-                ctx.moveTo(cx - mouthWidth, mouthY); 
-                ctx.quadraticCurveTo(cx, mouthY + (10 * featureScale), cx + mouthWidth, mouthY); 
-                ctx.stroke();
-            } 
-            else if (type === 'wink') {
-                ctx.beginPath(); 
-                ctx.moveTo(cx - mouthWidth, mouthY + (4 * featureScale)); 
-                ctx.bezierCurveTo(cx - mouthWidth/2, mouthY + (10 * featureScale), cx + mouthWidth/2, mouthY - (4 * featureScale), cx + mouthWidth, mouthY + (2 * featureScale)); 
-                ctx.stroke();
-            } 
-            else if (type === 'shocked') {
-                ctx.beginPath(); 
-                ctx.arc(cx, mouthY + (4 * featureScale), 8 * featureScale, 0, Math.PI * 2); 
-                ctx.stroke();
-            }
-        }
-
         window.downloadSticker = function() {
-            let temporaryWaveOffset = waveOffsetY;
-            let temporaryRotationOffset = waveRotation;
-            waveOffsetY = 0; waveRotation = 0; render(0); 
             const dataUrl = canvas.toDataURL('image/png');
-            waveOffsetY = temporaryWaveOffset; waveRotation = temporaryRotationOffset;
-            
             const link = document.createElement('a');
             link.download = `jugnu-${currentExpression}-sticker.png`;
             link.href = dataUrl;
@@ -709,11 +558,7 @@
 
         window.shareSticker = async function() {
             try {
-                let temporaryWaveOffset = waveOffsetY; let temporaryRotationOffset = waveRotation;
-                waveOffsetY = 0; waveRotation = 0; render(0); 
                 const imgDataUrl = canvas.toDataURL('image/png');
-                waveOffsetY = temporaryWaveOffset; waveRotation = temporaryRotationOffset;
-
                 const blob = await (await fetch(imgDataUrl)).blob();
                 const file = new File([blob], `jugnu-${currentExpression}.png`, { type: blob.type });
 
@@ -838,18 +683,165 @@
                 alert("Error exporting selfie: " + err.message);
             }
         };
-
-        jugnuBase.onload = function() { render(); };
-        jugnuBase.onerror = function() {
-            ctx.fillStyle = '#ff6b35'; ctx.font = '20px sans-serif'; ctx.textAlign = 'center';
-            ctx.fillText('Error: Cannot find "Jugnu_base.png"', canvas.width / 2, canvas.height / 2);
-        };
     </script>
 
     <!-- ISOLATED INTERPOLATION STREAM MODULE: Dynamically imported. Stays sleeping and doesn't interfere locally until online secure parameters are met -->
     <script type="module">
         import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
         import { MindARThree } from 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-three.prod.js';
+
+        // ── LIVE 3D GLTFS/SHADERS EDITOR SUITE FOR LOCAL PX/MOBILE ───────────────────────
+        const editorCanvas = document.getElementById('stickerCanvas');
+        const editorRenderer = new THREE.WebGLRenderer({ canvas: editorCanvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
+        editorRenderer.setSize(600, 600);
+        editorRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        const editorScene = new THREE.Scene();
+        const editorCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 10);
+        editorCamera.position.z = 2.0;
+
+        // Initialize custom shader video elements for editor view
+        const edVideo1 = document.createElement('video');
+        edVideo1.src = '/JugnuV4/JugnuRotate.mp4';
+        edVideo1.crossOrigin = 'anonymous';
+        edVideo1.loop = true;
+        edVideo1.muted = true;
+        edVideo1.playsInline = true;
+        edVideo1.autoplay = true;
+        edVideo1.play().catch(e => console.warn(e));
+
+        const edVideo2 = document.createElement('video');
+        edVideo2.src = '/JugnuV4/JugnuPinched.mp4';
+        edVideo2.crossOrigin = 'anonymous';
+        edVideo2.loop = true;
+        edVideo2.muted = true;
+        edVideo2.playsInline = true;
+        edVideo2.autoplay = true;
+        edVideo2.play().catch(e => console.warn(e));
+
+        const edVideoTex1 = new THREE.VideoTexture(edVideo1);
+        edVideoTex1.colorSpace = THREE.SRGBColorSpace;
+        const edVideoTex2 = new THREE.VideoTexture(edVideo2);
+        edVideoTex2.colorSpace = THREE.SRGBColorSpace;
+
+        const edTexLoader = new THREE.TextureLoader();
+        const edSpriteTextures = {
+            'classic': edTexLoader.load('/Expressions_V1/Calm Yellow.png'),
+            'happy': edTexLoader.load('/Expressions_V1/Happy Orange.png'),
+            'wink': edTexLoader.load('/Expressions_V1/Winking Green.png'),
+            'shocked': edTexLoader.load('/Expressions_V1/Bright Yellow.png')
+        };
+
+        const edVertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const edFragmentShader = `
+            uniform sampler2D U_Video1;
+            uniform sampler2D U_Video2;
+            uniform sampler2D U_Sprite;
+            uniform vec3 U_MoodColor;
+            uniform vec3 U_CompColor;
+            uniform float U_Transition;
+            uniform float u_time;
+            varying vec2 vUv;
+            
+            void main() {
+                vec4 color1 = texture2D(U_Video1, vUv);
+                vec4 color2 = texture2D(U_Video2, vUv);
+                
+                vec4 texColor = mix(color1, color2, U_Transition);
+                
+                float val = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+                float bodyAlpha = smoothstep(0.0, 0.036, val);
+                
+                float dist = distance(vUv, vec2(0.5));
+                vec3 radialColor = mix(U_MoodColor + vec3(0.15), U_MoodColor * 0.85, smoothstep(0.0, 0.4, dist));
+                
+                float edgeMask = smoothstep(0.01, 0.05, val) - smoothstep(0.1, 0.3, val);
+                vec3 baseColor = mix(radialColor, U_CompColor, edgeMask * 0.9);
+                
+                vec2 center = vec2(0.5, 0.5);
+                vec2 offset = vec2(0.025, 0.0);
+                float scale = 0.75;
+                vec2 spriteUv = (vUv - offset - center) * (1.0 / scale) + center;
+                
+                vec4 sprite = vec4(0.0);
+                if (spriteUv.x >= 0.0 && spriteUv.x <= 1.0 && spriteUv.y >= 0.0 && spriteUv.y <= 1.0) {
+                    sprite = texture2D(U_Sprite, spriteUv);
+                }
+                
+                float expressionMask = dot(sprite.rgb, vec3(0.299, 0.587, 0.114));
+                vec3 finalColor = mix(baseColor, vec3(1.0), expressionMask);
+                float finalAlpha = max(bodyAlpha, expressionMask);
+                
+                if (finalAlpha < 0.01) discard;
+                gl_FragColor = vec4(finalColor, finalAlpha);
+            }
+        `;
+
+        const edHexVal = colorPicker.value || '#ff6b35';
+        const edR = parseInt(edHexVal.slice(1, 3), 16) / 255;
+        const edG = parseInt(edHexVal.slice(3, 5), 16) / 255;
+        const edB = parseInt(edHexVal.slice(5, 7), 16) / 255;
+
+        const edMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                U_Video1: { value: edVideoTex1 },
+                U_Video2: { value: edVideoTex2 },
+                U_Sprite: { value: edSpriteTextures[currentExpression] },
+                U_MoodColor: { value: new THREE.Color(edR, edG, edB) },
+                U_CompColor: { value: new THREE.Color(1.0 - edR, 1.0 - edG, 1.0 - edB) },
+                U_Transition: { value: 0.0 },
+                u_time: { value: 0.0 }
+            },
+            vertexShader: edVertexShader,
+            fragmentShader: edFragmentShader,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+
+        const edGeometry = new THREE.PlaneGeometry(0.8, 0.8);
+        const edMesh = new THREE.Mesh(edGeometry, edMaterial);
+        editorScene.add(edMesh);
+
+        // Slow idle float motion rendering loop for editor
+        let edAnimFrameId = null;
+        function renderEditor(timestamp = 0) {
+            edMaterial.uniforms.u_time.value = timestamp / 1000;
+
+            const floatX = Math.cos(timestamp / 350) * 0.02;
+            const floatY = Math.sin(timestamp / 250) * 0.025;
+            edMesh.position.set(floatX, floatY, 0);
+
+            // Interpolate colors target hex
+            const hexCol = colorPicker.value || '#ff6b35';
+            const rT = parseInt(hexCol.slice(1, 3), 16) / 255;
+            const gT = parseInt(hexCol.slice(3, 5), 16) / 255;
+            const bT = parseInt(hexCol.slice(5, 7), 16) / 255;
+            edMaterial.uniforms.U_MoodColor.value.lerp(new THREE.Color(rT, gT, bT), 0.1);
+            edMaterial.uniforms.U_CompColor.value.lerp(new THREE.Color(1.0 - rT, 1.0 - gT, 1.0 - bT), 0.1);
+
+            if (edSpriteTextures[currentExpression]) {
+                edMaterial.uniforms.U_Sprite.value = edSpriteTextures[currentExpression];
+            }
+
+            editorRenderer.render(editorScene, editorCamera);
+            edAnimFrameId = requestAnimationFrame(renderEditor);
+        }
+        renderEditor();
+
+        // Autoplay permission unlock trigger
+        window.addEventListener('pointerdown', () => {
+            [edVideo1, edVideo2].forEach(v => {
+                if (v.paused) v.play().catch(() => {});
+            });
+        }, { once: true });
 
         let mindarThree = null;
         let leftAnchor = null;
@@ -879,20 +871,125 @@
                 originalSetSize(width * scaleFactor, height * scaleFactor, updateStyle);
             };
 
-            window.arTextureRef = new THREE.CanvasTexture(window.getCanvasRef());
-            
-            // Configure high-quality texture filtering & anisotropic filtering to ensure sharpness
-            window.arTextureRef.minFilter = THREE.LinearMipmapLinearFilter;
-            window.arTextureRef.magFilter = THREE.LinearFilter;
-            window.arTextureRef.generateMipmaps = true;
-            if (renderer.capabilities && typeof renderer.capabilities.getMaxAnisotropy === 'function') {
-                const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
-                window.arTextureRef.anisotropy = maxAnisotropy;
-            }
-            
-            material = new THREE.MeshBasicMaterial({ map: window.arTextureRef, transparent: true });
+            // Initialize video textures for custom shader matching XR Jugnu
+            const video1 = document.createElement('video');
+            video1.src = '/JugnuV4/JugnuRotate.mp4';
+            video1.crossOrigin = 'anonymous';
+            video1.loop = true;
+            video1.muted = true;
+            video1.playsInline = true;
+            video1.autoplay = true;
+            video1.play().catch(e => console.warn(e));
+
+            const video2 = document.createElement('video');
+            video2.src = '/JugnuV4/JugnuPinched.mp4';
+            video2.crossOrigin = 'anonymous';
+            video2.loop = true;
+            video2.muted = true;
+            video2.playsInline = true;
+            video2.autoplay = true;
+            video2.play().catch(e => console.warn(e));
+
+            const videoTex1 = new THREE.VideoTexture(video1);
+            videoTex1.colorSpace = THREE.SRGBColorSpace;
+            const videoTex2 = new THREE.VideoTexture(video2);
+            videoTex2.colorSpace = THREE.SRGBColorSpace;
+
+            // Load facial expression sprites matching XR model
+            const texLoader = new THREE.TextureLoader();
+            const spriteTextures = {
+                'classic': texLoader.load('/Expressions_V1/Calm Yellow.png'),
+                'happy': texLoader.load('/Expressions_V1/Happy Orange.png'),
+                'wink': texLoader.load('/Expressions_V1/Winking Green.png'),
+                'shocked': texLoader.load('/Expressions_V1/Bright Yellow.png')
+            };
+
+            const vertexShader = `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `;
+
+            const fragmentShader = `
+                uniform sampler2D U_Video1;
+                uniform sampler2D U_Video2;
+                uniform sampler2D U_Sprite;
+                uniform vec3 U_MoodColor;
+                uniform vec3 U_CompColor;
+                uniform float U_Transition;
+                uniform float u_time;
+                uniform float opacity;
+                varying vec2 vUv;
+                
+                void main() {
+                    vec4 color1 = texture2D(U_Video1, vUv);
+                    vec4 color2 = texture2D(U_Video2, vUv);
+                    
+                    vec4 texColor = mix(color1, color2, U_Transition);
+                    
+                    float val = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+                    float bodyAlpha = smoothstep(0.0, 0.036, val);
+                    
+                    float dist = distance(vUv, vec2(0.5));
+                    vec3 radialColor = mix(U_MoodColor + vec3(0.15), U_MoodColor * 0.85, smoothstep(0.0, 0.4, dist));
+                    
+                    float edgeMask = smoothstep(0.01, 0.05, val) - smoothstep(0.1, 0.3, val);
+                    vec3 baseColor = mix(radialColor, U_CompColor, edgeMask * 0.9);
+                    
+                    vec2 center = vec2(0.5, 0.5);
+                    vec2 offset = vec2(0.025, 0.0);
+                    float scale = 0.75;
+                    vec2 spriteUv = (vUv - offset - center) * (1.0 / scale) + center;
+                    
+                    vec4 sprite = vec4(0.0);
+                    if (spriteUv.x >= 0.0 && spriteUv.x <= 1.0 && spriteUv.y >= 0.0 && spriteUv.y <= 1.0) {
+                        sprite = texture2D(U_Sprite, spriteUv);
+                    }
+                    
+                    float expressionMask = dot(sprite.rgb, vec3(0.299, 0.587, 0.114));
+                    vec3 finalColor = mix(baseColor, vec3(1.0), expressionMask);
+                    float finalAlpha = max(bodyAlpha, expressionMask);
+                    
+                    if (finalAlpha < 0.01) discard;
+                    gl_FragColor = vec4(finalColor, finalAlpha * opacity);
+                }
+            `;
+
+            // Parse colors from color picker
+            const hexVal = colorPicker.value || '#ff6b35';
+            const rVal = parseInt(hexVal.slice(1, 3), 16) / 255;
+            const gVal = parseInt(hexVal.slice(3, 5), 16) / 255;
+            const bVal = parseInt(hexVal.slice(5, 7), 16) / 255;
+
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    U_Video1: { value: videoTex1 },
+                    U_Video2: { value: videoTex2 },
+                    U_Sprite: { value: spriteTextures[currentExpression] },
+                    U_MoodColor: { value: new THREE.Color(rVal, gVal, bVal) },
+                    U_CompColor: { value: new THREE.Color(1.0 - rVal, 1.0 - gVal, 1.0 - bVal) },
+                    U_Transition: { value: 0.0 },
+                    u_time: { value: 0.0 },
+                    opacity: { value: 1.0 }
+                },
+                vertexShader,
+                fragmentShader,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+
             const geometry = new THREE.PlaneGeometry(0.35, 0.35);
             anchorMesh = new THREE.Mesh(geometry, material);
+
+            // Add pointerdown play listener for mobile device autoplay restrictions
+            window.addEventListener('pointerdown', () => {
+                [video1, video2].forEach(v => {
+                    if (v.paused) v.play().catch(() => { });
+                });
+            }, { once: true });
             
             // Randomly choose left or right cheek on startup for the tattoo mode
             randomCheek = Math.random() < 0.5 ? 'left' : 'right';
@@ -923,6 +1020,23 @@
                 if (loadingEl) loadingEl.style.display = 'none';
                 
                 renderer.setAnimationLoop(() => {
+                    // Update shader time and color uniforms
+                    if (material && material.uniforms) {
+                        material.uniforms.u_time.value = Date.now() / 1000;
+                        
+                        const hexCol = colorPicker.value || '#ff6b35';
+                        const rT = parseInt(hexCol.slice(1, 3), 16) / 255;
+                        const gT = parseInt(hexCol.slice(3, 5), 16) / 255;
+                        const bT = parseInt(hexCol.slice(5, 7), 16) / 255;
+
+                        material.uniforms.U_MoodColor.value.lerp(new THREE.Color(rT, gT, bT), 0.1);
+                        material.uniforms.U_CompColor.value.lerp(new THREE.Color(1.0 - rT, 1.0 - gT, 1.0 - bT), 0.1);
+
+                        if (spriteTextures[currentExpression]) {
+                            material.uniforms.U_Sprite.value = spriteTextures[currentExpression];
+                        }
+                    }
+
                     // Update animation for orbiting if in orbit mode
                     if (currentArMode === 'orbit') {
                         const angle = (Date.now() / 1000) * 1.5; // Orbit speed
@@ -937,10 +1051,14 @@
                         // Depth illusion (scale and fade out when behind the face)
                         if (z < 0) {
                             const factor = (radius + z) / radius; // 1 to 0
-                            material.opacity = 0.2 + factor * 0.8;
+                            if (material.uniforms && material.uniforms.opacity) {
+                                material.uniforms.opacity.value = 0.2 + factor * 0.8;
+                            }
                             anchorMesh.scale.setScalar(0.6 + factor * 0.4);
                         } else {
-                            material.opacity = 1.0;
+                            if (material.uniforms && material.uniforms.opacity) {
+                                material.uniforms.opacity.value = 1.0;
+                            }
                             anchorMesh.scale.setScalar(1.0);
                         }
                     }
@@ -975,7 +1093,9 @@
                 chinAnchor.group.remove(anchorMesh);
 
                 // Reset material & scaling defaults
-                material.opacity = 1.0;
+                if (material.uniforms && material.uniforms.opacity) {
+                    material.uniforms.opacity.value = 1.0;
+                }
                 anchorMesh.scale.setScalar(1.0);
                 anchorMesh.rotation.set(0, 0, 0);
 

@@ -585,6 +585,39 @@
       <span id="toast-text">AR mode coming soon!</span>
     </div>
 
+    <!-- Developer Testing HUD (Only displayed/active for testing layout modes on localhost) -->
+    <div id="dev-hud" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: none; gap: 8px; background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(239, 68, 68, 0.4); padding: 8px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); font-family: monospace;">
+      <button onclick="forceDevLayout('pc')" style="background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer;">[TEST PC PX]</button>
+      <button onclick="forceDevLayout('xr')" style="background: rgba(168, 85, 247, 0.2); border: 1px solid #a855f7; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer;">[TEST XR QUEST]</button>
+      <a href="./sticker.html" style="background: rgba(59, 130, 246, 0.2); border: 1px solid #3b82f6; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 10px; text-decoration: none; display: inline-block;">[TEST MOBILE AR]</a>
+    </div>
+
+    <script>
+      function forceDevLayout(mode) {
+        const rootEl = document.getElementById("root");
+        const landingPageEl = document.getElementById("landing-page");
+        if (mode === 'pc') {
+          window.isDesktopPC = true;
+          window.isXRHeadset = false;
+          if (rootEl) rootEl.style.display = "block";
+          if (landingPageEl) landingPageEl.style.display = "none";
+        } else if (mode === 'xr') {
+          window.isDesktopPC = false;
+          window.isXRHeadset = true;
+          if (rootEl) rootEl.style.display = "none";
+          if (landingPageEl) landingPageEl.style.display = "flex";
+        }
+      }
+
+      (function() {
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
+        const hud = document.getElementById("dev-hud");
+        if (hud) {
+          hud.style.display = isLocal ? "flex" : "none";
+        }
+      })();
+    </script>
+
     <script type="module" src="./src/main.tsx"></script>
     <script type="module" src="./src/index.ts"></script>
   </body>

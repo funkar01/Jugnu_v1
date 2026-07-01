@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, MessageSquareCode, ShieldCheck, Activity, Brain, Volume2 } from 'lucide-react';
 import { playBeep } from '../utils/audio';
+import * as THREE from 'three';
+import { JugnuV3Model, Mood } from '../JugnuV3Model';
 
 type ExpressionState = 'calm' | 'happy' | 'sad' | 'wink';
 
@@ -54,6 +56,9 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
     setSpeechText(data.speak);
   };
 
+  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
+  const modelRef = useRef<JugnuV3Model | null>(null);
+
   // Follow mouse if hand pinch tracking is active
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -69,6 +74,82 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, [isPinchTracking]);
 
+  // Mount 3D WebGL renderer for actual animated Jugnu V3 asset
+  useEffect(() => {
+    if (!canvasContainerRef.current) return;
+
+    const width = 144;
+    const height = 144;
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 10);
+    camera.position.z = 2.0;
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    canvasContainerRef.current.appendChild(renderer.domElement);
+
+    const jugnuModel = new JugnuV3Model();
+    jugnuModel.scale.setScalar(0.42); // Fits 144x144 viewport frustum perfectly without edge clipping
+    scene.add(jugnuModel);
+    modelRef.current = jugnuModel;
+
+    const mapExpressionToMood = (exp: ExpressionState): Mood => {
+      switch (exp) {
+        case 'happy': return 'happy';
+        case 'sad': return 'sad';
+        case 'wink': return 'winking';
+        case 'calm':
+        default:
+          return 'calm';
+      }
+    };
+    jugnuModel.setMood(mapExpressionToMood(expression));
+
+    let animationFrameId: number;
+    const clock = new THREE.Clock();
+
+    const animate = () => {
+      const dt = clock.getDelta();
+      jugnuModel.update(dt, 1.0);
+      // No Y-axis rotation — Jugnu stays front-facing at all times
+      renderer.render(scene, camera);
+      animationFrameId = requestAnimationFrame(animate);
+    };
+    animate();
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      if (renderer.domElement && canvasContainerRef.current) {
+        canvasContainerRef.current.removeChild(renderer.domElement);
+      }
+      renderer.dispose();
+      (jugnuModel as any).videoElements?.forEach((v: HTMLVideoElement) => {
+        v.pause();
+        v.removeAttribute('src');
+        v.load();
+      });
+    };
+  }, []);
+
+  // Update live model mood in sync with button events
+  useEffect(() => {
+    if (modelRef.current) {
+      const mapExpressionToMood = (exp: ExpressionState): Mood => {
+        switch (exp) {
+          case 'happy': return 'happy';
+          case 'sad': return 'sad';
+          case 'wink': return 'winking';
+          case 'calm':
+          default:
+            return 'calm';
+        }
+      };
+      modelRef.current.setMood(mapExpressionToMood(expression));
+    }
+  }, [expression]);
+
   const togglePinchTracking = () => {
     playBeep(700, 'triangle', 0.1, 0);
     if (!isPinchTracking) {
@@ -82,54 +163,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
     setIsPinchTracking(!isPinchTracking);
   };
 
-  // Render expression eyes based on state
-  const renderEyes = () => {
-    switch (expression) {
-      case 'happy':
-        return (
-          <div className="flex gap-8 items-center justify-center mt-2">
-            {/* Happy curved eyes */}
-            <svg className="w-10 h-6 text-slate-950 stroke-current stroke-3 fill-none" viewBox="0 0 24 12">
-              <path d="M2,10 C6,2 10,2 14,10" />
-            </svg>
-            <svg className="w-10 h-6 text-slate-950 stroke-current stroke-3 fill-none" viewBox="0 0 24 12">
-              <path d="M2,10 C6,2 10,2 14,10" />
-            </svg>
-          </div>
-        );
-      case 'sad':
-        return (
-          <div className="flex gap-8 items-center justify-center mt-2">
-            {/* Sad inverted curves */}
-            <svg className="w-10 h-6 text-slate-950 stroke-current stroke-3 fill-none" viewBox="0 0 24 12">
-              <path d="M2,2 C6,10 10,10 14,2" />
-            </svg>
-            <svg className="w-10 h-6 text-slate-950 stroke-current stroke-3 fill-none" viewBox="0 0 24 12">
-              <path d="M2,2 C6,10 10,10 14,2" />
-            </svg>
-          </div>
-        );
-      case 'wink':
-        return (
-          <div className="flex gap-8 items-center justify-center mt-2">
-            {/* One eye wink line, one open circle */}
-            <div className="w-4 h-4 rounded-full bg-slate-950" />
-            <svg className="w-8 h-4 text-slate-950 stroke-current stroke-3 fill-none" viewBox="0 0 24 12">
-              <path d="M2,6 L18,6" />
-            </svg>
-          </div>
-        );
-      case 'calm':
-      default:
-        return (
-          <div className="flex gap-8 items-center justify-center mt-2">
-            {/* Digital glowing slits */}
-            <div className="w-8 h-2 rounded bg-slate-950 animate-pulse" />
-            <div className="w-8 h-2 rounded bg-slate-950 animate-pulse" />
-          </div>
-        );
-    }
-  };
+
 
   const orbComponent = (
     <div 
@@ -161,32 +195,12 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
           }}
         >
           
-          {/* Orb Glow Shadow */}
-          <div className="absolute inset-0 rounded-full transition-shadow duration-500 blur-2xl opacity-45 bg-gradient-to-tr from-red-500 via-rose-500 to-purple-500" />
-
-          {/* Glowing concentric orbital rings */}
-          <div className="absolute -inset-4 rounded-full border border-dashed border-red-500/10 animate-spin" style={{ animationDuration: '24s' }} />
-          <div className="absolute -inset-8 rounded-full border border-double border-red-500/15 animate-spin" style={{ animationDuration: '15s', animationDirection: 'reverse' }} />
-
-          {/* Sphere body */}
-          <div className="relative w-36 h-36 rounded-full border border-red-500/20 flex flex-col items-center justify-center shadow-2xl overflow-hidden bg-slate-950/90">
-            
-            {/* Internal telemetry scanner ring */}
-            <div className="absolute inset-2 rounded-full border border-dashed border-red-500/10" />
-            
-            {/* Render digital eyes */}
-            {renderEyes()}
-
-            {/* Simulated sound waveform pulse */}
-            <div className="absolute bottom-6 flex items-end gap-1 h-5">
-              <div className="w-1 bg-red-400 rounded-full animate-pulse h-2" style={{ animationDelay: '0.1s' }} />
-              <div className="w-1 bg-red-400 rounded-full animate-pulse h-4" style={{ animationDelay: '0.3s' }} />
-              <div className="w-1 bg-red-400 rounded-full animate-pulse h-1" style={{ animationDelay: '0.5s' }} />
-              <div className="w-1 bg-red-400 rounded-full animate-pulse h-3" style={{ animationDelay: '0.2s' }} />
-              <div className="w-1 bg-red-400 rounded-full animate-pulse h-5" style={{ animationDelay: '0.4s' }} />
-            </div>
-
-          </div>
+          {/* Live WebGL canvas — transparent background, front-facing, no circle mask */}
+          <div 
+            ref={canvasContainerRef} 
+            className="relative w-36 h-36 flex items-center justify-center"
+            style={{ background: 'transparent' }}
+          />
 
         </div>
       </div>
@@ -301,8 +315,8 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
                 <Activity className="w-5 h-5 text-orange-400" />
               </div>
               <div>
-                <h4 className="font-sans font-bold text-sm text-slate-100">Gesture Pinch Tracking</h4>
-                <p className="text-xs text-slate-400 mt-1">Recognizes depth-camera pinch actions, letting you reposition the companion freely inside your MR room.</p>
+                <h4 className="font-sans font-bold text-sm text-slate-100">Cross-Platform Shader Alignment</h4>
+                <p className="text-xs text-slate-400 mt-1">Our mobile AR tracking app runs the exact same 3D fluid video-blend shader pipeline as the immersive headset app, aligning aesthetics perfectly.</p>
               </div>
             </div>
 

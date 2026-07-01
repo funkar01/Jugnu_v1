@@ -6,6 +6,14 @@
   - `[x]` Configured absolute HTML layering to stack React `#root` on top of Three.js `#scene-container`
   - `[x]` Exposed global `launchWebXR` action hooks so React buttons can launch the volumetric companion app
   - `[x]` Programmed automatic platform-adaptive routing: PC/Desktop loads the React site, XR Headsets load the lightweight static card overlay, and Mobiles redirect to the AR app (`sticker.html`)
+  - `[x]` Integrated the actual 3D fluid video-blend shader model and expression maps into the Mobile AR app (`sticker.html`) face-tracking loop
+  - `[x]` Built a floating developer testing HUD (`#dev-hud`) visible only on localhost to swap between layout modes instantly
+  - `[x]` Aligned the companion documentation copy across the presentation deck slides and bento grids to reflect unified 3D shaders
+  - `[x]` Fixed nested columns layout squishing the interactive companion orb component by removing the redundant parent grid container in `src/App.tsx`
+  - `[x]` Highlighted "Wireless Instant Testing" for Vision Pro, Quest 3, Pico 4, and mobiles inside the Telemetry Hub browser-based MR advantages list
+  - `[x]` Unified 3D companion on PC: Replaced the 2D CSS-animated circle mockup inside `src/components/JugnuCompanion.tsx` with a live WebGL canvas context rendering the actual 3D fluid video-blend shader model
+  - `[x]` Adjusted PC 3D companion model scale in `src/components/JugnuCompanion.tsx` from `0.75` to `0.42` to prevent camera frustum viewport edge clipping
+  - `[x]` Unified 3D companion in AR Editor: Replaced the 2D base image (`Jugnu_base.png`) inside `sticker.html`'s sticker designer with a live Three.js editor scene rendering the 3D fluid companion in WebGL
 - `[x]` F1 Map Zoom Bugfixes and UI Refinements
   - `[x]` Fixed random 3D glitch line in F1 map by pre-initializing McLaren/RB car vortex points and hiding trails when car is invisible
   - `[x]` Hid F1 roster driver billboard mesh when zoomed into the 3rd zoom level (`isImmersive` is true)
