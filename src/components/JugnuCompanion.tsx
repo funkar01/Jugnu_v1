@@ -21,8 +21,8 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
   const expressionsData: Record<ExpressionState, { title: string, color: string, glow: string, speak: string, freq: number }> = {
     calm: {
       title: 'CALM / MONITORING',
-      color: 'bg-red-500',
-      glow: 'shadow-red-500/40',
+      color: 'bg-orange-500',
+      glow: 'shadow-orange-500/40',
       speak: 'Stadium telemetry aligned. No packet drops detected.',
       freq: 520,
     },
@@ -168,13 +168,13 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
   const orbComponent = (
     <div 
       ref={containerRef}
-      className="w-full h-[400px] bg-slate-950/40 border border-red-500/20 rounded-3xl relative flex flex-col justify-between p-6 overflow-hidden shadow-2xl backdrop-blur-md"
+      className="w-full h-[400px] bg-slate-950/40 border border-orange-500/20 rounded-3xl relative flex flex-col justify-between p-6 overflow-hidden shadow-2xl backdrop-blur-md"
       style={{ cursor: isPinchTracking ? 'none' : 'default' }}
     >
       {/* Top HUD bar */}
-      <div className="flex justify-between items-center text-[10px] font-mono text-red-500/60">
+      <div className="flex justify-between items-center text-[10px] font-mono text-orange-500/60">
         <span>COMPANION STREAM</span>
-        <span className="text-red-400 uppercase font-bold">{expressionsData[expression].title}</span>
+        <span className="text-orange-400 uppercase font-bold">{expressionsData[expression].title}</span>
       </div>
 
       {/* Interactive Floating Glowing Orb */}
@@ -182,7 +182,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
         
         {/* Holographic scanner cone/lines if active */}
         {isPinchTracking && (
-          <div className="absolute inset-x-0 top-0 h-full bg-gradient-to-b from-red-500/10 to-transparent pointer-events-none border-t border-red-400/40 animate-scanline" />
+          <div className="absolute inset-x-0 top-0 h-full bg-gradient-to-b from-orange-500/10 to-transparent pointer-events-none border-t border-orange-400/40 animate-scanline" />
         )}
 
         <div 
@@ -209,12 +209,12 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
       <div className="space-y-4">
         
         {/* Waveform text bubble */}
-        <div className="p-3 bg-slate-950/90 border border-red-500/10 rounded-xl relative">
-          <div className="absolute -top-1.5 left-8 w-3 h-3 bg-slate-950 border-t border-l border-red-500/10 transform rotate-45" />
+        <div className="p-3 bg-slate-950/90 border border-orange-500/10 rounded-xl relative">
+          <div className="absolute -top-1.5 left-8 w-3 h-3 bg-slate-950 border-t border-l border-orange-500/10 transform rotate-45" />
           <div className="flex items-start gap-2.5">
-            <Volume2 className="w-4 h-4 text-red-400 shrink-0 mt-0.5 animate-bounce" />
+            <Volume2 className="w-4 h-4 text-orange-400 shrink-0 mt-0.5 animate-bounce" />
             <div>
-              <div className="text-[10px] font-mono text-red-500/60">JUGNU SPEAKS:</div>
+              <div className="text-[10px] font-mono text-orange-500/60">JUGNU SPEAKS:</div>
               <p className="text-xs text-slate-300 leading-relaxed font-sans">{speechText}</p>
             </div>
           </div>
@@ -226,8 +226,8 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
           onClick={togglePinchTracking}
           className={`w-full py-3 rounded-xl border font-mono text-xs uppercase tracking-wider transition-all cursor-pointer ${
             isPinchTracking
-              ? 'bg-orange-500/20 border-orange-500 text-orange-400 font-bold shadow-[0_0_15px_rgba(245,158,11,0.2)]'
-              : 'bg-slate-950 border-red-500/20 text-slate-400 hover:text-white hover:border-red-500/40'
+              ? 'bg-orange-500/20 border-orange-500 text-orange-400 font-bold shadow-[0_0_15px_rgba(240,125,0,0.2)]'
+              : 'bg-slate-950 border-orange-500/20 text-slate-400 hover:text-white hover:border-orange-500/40'
           }`}
         >
           {isPinchTracking ? '🔴 ACTIVE PINCH TRACKING // TAP TO PARK' : '👆 SIMULATE HAND PINCH TRACKING'}
@@ -256,7 +256,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
               onClick={() => handleExpressionChange(exp)}
               className={`px-3 py-1.5 rounded-lg text-[10px] font-mono border transition-all cursor-pointer ${
                 expression === exp 
-                  ? 'bg-red-500/20 border-red-500 text-red-400 font-bold' 
+                  ? 'bg-orange-500/20 border-orange-500 text-orange-400 font-bold' 
                   : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-300'
               }`}
             >
@@ -269,14 +269,14 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
   }
 
   return (
-    <section className="py-20 px-4 max-w-7xl mx-auto border-t border-red-500/20 bg-slate-950/20">
+    <section className="py-20 px-4 max-w-7xl mx-auto border-t border-orange-500/20 bg-slate-950/20">
       
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
         
         {/* Left Column - Core Pitch & Specs (7 Columns) */}
         <div className="lg:col-span-7 space-y-6">
           <div className="space-y-2">
-            <span className="px-3 py-1 text-[10px] font-mono tracking-widest bg-slate-950/80 border border-red-500/30 text-red-400 rounded-md">
+            <span className="px-3 py-1 text-[10px] font-mono tracking-widest bg-slate-950/80 border border-orange-500/30 text-orange-400 rounded-md">
               AI SPATIAL COMPANION
             </span>
             <h2 className="text-3xl md:text-4xl font-sans font-extrabold uppercase tracking-tight text-white mt-2">
@@ -290,9 +290,9 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
           {/* Feature List Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             
-            <div className="p-4 rounded-xl bg-slate-950/45 border border-red-500/20 flex gap-3 backdrop-blur-md">
-              <div className="p-2.5 bg-red-500/10 rounded-lg h-fit">
-                <Brain className="w-5 h-5 text-red-400" />
+            <div className="p-4 rounded-xl bg-slate-950/45 border border-orange-500/20 flex gap-3 backdrop-blur-md">
+              <div className="p-2.5 bg-orange-500/10 rounded-lg h-fit">
+                <Brain className="w-5 h-5 text-orange-400" />
               </div>
               <div>
                 <h4 className="font-sans font-bold text-sm text-slate-100">Intelligent Eye Expressions</h4>
@@ -300,9 +300,9 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-950/45 border border-red-500/20 flex gap-3 backdrop-blur-md">
-              <div className="p-2.5 bg-purple-500/10 rounded-lg h-fit">
-                <MessageSquareCode className="w-5 h-5 text-purple-400" />
+            <div className="p-4 rounded-xl bg-slate-950/45 border border-blue-500/20 flex gap-3 backdrop-blur-md">
+              <div className="p-2.5 bg-blue-500/10 rounded-lg h-fit">
+                <MessageSquareCode className="w-5 h-5 text-blue-400" />
               </div>
               <div>
                 <h4 className="font-sans font-bold text-sm text-slate-100">Voice-Controlled Panning</h4>
@@ -310,7 +310,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-950/45 border border-red-500/20 flex gap-3 backdrop-blur-md">
+            <div className="p-4 rounded-xl bg-slate-950/45 border border-orange-500/20 flex gap-3 backdrop-blur-md">
               <div className="p-2.5 bg-orange-500/10 rounded-lg h-fit">
                 <Activity className="w-5 h-5 text-orange-400" />
               </div>
@@ -320,9 +320,9 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-950/45 border border-red-500/20 flex gap-3 backdrop-blur-md">
-              <div className="p-2.5 bg-emerald-500/10 rounded-lg h-fit">
-                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            <div className="p-4 rounded-xl bg-slate-950/45 border border-purple-500/20 flex gap-3 backdrop-blur-md">
+              <div className="p-2.5 bg-purple-500/10 rounded-lg h-fit">
+                <ShieldCheck className="w-5 h-5 text-purple-400" />
               </div>
               <div>
                 <h4 className="font-sans font-bold text-sm text-slate-100">Autonomous Physics Orbit</h4>
@@ -334,7 +334,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
 
           {/* Interactive Controller Buttons to change expression */}
           <div className="pt-4 space-y-3">
-            <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-red-400">
+            <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-orange-400">
               Trigger Digital Expressions
             </span>
             <div className="flex flex-wrap gap-2">
@@ -343,8 +343,8 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
                 onClick={() => handleExpressionChange('calm')}
                 className={`px-4 py-2 rounded-lg text-xs font-mono border transition-all cursor-pointer ${
                   expression === 'calm' 
-                    ? 'bg-red-500/15 border-red-500/40 text-red-400 font-bold shadow-[0_0_10px_rgba(239,68,68,0.1)]' 
-                    : 'bg-slate-950 border-red-500/20 text-slate-400 hover:text-slate-300'
+                    ? 'bg-orange-500/15 border-orange-500/40 text-orange-400 font-bold shadow-[0_0_10px_rgba(240,125,0,0.1)]' 
+                    : 'bg-slate-950 border-orange-500/20 text-slate-400 hover:text-slate-300'
                 }`}
               >
                 CALM MONITORING
@@ -355,7 +355,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
                 className={`px-4 py-2 rounded-lg text-xs font-mono border transition-all cursor-pointer ${
                   expression === 'happy' 
                     ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400 font-bold shadow-[0_0_10px_rgba(16,185,129,0.1)]' 
-                    : 'bg-slate-950 border-red-500/20 text-slate-400 hover:text-slate-300'
+                    : 'bg-slate-950 border-orange-500/20 text-slate-400 hover:text-slate-300'
                 }`}
               >
                 HAPPY REJOICE
@@ -366,7 +366,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
                 className={`px-4 py-2 rounded-lg text-xs font-mono border transition-all cursor-pointer ${
                   expression === 'sad' 
                     ? 'bg-orange-500/15 border-orange-500/40 text-orange-400 font-bold shadow-[0_0_10px_rgba(245,158,11,0.1)]' 
-                    : 'bg-slate-950 border-red-500/20 text-slate-400 hover:text-slate-300'
+                    : 'bg-slate-950 border-orange-500/20 text-slate-400 hover:text-slate-300'
                 }`}
               >
                 DISMISSAL WARNING
@@ -377,7 +377,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
                 className={`px-4 py-2 rounded-lg text-xs font-mono border transition-all cursor-pointer ${
                   expression === 'wink' 
                     ? 'bg-purple-500/15 border-purple-500/40 text-purple-400 font-bold shadow-[0_0_10px_rgba(139,92,246,0.1)]' 
-                    : 'bg-slate-950 border-red-500/20 text-slate-400 hover:text-slate-300'
+                    : 'bg-slate-950 border-orange-500/20 text-slate-400 hover:text-slate-300'
                 }`}
               >
                 CALIBRATED WINK
