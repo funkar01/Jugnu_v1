@@ -185,13 +185,13 @@ export default function SportShowcase({ activeSport, onChangeSport }: SportShowc
               <button
                 id="btn-sport-cricket"
                 onClick={() => handleTabSelect('cricket')}
-                className={`flex items-center gap-3 p-4 rounded-xl border text-left transition-all duration-300 cursor-pointer backdrop-blur-md ${
+                className={`premium-btn premium-btn-orange flex items-center gap-3 p-4 rounded-xl border text-left transition-all duration-350 cursor-pointer backdrop-blur-md ${
                   activeSport === 'cricket'
                     ? 'bg-orange-500/10 border-orange-500/40 shadow-[0_0_15px_rgba(245,158,11,0.15)] text-white'
-                    : 'bg-slate-900/60 hover:bg-slate-900/80 border-red-500/10 text-slate-400 hover:text-slate-200'
+                    : 'bg-slate-900/40 border-white/5 text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <div className={`p-2 rounded-lg ${activeSport === 'cricket' ? 'bg-orange-500/20' : 'bg-slate-950'}`}>
+                <div className={`p-2 rounded-lg ${activeSport === 'cricket' ? 'bg-orange-500/20' : 'bg-slate-950/60'}`}>
                   <Trophy className="w-5 h-5 text-orange-400" />
                 </div>
                 <div>
@@ -203,13 +203,13 @@ export default function SportShowcase({ activeSport, onChangeSport }: SportShowc
               <button
                 id="btn-sport-basketball"
                 onClick={() => handleTabSelect('basketball')}
-                className={`flex items-center gap-3 p-4 rounded-xl border text-left transition-all duration-300 cursor-pointer backdrop-blur-md ${
+                className={`premium-btn premium-btn-purple flex items-center gap-3 p-4 rounded-xl border text-left transition-all duration-350 cursor-pointer backdrop-blur-md ${
                   activeSport === 'basketball'
                     ? 'bg-purple-500/15 border-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.15)] text-white'
-                    : 'bg-slate-900/60 hover:bg-slate-900/80 border-red-500/10 text-slate-400 hover:text-slate-200'
+                    : 'bg-slate-900/40 border-white/5 text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <div className={`p-2 rounded-lg ${activeSport === 'basketball' ? 'bg-purple-500/20' : 'bg-slate-950'}`}>
+                <div className={`p-2 rounded-lg ${activeSport === 'basketball' ? 'bg-purple-500/20' : 'bg-slate-950/60'}`}>
                   <Dribbble className="w-5 h-5 text-purple-400" />
                 </div>
                 <div>
@@ -221,13 +221,13 @@ export default function SportShowcase({ activeSport, onChangeSport }: SportShowc
               <button
                 id="btn-sport-football"
                 onClick={() => handleTabSelect('football')}
-                className={`flex items-center gap-3 p-4 rounded-xl border text-left transition-all duration-300 cursor-pointer backdrop-blur-md ${
+                className={`premium-btn premium-btn-emerald flex items-center gap-3 p-4 rounded-xl border text-left transition-all duration-350 cursor-pointer backdrop-blur-md ${
                   activeSport === 'football'
                     ? 'bg-emerald-500/15 border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.15)] text-white'
-                    : 'bg-slate-900/60 hover:bg-slate-900/80 border-red-500/10 text-slate-400 hover:text-slate-200'
+                    : 'bg-slate-900/40 border-white/5 text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <div className={`p-2 rounded-lg ${activeSport === 'football' ? 'bg-emerald-500/20' : 'bg-slate-950'}`}>
+                <div className={`p-2 rounded-lg ${activeSport === 'football' ? 'bg-emerald-500/20' : 'bg-slate-950/60'}`}>
                   <Flame className="w-5 h-5 text-emerald-400" />
                 </div>
                 <div>
@@ -239,14 +239,14 @@ export default function SportShowcase({ activeSport, onChangeSport }: SportShowc
               <button
                 id="btn-sport-f1"
                 onClick={() => handleTabSelect('f1')}
-                className={`flex items-center gap-3 p-4 rounded-xl border text-left transition-all duration-300 cursor-pointer backdrop-blur-md ${
+                className={`premium-btn premium-btn-red flex items-center gap-3 p-4 rounded-xl border text-left transition-all duration-350 cursor-pointer backdrop-blur-md ${
                   activeSport === 'f1'
                     ? 'bg-red-500/15 border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.15)] text-white'
-                    : 'bg-slate-900/60 hover:bg-slate-900/80 border-red-500/10 text-slate-400 hover:text-slate-200'
+                    : 'bg-slate-900/40 border-white/5 text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <div className={`p-2 rounded-lg ${activeSport === 'f1' ? 'bg-red-500/20' : 'bg-slate-950'}`}>
-                  <Gauge className="w-5 h-5 text-red-400" />
+                <div className={`p-2 rounded-lg ${activeSport === 'f1' ? 'bg-red-500/20' : 'bg-slate-950/60'}`}>
+                  <Gauge className="w-5 h-5 text-red-450 text-red-400" />
                 </div>
                 <div>
                   <div className="font-sans font-bold text-sm">Formula 1 (Monaco GP)</div>
@@ -321,10 +321,10 @@ export default function SportShowcase({ activeSport, onChangeSport }: SportShowc
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsSimulating(!isSimulating)}
-                className={`px-3 py-1.5 rounded-lg border text-[10px] font-mono flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`premium-btn px-3 py-1.5 rounded-lg border text-[10px] font-mono flex items-center gap-1.5 transition-all ${
                   isSimulating 
-                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
-                    : 'bg-slate-950 border-red-500/20 text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                    ? 'premium-btn-emerald bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    : 'bg-slate-950/60 border-white/5 text-slate-400 hover:text-slate-200'
                 }`}
                 title={isSimulating ? 'Pause active calculations' : 'Resume live coordinate engine'}
               >
@@ -337,7 +337,7 @@ export default function SportShowcase({ activeSport, onChangeSport }: SportShowc
                   playBeep(450, 'triangle', 0.1);
                   setTriggerReset(prev => prev + 1);
                 }}
-                className="px-3 py-1.5 bg-slate-950 hover:bg-slate-900 border border-red-500/20 text-slate-400 hover:text-slate-200 rounded-lg text-[10px] font-mono flex items-center gap-1.5 transition-all cursor-pointer"
+                className="premium-btn px-3 py-1.5 bg-slate-950/60 border border-white/5 text-slate-400 hover:text-slate-200 rounded-lg text-[10px] font-mono flex items-center gap-1.5 transition-all"
                 title="Restart spatial loop"
               >
                 <RotateCcw className="w-3 h-3" />

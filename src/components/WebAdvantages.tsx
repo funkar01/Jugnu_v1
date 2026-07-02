@@ -29,7 +29,7 @@ export default function WebAdvantages() {
         {/* Box 1: Zero-Install Hot Testing (8 Cols on md) */}
         <div 
           onClick={triggerBeep}
-          className="md:col-span-8 p-8 bg-slate-900/60 border border-orange-500/20 hover:border-orange-400/50 rounded-3xl transition-all duration-300 relative group cursor-pointer overflow-hidden backdrop-blur-md shadow-xl"
+          className="premium-card md:col-span-8 p-8 relative group cursor-pointer overflow-hidden rounded-3xl"
         >
           <div className="absolute top-0 right-0 w-44 h-44 bg-orange-500/5 rounded-full filter blur-[50px] transition-all group-hover:bg-orange-500/10" />
           
@@ -62,7 +62,7 @@ export default function WebAdvantages() {
         {/* Box 2: Immediate Distribution (4 Cols on md) */}
         <div 
           onClick={triggerBeep}
-          className="md:col-span-4 p-8 bg-slate-900/60 border border-orange-500/20 hover:border-orange-400/50 rounded-3xl transition-all duration-300 relative group cursor-pointer backdrop-blur-md shadow-xl"
+          className="premium-card md:col-span-4 p-8 relative group cursor-pointer overflow-hidden rounded-3xl"
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-orange-400/5 rounded-full filter blur-[40px]" />
 
@@ -88,7 +88,7 @@ export default function WebAdvantages() {
         {/* Box 3: Cross-Platform Range (4 Cols on md) */}
         <div 
           onClick={triggerBeep}
-          className="md:col-span-4 p-8 bg-slate-950/60 border border-orange-500/20 hover:border-orange-400/50 rounded-3xl transition-all duration-300 relative group cursor-pointer backdrop-blur-md shadow-xl"
+          className="premium-card md:col-span-4 p-8 relative group cursor-pointer overflow-hidden rounded-3xl"
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-orange-400/5 rounded-full filter blur-[40px]" />
 
@@ -115,7 +115,7 @@ export default function WebAdvantages() {
         {/* Box 4: Browser Core Execution (8 Cols on md) */}
         <div 
           onClick={triggerBeep}
-          className="md:col-span-8 p-8 bg-slate-900/60 border border-emerald-500/20 hover:border-emerald-400/50 rounded-3xl transition-all duration-300 relative group cursor-pointer overflow-hidden backdrop-blur-md shadow-xl"
+          className="premium-card md:col-span-8 p-8 relative group cursor-pointer overflow-hidden rounded-3xl"
         >
           <div className="absolute top-0 right-0 w-44 h-44 bg-emerald-500/5 rounded-full filter blur-[50px] transition-all group-hover:bg-emerald-500/10" />
 

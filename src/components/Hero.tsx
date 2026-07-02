@@ -39,17 +39,22 @@ export default function Hero({ onTriggerScan, isScanning, activeSportName }: Her
         </p>
       </div>
 
-      {/* First Slide Presentation Image */}
-      <div className="mt-8 max-w-4xl w-full z-10 rounded-xl overflow-hidden border border-orange-500/25 shadow-[0_0_30px_rgba(240,125,0,0.1)] relative group">
-        <img 
-          src="./first-slide.jpg" 
-          alt="Jugnu XR Spatial Presentation" 
-          className="w-full h-auto object-cover transform group-hover:scale-[1.01] transition-transform duration-700"
-        />
+      {/* YouTube Video Trailer */}
+      <div className="mt-8 max-w-4xl w-full aspect-video z-10 rounded-2xl overflow-hidden border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.5)] bg-black/40 backdrop-blur-md">
+        <iframe 
+          width="100%" 
+          height="100%" 
+          src="https://www.youtube.com/embed/3LpnQXLnFaE?si=AY6TR5sRGAsXTw2G" 
+          title="YouTube video player" 
+          frameBorder="0" 
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+          referrerPolicy="strict-origin-when-cross-origin" 
+          allowFullScreen
+        ></iframe>
       </div>
 
       {/* Matsuda Inspiration Block */}
-      <div className="mt-12 max-w-4xl w-full z-10 bg-slate-950/40 border border-orange-500/20 p-6 rounded-xl relative overflow-hidden shadow-2xl backdrop-blur-md">
+      <div className="mt-12 max-w-4xl w-full z-10 premium-card p-6 rounded-2xl relative overflow-hidden">
         <div className="absolute -right-20 -bottom-20 w-44 h-44 bg-blue-500/8 rounded-full filter blur-[40px]" />
         
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">

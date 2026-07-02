@@ -163,17 +163,11 @@ const assets: AssetManifest = {
   monacogp_7: { url: "./360Videos/monacogp (7).png", type: AssetType.Texture, priority: "critical" },
   monacogp_8: { url: "./360Videos/monacogp (8).png", type: AssetType.Texture, priority: "critical" },
   monacogp_9: { url: "./360Videos/monacogp (9).png", type: AssetType.Texture, priority: "critical" },
-  // ── Butterflies 360 panoramas — 10 views ──────────────────────────────────
-  butterfly360_1:  { url: "./Domains/ButterFly/ButterflyPark (1).png",  type: AssetType.Texture, priority: "critical" },
-  butterfly360_2:  { url: "./Domains/ButterFly/ButterflyPark (2).png",  type: AssetType.Texture, priority: "critical" },
-  butterfly360_3:  { url: "./Domains/ButterFly/ButterflyPark (3).png",  type: AssetType.Texture, priority: "critical" },
-  butterfly360_4:  { url: "./Domains/ButterFly/ButterflyPark (4).png",  type: AssetType.Texture, priority: "critical" },
-  butterfly360_5:  { url: "./Domains/ButterFly/ButterflyPark (5).png",  type: AssetType.Texture, priority: "critical" },
-  butterfly360_6:  { url: "./Domains/ButterFly/ButterflyPark (6).png",  type: AssetType.Texture, priority: "critical" },
-  butterfly360_7:  { url: "./Domains/ButterFly/ButterflyPark (7).png",  type: AssetType.Texture, priority: "critical" },
-  butterfly360_8:  { url: "./Domains/ButterFly/ButterflyPark (8).png",  type: AssetType.Texture, priority: "critical" },
-  butterfly360_9:  { url: "./Domains/ButterFly/ButterflyPark (9).png",  type: AssetType.Texture, priority: "critical" },
-  butterfly360_10: { url: "./Domains/ButterFly/ButterflyPark (10).png", type: AssetType.Texture, priority: "critical" },
+  // ── FIFA 360 panoramas — 4 views ──────────────────────────────────────────
+  fifa360_1: { url: "./360Videos/fifa 360image (1).png", type: AssetType.Texture, priority: "critical" },
+  fifa360_2: { url: "./360Videos/fifa 360image (2).png", type: AssetType.Texture, priority: "critical" },
+  fifa360_3: { url: "./360Videos/fifa 360image (3).png", type: AssetType.Texture, priority: "critical" },
+  fifa360_4: { url: "./360Videos/fifa 360image (4).png", type: AssetType.Texture, priority: "critical" },
   // RCB Player Cards (IPL 2026 Final) — full squad
   rcbKohli:       { url: "./RCBCards/RCB_Name_VIRAT KOHLI.jpeg",        type: AssetType.Texture, priority: "background" },
   rcbPatidar:     { url: "./RCBCards/RCB_Name_RAJAT PATIDAR.jpeg",      type: AssetType.Texture, priority: "background" },

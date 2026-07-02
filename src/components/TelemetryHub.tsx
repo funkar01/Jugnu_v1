@@ -65,10 +65,10 @@ export default function TelemetryHub() {
                 playBeep(440, 'sine', 0.05);
                 setActiveTab('frontend');
               }}
-              className={`flex-1 py-3 px-4 rounded-xl font-mono text-[11px] md:text-xs uppercase tracking-wider transition-all border flex items-center justify-center gap-2 cursor-pointer ${
+              className={`premium-btn flex-1 py-3 px-4 rounded-xl font-mono text-[11px] md:text-xs uppercase tracking-wider transition-all border flex items-center justify-center gap-2 ${
                 activeTab === 'frontend'
-                  ? 'bg-orange-500/10 border-orange-500 text-orange-400 font-bold shadow-[0_0_15px_rgba(240,125,0,0.1)]'
-                  : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-300 hover:border-slate-700'
+                  ? 'premium-btn-orange bg-orange-500/10 border-orange-500 text-orange-400 font-bold shadow-[0_0_15px_rgba(240,125,0,0.15)]'
+                  : 'border-white/5 text-slate-400 hover:text-slate-200'
               }`}
             >
               <Laptop className="w-4 h-4 shrink-0" />
@@ -79,10 +79,10 @@ export default function TelemetryHub() {
                 playBeep(480, 'sine', 0.05);
                 setActiveTab('backend');
               }}
-              className={`flex-1 py-3 px-4 rounded-xl font-mono text-[11px] md:text-xs uppercase tracking-wider transition-all border flex items-center justify-center gap-2 cursor-pointer ${
+              className={`premium-btn flex-1 py-3 px-4 rounded-xl font-mono text-[11px] md:text-xs uppercase tracking-wider transition-all border flex items-center justify-center gap-2 ${
                 activeTab === 'backend'
-                  ? 'bg-orange-500/10 border-orange-500 text-orange-400 font-bold shadow-[0_0_15px_rgba(240,125,0,0.1)]'
-                  : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-300 hover:border-slate-700'
+                  ? 'premium-btn-orange bg-orange-500/10 border-orange-500 text-orange-400 font-bold shadow-[0_0_15px_rgba(240,125,0,0.15)]'
+                  : 'border-white/5 text-slate-400 hover:text-slate-200'
               }`}
             >
               <Server className="w-4 h-4 shrink-0" />

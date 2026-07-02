@@ -27,7 +27,7 @@ export default function App() {
   // Presentation state
   const [viewMode, setViewMode] = useState<'deck' | 'scroll'>('scroll');
   const [currentSlide, setCurrentSlide] = useState(0);
-  const totalSlides = 8;
+  const totalSlides = 9;
 
   // UTC Live clock ticks
   useEffect(() => {
@@ -85,7 +85,7 @@ export default function App() {
             
             // Auto transition to live sports showcase slide
             if (viewMode === 'deck') {
-              setCurrentSlide(2); // Stadiums slide
+              setCurrentSlide(4); // Stadiums showcase slide
             } else {
               const el = document.getElementById('showcase-section');
               if (el) {
@@ -149,6 +149,7 @@ export default function App() {
 
   // Slide titles for bullet indicators
   const slideTitles = [
+    '00. VIDEO TRAILER',
     '01. EXECUTIVE BRIEF',
     '02. APPS FRICTION',
     '03. ZERO-INSTALL SOLUTIONS',
@@ -209,13 +210,13 @@ export default function App() {
         </div>
 
         {/* Mode Selector Switcher */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 bg-slate-900/80 p-0.5 rounded-lg border border-white/5">
           <button
             onClick={() => setViewMode('deck')}
-            className={`px-3 py-1.5 rounded-l border-y border-l transition-all font-mono text-[10px] cursor-pointer flex items-center gap-1.5 ${
+            className={`premium-btn px-3 py-1.5 rounded-md font-mono text-[10px] flex items-center gap-1.5 ${
               viewMode === 'deck'
-                ? 'bg-orange-500 border-orange-500 text-slate-950 font-bold'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                ? 'premium-btn-orange border-orange-500/40 text-orange-400 font-bold bg-orange-500/10'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Presentation className="w-3.5 h-3.5" />
@@ -223,10 +224,10 @@ export default function App() {
           </button>
           <button
             onClick={() => setViewMode('scroll')}
-            className={`px-3 py-1.5 rounded-r border-y border-r transition-all font-mono text-[10px] cursor-pointer flex items-center gap-1.5 ${
+            className={`premium-btn px-3 py-1.5 rounded-md font-mono text-[10px] flex items-center gap-1.5 ${
               viewMode === 'scroll'
-                ? 'bg-orange-500 border-orange-500 text-slate-950 font-bold'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                ? 'premium-btn-orange border-orange-500/40 text-orange-400 font-bold bg-orange-500/10'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Globe className="w-3.5 h-3.5" />
@@ -268,15 +269,15 @@ export default function App() {
             </div>
 
             {/* Quick Slide Navigation Links */}
-            <div className="hidden md:flex justify-between gap-2 mt-1">
+            <div className="hidden md:flex justify-between gap-1 mt-1 bg-slate-950/40 p-1 rounded-lg border border-white/5">
               {slideTitles.map((title, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleSlideChange(idx)}
-                  className={`text-[10px] font-mono py-1 px-2 border-b-2 transition-all cursor-pointer ${
+                  className={`premium-btn text-[10px] font-mono py-1.5 px-3 rounded transition-all ${
                     currentSlide === idx 
-                      ? 'border-orange-500 text-orange-500 font-bold' 
-                      : 'border-transparent text-slate-500 hover:text-slate-300'
+                      ? 'premium-btn-orange border-orange-500/40 text-orange-400 font-bold bg-orange-500/10 shadow-[0_0_10px_rgba(240,125,0,0.15)]' 
+                      : 'text-slate-500 hover:text-slate-300'
                   }`}
                 >
                   {title}
@@ -292,10 +293,40 @@ export default function App() {
             <div className="absolute -left-32 -bottom-32 w-80 h-80 bg-orange-500/5 rounded-full filter blur-[80px] pointer-events-none" />
             <div className="absolute -right-32 -top-32 w-80 h-80 bg-blue-500/5 rounded-full filter blur-[80px] pointer-events-none" />
 
-            {/* Slide 0: Title Slide */}
-            {/* Slide 0: Title Slide */}
+            {/* Slide 0: Video Trailer */}
             {currentSlide === 0 && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center h-full">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center h-full slide-enter-active">
+                <div className="lg:col-span-12 space-y-6">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
+                    <span>TRAILER VIDEO // JUGNU XR</span>
+                  </div>
+                  <h1 className="text-3xl md:text-5xl font-black tracking-tighter leading-tight text-white uppercase">
+                    WATCH THE OFFICIAL TRAILER
+                  </h1>
+                  <p className="text-slate-300 text-sm leading-relaxed max-w-3xl">
+                    Experience the future of live volumetric mixed reality sports broadcasting in this trailer.
+                  </p>
+                  
+                  {/* YouTube Iframe Frame */}
+                  <div className="w-full aspect-video rounded-2xl overflow-hidden border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.5)] bg-black/45 max-h-[480px]">
+                    <iframe 
+                      width="100%" 
+                      height="100%" 
+                      src="https://www.youtube.com/embed/3LpnQXLnFaE?si=AY6TR5sRGAsXTw2G" 
+                      title="YouTube video player" 
+                      frameBorder="0" 
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                      referrerPolicy="strict-origin-when-cross-origin" 
+                      allowFullScreen
+                    ></iframe>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Slide 1: Title Slide */}
+            {currentSlide === 1 && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center h-full slide-enter-active">
                 <div className="lg:col-span-7 space-y-6">
                   <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
                     <span>THE FUTURE OF LIVE SPORTS</span>
@@ -316,7 +347,7 @@ export default function App() {
                   <div className="pt-2">
                     <button 
                       onClick={triggerScanningSequence}
-                      className="px-6 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-mono text-xs font-bold tracking-widest uppercase rounded-lg hover:brightness-110 transition shadow-lg shadow-orange-500/20 flex items-center gap-2 cursor-pointer"
+                      className="premium-btn premium-btn-orange px-6 py-3 text-orange-400 font-mono text-xs font-bold tracking-widest uppercase rounded-lg shadow-lg shadow-orange-500/10 flex items-center gap-2"
                     >
                       <Cpu className="w-4 h-4 animate-spin" />
                       RUN SPATIAL SIMULATION
@@ -337,9 +368,9 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 1: The Problem */}
-            {currentSlide === 1 && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center h-full">
+            {/* Slide 2: The Problem */}
+            {currentSlide === 2 && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center h-full slide-enter-active">
                 <div className="lg:col-span-7 space-y-6">
                   <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
                     <span>THE FRICTION // NATIVE APP BARRIER</span>
@@ -381,9 +412,9 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 2: Technology Stack (The Solution) */}
-            {currentSlide === 2 && (
-              <div className="space-y-6">
+            {/* Slide 3: Technology Stack (The Solution) */}
+            {currentSlide === 3 && (
+              <div className="space-y-6 slide-enter-active">
                 <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
                   <span>THE SOLUTION // ZERO-INSTALL WEBXR</span>
                 </div>
@@ -437,9 +468,9 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 3: Interactive Broadcasts (Compass & Showcase) */}
-            {currentSlide === 3 && (
-              <div className="space-y-4">
+            {/* Slide 4: Interactive Broadcasts (Compass & Showcase) */}
+            {currentSlide === 4 && (
+              <div className="space-y-4 slide-enter-active">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-orange-500/10 pb-4">
                   <div>
                     <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
@@ -475,9 +506,9 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 4: Jugnu AI Companion */}
-            {currentSlide === 4 && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center h-full">
+            {/* Slide 5: Jugnu AI Companion */}
+            {currentSlide === 5 && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center h-full slide-enter-active">
                 <div className="lg:col-span-7 space-y-6">
                   <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
                     <span>COGNITIVE SPATIAL ORB // JUGNU CORE</span>
@@ -512,9 +543,9 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 5: Telemetry Hub & Benchmarking */}
-            {currentSlide === 5 && (
-              <div className="space-y-6">
+            {/* Slide 6: Telemetry Hub & Benchmarking */}
+            {currentSlide === 6 && (
+              <div className="space-y-6 slide-enter-active">
                 <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
                   <span>REAL-TIME ENGINE TELEMETRY // ADJUST LOAD CAPACITY</span>
                 </div>
@@ -531,9 +562,9 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 6: Web advantages & Monetization */}
-            {currentSlide === 6 && (
-              <div className="space-y-6">
+            {/* Slide 7: Web advantages & Monetization */}
+            {currentSlide === 7 && (
+              <div className="space-y-6 slide-enter-active">
                 <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
                   <span>MARKET FIT // SCALABILITY & MONETIZATION</span>
                 </div>
@@ -599,9 +630,9 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 7: Roadmap & Vision */}
-            {currentSlide === 7 && (
-              <div className="space-y-6">
+            {/* Slide 8: Roadmap & Vision */}
+            {currentSlide === 8 && (
+              <div className="space-y-6 slide-enter-active">
                 <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
                   <span>FUTURE OUTLOOK // ROADMAP</span>
                 </div>
@@ -649,14 +680,14 @@ export default function App() {
           </div>
 
           {/* Slide Deck Controller Bar */}
-          <div className="w-full mt-6 p-4 bg-slate-950/90 border border-orange-500/20 rounded-xl flex items-center justify-between">
+          <div className="w-full mt-6 p-4 bg-slate-950/80 border border-orange-500/20 rounded-xl flex items-center justify-between backdrop-blur-md">
             <button
               onClick={() => {
                 setCurrentSlide((prev) => Math.max(prev - 1, 0));
                 playBeep(500, 'sine', 0.08);
               }}
               disabled={currentSlide === 0}
-              className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-800 text-slate-300 font-mono text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="premium-btn px-4 py-2 rounded-lg text-slate-300 font-mono text-xs flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="w-4 h-4" />
               <span>PREVIOUS</span>
@@ -684,7 +715,7 @@ export default function App() {
                 playBeep(600, 'sine', 0.08);
               }}
               disabled={currentSlide === totalSlides - 1}
-              className="px-4 py-2 bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500 hover:text-slate-950 rounded-lg font-mono text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="premium-btn premium-btn-orange px-4 py-2 text-orange-400 rounded-lg font-mono text-xs flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <span>NEXT</span>
               <ChevronRight className="w-4 h-4" />

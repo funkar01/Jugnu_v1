@@ -208,6 +208,8 @@ export class DomainExpansionSystem extends createSystem({
     // Video MIV position variables
     private mivVideo!: HTMLVideoElement;
     private mivVideoTex!: THREE.VideoTexture;
+    private fifaVideo!: HTMLVideoElement;
+    private fifaVideoTex!: THREE.VideoTexture;
 
     // Real-Time B2B Broadcast Scenario Telemetry
     private activePrediction: 'SIX' | 'WICKET' | 'DOT' | null = null;
@@ -299,6 +301,8 @@ export class DomainExpansionSystem extends createSystem({
     private soccerTextures: (THREE.Texture | null)[] = [];
     private iplBillboardTexture: THREE.Texture | null = null;
     private soccerBillboardTexture: THREE.Texture | null = null;
+    private argentinaTextures: (THREE.CanvasTexture | null)[] = [];
+    private argentinaBillboardTexture: THREE.CanvasTexture | null = null;
     // Roof arc parameters (in table-local space)
     private readonly ROOF_Y = 0.095;      // Height of stadium roof rim
     private readonly ROOF_RADIUS = 0.096; // Radius of stadium inner roof arc
@@ -387,10 +391,7 @@ export class DomainExpansionSystem extends createSystem({
     private f1ActiveCardDriverId: string | null = null;
     private f1ActiveCardTimer = 0.0;
     private f1ActiveCarHighlight!: THREE.Mesh;
-    private domainHudMesh!: THREE.Mesh;
-    private domainHudCanvas!: HTMLCanvasElement;
-    private domainHudCtx!: CanvasRenderingContext2D;
-    private domainHudTexture!: THREE.CanvasTexture;
+
 
     private f1CarLaps: Record<string, number> = { f1_gr: 1, f1_ka: 1, f1_cl: 1, f1_lh: 1, f1_ln: 1, f1_op: 1 };
     private f1CarPrevProgress: Record<string, number> = { f1_gr: 0, f1_ka: 0, f1_cl: 0, f1_lh: 0, f1_ln: 0, f1_op: 0 };
@@ -548,9 +549,9 @@ export class DomainExpansionSystem extends createSystem({
     private readonly THUMB_KEYS_DEFAULT = ["iplCam1", "iplCam2", "iplCam3", "iplCam4", "iplCam5", "iplCam6"];
     private readonly THUMB_KEYS_BERLIN = ["berlin360_1_thumb", "berlin360_2_thumb", "berlin360_3_thumb", "berlin360_4_thumb", "berlin360_5_thumb", "berlin360_6_thumb"];
     private readonly THUMB_KEYS_INUIT = ["inuit360_1_thumb", "inuit360_2_thumb", "inuit360_3_thumb", "inuit360_4_thumb", "inuit360_5_thumb", "inuit360_6_thumb"];
-    private readonly DOMAIN_KEYS_BUTTERFLIES = ["butterfly360_1", "butterfly360_2", "butterfly360_3", "butterfly360_4", "butterfly360_5", "butterfly360_6", "butterfly360_7", "butterfly360_8", "butterfly360_9", "butterfly360_10"];
-    private readonly DOMAIN_NAMES_BUTTERFLIES = ["FIFA Stadium — 1", "FIFA Stadium — 2", "FIFA Stadium — 3", "FIFA Stadium — 4", "FIFA Stadium — 5", "FIFA Stadium — 6", "FIFA Stadium — 7", "FIFA Stadium — 8", "FIFA Stadium — 9", "FIFA Stadium — 10"];
-    private readonly THUMB_KEYS_BUTTERFLIES = ["butterfly360_1", "butterfly360_2", "butterfly360_3", "butterfly360_4", "butterfly360_5", "butterfly360_6", "butterfly360_7", "butterfly360_8", "butterfly360_9", "butterfly360_10"];
+    private readonly DOMAIN_KEYS_BUTTERFLIES = ["fifaVideo", "fifa360_1", "fifa360_2", "fifa360_3", "fifa360_4"];
+    private readonly DOMAIN_NAMES_BUTTERFLIES = ["FIFA — Video Cam", "FIFA — Corner View", "FIFA — Goalpost View", "FIFA — Stands View", "FIFA — Sideline View"];
+    private readonly THUMB_KEYS_BUTTERFLIES = ["fifaVideo", "fifa360_1", "fifa360_2", "fifa360_3", "fifa360_4"];
     private readonly DOMAIN_KEYS_NURBURGRING = ["monacogp_1", "monacogp_2", "monacogp_3", "monacogp_4", "monacogp_5", "monacogp_6", "monacogp_7", "monacogp_8", "monacogp_9"];
     private readonly DOMAIN_NAMES_NURBURGRING = ["Sainte Dévote", "Beau Rivage", "Massenet", "Casino Square", "Grand Hotel Hairpin", "Portier", "Tunnel Exit", "Nouvelle Chicane", "La Rascasse"];
     private readonly THUMB_KEYS_NURBURGRING = ["monacogp_1", "monacogp_2", "monacogp_3", "monacogp_4", "monacogp_5", "monacogp_6", "monacogp_7", "monacogp_8", "monacogp_9"];
@@ -971,10 +972,27 @@ export class DomainExpansionSystem extends createSystem({
         this.mivVideoTex.colorSpace = THREE.SRGBColorSpace;
         this.mivVideoTex.mapping = THREE.EquirectangularReflectionMapping;
 
+        // Initialize FIFA 360 video
+        this.fifaVideo = document.createElement('video');
+        this.fifaVideo.src = "./360Videos/Fifa360vid.mp4";
+        this.fifaVideo.crossOrigin = 'anonymous';
+        this.fifaVideo.loop = true;
+        this.fifaVideo.muted = true;
+        this.fifaVideo.playsInline = true;
+        this.fifaVideo.autoplay = true;
+        this.fifaVideo.play().catch(e => console.warn("Fifa video autoplay blocked until user interaction", e));
+
+        this.fifaVideoTex = new THREE.VideoTexture(this.fifaVideo);
+        this.fifaVideoTex.colorSpace = THREE.SRGBColorSpace;
+        this.fifaVideoTex.mapping = THREE.EquirectangularReflectionMapping;
+
         // Add a pointerdown listener to trigger play on first interaction (browser requirement)
         window.addEventListener('pointerdown', () => {
             if (this.mivVideo && this.mivVideo.paused) {
                 this.mivVideo.play().catch(() => { });
+            }
+            if (this.fifaVideo && this.fifaVideo.paused) {
+                this.fifaVideo.play().catch(() => { });
             }
         }, { once: true });
 
@@ -1084,24 +1102,7 @@ export class DomainExpansionSystem extends createSystem({
         this.domainMesh.renderOrder = -100;
         this.world.createTransformEntity(this.domainMesh);
 
-        // --- Immersive Dome HUD (displays current view name) ---
-        this.domainHudCanvas = document.createElement('canvas');
-        this.domainHudCanvas.width = 512;
-        this.domainHudCanvas.height = 128;
-        this.domainHudCtx = this.domainHudCanvas.getContext('2d')!;
-        this.domainHudTexture = new THREE.CanvasTexture(this.domainHudCanvas);
-        this.domainHudTexture.colorSpace = THREE.SRGBColorSpace;
-        const hudMat = new THREE.MeshBasicMaterial({
-            map: this.domainHudTexture,
-            transparent: true,
-            opacity: 0.0,
-            side: THREE.DoubleSide,
-            depthWrite: false
-        });
-        const hudGeom = new THREE.PlaneGeometry(0.8, 0.2);
-        this.domainHudMesh = new THREE.Mesh(hudGeom, hudMat);
-        this.domainHudMesh.visible = false;
-        this.world.createTransformEntity(this.domainHudMesh);
+
 
         // --- Holographic Close "X" Button Setup (floats above active bubble) ---
         this.xButton = new THREE.Group();
@@ -1262,6 +1263,8 @@ export class DomainExpansionSystem extends createSystem({
         (window as any).isMinimapNavigationActive = () => this.isNavLayerActive;
         (window as any).isMinimapSportSequenceActive = () => this.isSportSequenceActive;
         (window as any).getMinimapWeatherMode = () => this.weatherMode;
+
+        this.initArgentinaTextures();
     }
 
     private getIndexData(handedness: 'left' | 'right', tipPosOut: THREE.Vector3): boolean {
@@ -1494,6 +1497,8 @@ export class DomainExpansionSystem extends createSystem({
                 const tKey = thumbKeys[idx] ?? thumbKeys[0];
                 if (tKey === 'mivVideo') {
                     bMat.map = this.mivVideoTex;
+                } else if (tKey === 'fifaVideo') {
+                    bMat.map = this.fifaVideoTex;
                 } else {
                     const tex = AssetManager.getTexture(tKey);
                     if (tex) {
@@ -1986,18 +1991,32 @@ export class DomainExpansionSystem extends createSystem({
                 }
 
                 const mat = mesh.material as THREE.MeshBasicMaterial;
-                if (this.soccerTextures[idx]) {
-                    mat.map = this.soccerTextures[idx];
-                    mat.needsUpdate = true;
+                if (stadiumType === 'butterflies') {
+                    if (this.argentinaTextures[idx]) {
+                        mat.map = this.argentinaTextures[idx];
+                        mat.needsUpdate = true;
+                    }
+                } else {
+                    if (this.soccerTextures[idx]) {
+                        mat.map = this.soccerTextures[idx];
+                        mat.needsUpdate = true;
+                    }
                 }
             });
 
             // Set Soccer billboard
             if (this.arBillboard && this.arBillboard.children[0]) {
                 const bannerMat = (this.arBillboard.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
-                if (this.soccerBillboardTexture) {
-                    bannerMat.map = this.soccerBillboardTexture;
-                    bannerMat.needsUpdate = true;
+                if (stadiumType === 'butterflies') {
+                    if (this.argentinaBillboardTexture) {
+                        bannerMat.map = this.argentinaBillboardTexture;
+                        bannerMat.needsUpdate = true;
+                    }
+                } else {
+                    if (this.soccerBillboardTexture) {
+                        bannerMat.map = this.soccerBillboardTexture;
+                        bannerMat.needsUpdate = true;
+                    }
                 }
             }
         } else {
@@ -4191,6 +4210,9 @@ export class DomainExpansionSystem extends createSystem({
                             if (currentKey === "mivVideo") {
                                 this.domainMat.map = this.mivVideoTex;
                                 this.domainMat.needsUpdate = true;
+                            } else if (currentKey === "fifaVideo") {
+                                this.domainMat.map = this.fifaVideoTex;
+                                this.domainMat.needsUpdate = true;
                             } else {
                                 const domeTex = AssetManager.getTexture(currentKey);
                                 if (domeTex) {
@@ -4694,6 +4716,9 @@ export class DomainExpansionSystem extends createSystem({
                 if (currentKey === "mivVideo") {
                     this.domainMat.map = this.mivVideoTex;
                     this.domainMat.needsUpdate = true;
+                } else if (currentKey === "fifaVideo") {
+                    this.domainMat.map = this.fifaVideoTex;
+                    this.domainMat.needsUpdate = true;
                 } else {
                     const domeTex = AssetManager.getTexture(currentKey);
                     if (domeTex) {
@@ -4713,45 +4738,7 @@ export class DomainExpansionSystem extends createSystem({
             this.domainMesh.position.lerp(new THREE.Vector3(0, 0, 0), 3.0 * dt);
             this.domainMat.opacity = THREE.MathUtils.lerp(this.domainMat.opacity, 0.95, 3.0 * dt);
 
-            // --- Update Immersive Dome HUD ---
-            let stadiumName = "Stadium View";
-            if (this.currentStadiumType === 'default') stadiumName = "Wankhede Stadium";
-            else if (this.currentStadiumType === 'berlin') stadiumName = "Olympiastadion Berlin";
-            else if (this.currentStadiumType === 'inuit') stadiumName = "Crypto.com Arena";
-            else if (this.currentStadiumType === 'butterflies') stadiumName = "FIFA Stadium";
-            else if (this.currentStadiumType === 'nurburgring') stadiumName = "Monaco GP";
 
-            const viewName = this.domainNames[this.currentDomainIndex] || "Cam View";
-            this.drawDomainHud(stadiumName, viewName);
-
-            this.domainHudMesh.visible = true;
-
-            const headPos = this.scratchVector3;
-            if (this.player && this.player.head) {
-                this.player.head.getWorldPosition(headPos);
-            } else if (this.camera) {
-                this.camera.getWorldPosition(headPos);
-            } else {
-                headPos.set(0, 1.45, 0.4);
-            }
-
-            const forward = this.scratchVector2;
-            if (this.camera) {
-                this.camera.getWorldDirection(forward);
-            } else {
-                forward.set(0, 0, -1);
-            }
-            forward.normalize();
-
-            const hudPos = this.scratchVector1;
-            hudPos.copy(headPos).addScaledVector(forward, 1.5);
-            hudPos.y += 0.2; // float slightly above eye level
-
-            this.domainHudMesh.position.copy(hudPos);
-            this.domainHudMesh.lookAt(headPos);
-
-            const hMat = this.domainHudMesh.material as THREE.MeshBasicMaterial;
-            hMat.opacity = THREE.MathUtils.lerp(hMat.opacity, 0.95, 3.0 * dt);
         } else {
             this.lastActiveDomainIndex = -1;
 
@@ -4770,36 +4757,7 @@ export class DomainExpansionSystem extends createSystem({
                 }
             }
 
-            // Fade out Immersive Dome HUD
-            if (this.domainHudMesh && this.domainHudMesh.visible) {
-                const hMat = this.domainHudMesh.material as THREE.MeshBasicMaterial;
-                hMat.opacity = THREE.MathUtils.lerp(hMat.opacity, 0.0, 3.5 * dt);
-                if (hMat.opacity < 0.02) {
-                    this.domainHudMesh.visible = false;
-                } else {
-                    // Keep billboarding/positioning during fade
-                    const headPos = this.scratchVector3;
-                    if (this.player && this.player.head) {
-                        this.player.head.getWorldPosition(headPos);
-                    } else if (this.camera) {
-                        this.camera.getWorldPosition(headPos);
-                    } else {
-                        headPos.set(0, 1.45, 0.4);
-                    }
-                    const forward = this.scratchVector2;
-                    if (this.camera) {
-                        this.camera.getWorldDirection(forward);
-                    } else {
-                        forward.set(0, 0, -1);
-                    }
-                    forward.normalize();
-                    const hudPos = this.scratchVector1;
-                    hudPos.copy(headPos).addScaledVector(forward, 1.5);
-                    hudPos.y += 0.2;
-                    this.domainHudMesh.position.copy(hudPos);
-                    this.domainHudMesh.lookAt(headPos);
-                }
-            }
+
         }
 
         // Play/pause MIV video based on active domain
@@ -4812,6 +4770,18 @@ export class DomainExpansionSystem extends createSystem({
             } else {
                 if (!this.mivVideo.paused) {
                     this.mivVideo.pause();
+                }
+            }
+        }
+        if (this.fifaVideo) {
+            const currentKey = this.domainKeys[this.currentDomainIndex];
+            if (this.isDomainActive && currentKey === "fifaVideo") {
+                if (this.fifaVideo.paused) {
+                    this.fifaVideo.play().catch(() => { });
+                }
+            } else {
+                if (!this.fifaVideo.paused) {
+                    this.fifaVideo.pause();
                 }
             }
         }
@@ -5844,9 +5814,14 @@ export class DomainExpansionSystem extends createSystem({
         texLoader.load('./ui/football/ucl_score_banner.png', (tex) => {
             const alphaTex = this.makeBlackTransparent(tex.image);
             this.soccerBillboardTexture = alphaTex;
-            if (this.currentStadiumType === 'berlin' || this.currentStadiumType === 'butterflies') {
+            if (this.currentStadiumType === 'berlin') {
                 bannerMat.map = alphaTex;
                 bannerMat.needsUpdate = true;
+            } else if (this.currentStadiumType === 'butterflies') {
+                if (this.argentinaBillboardTexture) {
+                    bannerMat.map = this.argentinaBillboardTexture;
+                    bannerMat.needsUpdate = true;
+                }
             }
         });
 
@@ -6064,6 +6039,20 @@ export class DomainExpansionSystem extends createSystem({
             { id: "ref", name: "S. Marciniak", role: "umpire", jersey: "R", team: "neutral", x: 0.000, z: 0.000, primary: "Referee", secondary: "UEFA Pro", rcbCardKey: "" },
         ];
 
+        const rosterArgentina: PlayerEntry[] = [
+            // ── Argentina (Blue — home) ──────────────────────────────────────
+            { id: "gk", name: "E. Martínez", role: "fielder", jersey: "23", team: "blue", x: 0.000, z: -0.055, primary: "Saves: 4 / 6", secondary: "GK — Argentina", rcbCardKey: "" },
+            { id: "d2", name: "C. Romero", role: "fielder", jersey: "13", team: "blue", x: 0.040, z: -0.045, primary: "Tackles: 5", secondary: "CB — Argentina", rcbCardKey: "" },
+            { id: "d3", name: "N. Molina", role: "fielder", jersey: "26", team: "blue", x: -0.070, z: -0.035, primary: "Interceptions: 4", secondary: "RB — Argentina", rcbCardKey: "" },
+            { id: "m2", name: "R. De Paul", role: "fielder", jersey: "7", team: "blue", x: 0.025, z: -0.030, primary: "Passes: 55 / 62", secondary: "CM — Argentina", rcbCardKey: "" },
+            { id: "fw1", name: "A. Di María", role: "fielder", jersey: "11", team: "blue", x: -0.055, z: 0.015, primary: "Goals: 1  Shots: 3", secondary: "LW — Argentina", rcbCardKey: "" },
+            { id: "fw3", name: "L. Messi", role: "batsman", jersey: "10", team: "blue", x: 0.000, z: 0.020, primary: "Goals: 2  Shots: 5", secondary: "ST — Argentina", rcbCardKey: "" },
+            // France (Yellow — away)
+            { id: "a1", name: "K. Mbappé", role: "batsman", jersey: "10", team: "yellow", x: 0.013, z: 0.040, primary: "Goals: 3  Shots: 6", secondary: "LW — France", rcbCardKey: "" },
+            // Referee
+            { id: "ref", name: "S. Marciniak", role: "umpire", jersey: "R", team: "neutral", x: 0.000, z: 0.000, primary: "Referee", secondary: "FIFA Pro", rcbCardKey: "" },
+        ];
+
         const rosterBasketball: PlayerEntry[] = [
             // ── Indiana Pacers (Blue — home) ──────────────────────────────────
             { id: "p1", name: "T. Haliburton", role: "batsman", jersey: "0", team: "blue", x: 0.000, z: 0.010, primary: "Pts: 20.1  Ast: 10.9", secondary: "PG — Playmaker", rcbCardKey: "nbaTyreseHaliburton" },
@@ -6088,10 +6077,11 @@ export class DomainExpansionSystem extends createSystem({
         ];
 
         const roster: PlayerEntry[] =
-            (this.currentStadiumType === 'berlin' || this.currentStadiumType === 'butterflies') ? rosterFootball
-                : this.currentStadiumType === 'inuit' ? rosterBasketball
-                    : this.currentStadiumType === 'nurburgring' ? rosterNurburgring
-                        : rosterCricket;
+            this.currentStadiumType === 'butterflies' ? rosterArgentina
+                : this.currentStadiumType === 'berlin' ? rosterFootball
+                    : this.currentStadiumType === 'inuit' ? rosterBasketball
+                        : this.currentStadiumType === 'nurburgring' ? rosterNurburgring
+                            : rosterCricket;
 
         // ── Shared Phong glassmorphic materials (created ONCE per team — not 22× per player) ───────
         const mkGlass = (col: number, emissiveHex: number, opacity: number = 0.82) =>
@@ -7539,6 +7529,288 @@ export class DomainExpansionSystem extends createSystem({
         });
     }
 
+    private initArgentinaTextures() {
+        // Draw 5 score board textures
+        this.argentinaTextures = [];
+
+        // Helper to create a canvas and draw rounded rect with glassmorphic look
+        const createBaseCanvas = (w: number, h: number, title: string, subtitle: string, bgColor: string, borderColor: string) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d')!;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Outer glow border
+            ctx.fillStyle = bgColor;
+            ctx.strokeStyle = borderColor;
+            ctx.lineWidth = 12;
+            ctx.beginPath();
+            ctx.roundRect(10, 10, w - 20, h - 20, 24);
+            ctx.fill();
+            ctx.stroke();
+
+            // Header block
+            ctx.fillStyle = 'rgba(0, 255, 234, 0.15)';
+            ctx.beginPath();
+            ctx.roundRect(16, 16, w - 32, 80, 12);
+            ctx.fill();
+
+            // Header text
+            ctx.font = 'bold 28px "Orbitron", monospace';
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(title, w / 2, 56);
+
+            return { canvas, ctx };
+        };
+
+        // 1. Argentina Team Stats (Slot 0 - Vertical 512x1024)
+        {
+            const { canvas, ctx } = createBaseCanvas(512, 1024, "ARGENTINA", "TEAM STATS", "rgba(6, 20, 48, 0.9)", "#38bdf8");
+            // Argentina flag stripes on header
+            ctx.fillStyle = '#7dd3fc';
+            ctx.fillRect(20, 105, 472, 8);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(20, 113, 472, 8);
+            ctx.fillStyle = '#7dd3fc';
+            ctx.fillRect(20, 121, 472, 8);
+
+            // Draw Stats
+            const stats = [
+                { label: "POSSESSION", value: "54%" },
+                { label: "SHOTS (ON)", value: "20 (10)" },
+                { label: "PASS ACCURACY", value: "88%" },
+                { label: "FOULS", value: "12" },
+                { label: "CORNERS", value: "6" },
+                { label: "OFFSIDES", value: "2" },
+                { label: "YELLOW CARDS", value: "1" }
+            ];
+
+            ctx.textAlign = 'left';
+            ctx.font = 'bold 22px "Orbitron", monospace';
+            ctx.fillStyle = '#a1a1aa';
+            let y = 180;
+            stats.forEach(st => {
+                ctx.fillStyle = '#93c5fd';
+                ctx.fillText(st.label, 40, y);
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(st.value, 472, y);
+                ctx.textAlign = 'left';
+
+                // separator line
+                ctx.strokeStyle = 'rgba(147, 197, 253, 0.15)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(40, y + 25);
+                ctx.lineTo(472, y + 25);
+                ctx.stroke();
+
+                y += 110;
+            });
+
+            this.argentinaTextures.push(new THREE.CanvasTexture(canvas));
+        }
+
+        // 2. L. Messi Stats (Slot 1 - Horizontal 1024x512)
+        {
+            const { canvas, ctx } = createBaseCanvas(1024, 512, "L. MESSI (ARG) — LW/ST", "GOAT", "rgba(6, 20, 48, 0.9)", "#f59e0b");
+            // Draw stats
+            ctx.font = 'bold 36px "Orbitron", monospace';
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText("MATCH RATING: 9.8 (MOTM)", 512, 160);
+
+            const stats = [
+                { label: "GOALS", value: "2" },
+                { label: "ASSISTS", value: "1" },
+                { label: "SHOTS (ON)", value: "5 (4)" },
+                { label: "DRIBBLES (OK)", value: "8 (7)" }
+            ];
+
+            ctx.textAlign = 'center';
+            let x = 150;
+            stats.forEach(st => {
+                ctx.fillStyle = '#cbd5e1';
+                ctx.font = '24px "Orbitron", monospace';
+                ctx.fillText(st.label, x, 300);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 48px "Orbitron", monospace';
+                ctx.fillText(st.value, x, 380);
+                x += 240;
+            });
+            this.argentinaTextures.push(new THREE.CanvasTexture(canvas));
+        }
+
+        // 3. Center score banner (Slot 2 - Horizontal 1024x256)
+        {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d')!;
+            ctx.fillStyle = 'rgba(6, 20, 48, 0.95)';
+            ctx.strokeStyle = '#e2e8f0';
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.roundRect(8, 8, 1008, 240, 16);
+            ctx.fill();
+            ctx.stroke();
+
+            // FIFA World Cup banner header
+            ctx.fillStyle = '#fbbf24';
+            ctx.font = 'bold 20px "Orbitron", monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText("FIFA WORLD CUP FINAL", 512, 36);
+
+            // Match score
+            ctx.font = 'bold 56px "Orbitron", monospace';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText("ARG  3 - 3  FRA", 512, 110);
+
+            // Penalties
+            ctx.font = 'bold 24px "Orbitron", monospace';
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText("PENALTIES: 4 - 2", 512, 170);
+
+            // Champion subtitle
+            ctx.font = 'bold 22px "Orbitron", monospace';
+            ctx.fillStyle = '#67e8f9';
+            ctx.fillText("★ ARGENTINA WORLD CHAMPIONS ★", 512, 220);
+
+            this.argentinaTextures.push(new THREE.CanvasTexture(canvas));
+        }
+
+        // 4. K. Mbappé Stats (Slot 3 - Horizontal 1024x512)
+        {
+            const { canvas, ctx } = createBaseCanvas(1024, 512, "K. MBAPPÉ (FRA) — LW", "STATS", "rgba(6, 20, 48, 0.9)", "#3b82f6");
+            ctx.font = 'bold 36px "Orbitron", monospace';
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillText("MATCH RATING: 9.1", 512, 160);
+
+            const stats = [
+                { label: "GOALS", value: "3" },
+                { label: "ASSISTS", value: "0" },
+                { label: "SHOTS (ON)", value: "6 (5)" },
+                { label: "DRIBBLES (OK)", value: "10 (6)" }
+            ];
+
+            ctx.textAlign = 'center';
+            let x = 150;
+            stats.forEach(st => {
+                ctx.fillStyle = '#cbd5e1';
+                ctx.font = '24px "Orbitron", monospace';
+                ctx.fillText(st.label, x, 300);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 48px "Orbitron", monospace';
+                ctx.fillText(st.value, x, 380);
+                x += 240;
+            });
+            this.argentinaTextures.push(new THREE.CanvasTexture(canvas));
+        }
+
+        // 5. France Team Stats (Slot 4 - Vertical 512x1024)
+        {
+            const { canvas, ctx } = createBaseCanvas(512, 1024, "FRANCE", "TEAM STATS", "rgba(6, 20, 48, 0.9)", "#ef4444");
+            // France flag stripes
+            ctx.fillStyle = '#2563eb';
+            ctx.fillRect(20, 105, 157, 16);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(177, 105, 157, 16);
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(334, 105, 158, 16);
+
+            const stats = [
+                { label: "POSSESSION", value: "46%" },
+                { label: "SHOTS (ON)", value: "10 (5)" },
+                { label: "PASS ACCURACY", value: "81%" },
+                { label: "FOULS", value: "19" },
+                { label: "CORNERS", value: "5" },
+                { label: "OFFSIDES", value: "3" },
+                { label: "YELLOW CARDS", value: "3" }
+            ];
+
+            ctx.textAlign = 'left';
+            ctx.font = 'bold 22px "Orbitron", monospace';
+            ctx.fillStyle = '#a1a1aa';
+            let y = 180;
+            stats.forEach(st => {
+                ctx.fillStyle = '#fca5a5';
+                ctx.fillText(st.label, 40, y);
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(st.value, 472, y);
+                ctx.textAlign = 'left';
+
+                ctx.strokeStyle = 'rgba(239, 68, 68, 0.15)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(40, y + 25);
+                ctx.lineTo(472, y + 25);
+                ctx.stroke();
+
+                y += 110;
+            });
+            this.argentinaTextures.push(new THREE.CanvasTexture(canvas));
+        }
+
+        // Center Billboard (Argentina vs France Final Presentation - 1024x512)
+        {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d')!;
+            ctx.fillStyle = 'rgba(6, 20, 48, 0.95)';
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 12;
+            ctx.beginPath();
+            ctx.roundRect(10, 10, 1004, 492, 24);
+            ctx.fill();
+            ctx.stroke();
+
+            // Title
+            ctx.font = 'bold 28px "Orbitron", monospace';
+            ctx.fillStyle = '#93c5fd';
+            ctx.textAlign = 'center';
+            ctx.fillText("FIFA WORLD CUP FINAL", 512, 60);
+
+            // Match score large
+            ctx.font = 'bold 84px "Orbitron", monospace';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText("ARG  3 - 3  FRA", 512, 190);
+
+            // Penalties
+            ctx.font = 'bold 36px "Orbitron", monospace';
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText("PENALTIES: 4 - 2", 512, 290);
+
+            // Champion subtitle
+            ctx.font = 'bold 32px "Orbitron", monospace';
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText("★ ARGENTINA WORLD CHAMPIONS ★", 512, 380);
+
+            // Golden stars
+            ctx.font = 'bold 28px "Orbitron", monospace';
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText("★★★", 512, 440);
+
+            this.argentinaBillboardTexture = new THREE.CanvasTexture(canvas);
+        }
+
+        // Color spaces and updates
+        this.argentinaTextures.forEach(tex => {
+            if (tex) {
+                tex.colorSpace = THREE.SRGBColorSpace;
+                tex.needsUpdate = true;
+            }
+        });
+        if (this.argentinaBillboardTexture) {
+            this.argentinaBillboardTexture.colorSpace = THREE.SRGBColorSpace;
+            this.argentinaBillboardTexture.needsUpdate = true;
+        }
+    }
+
     private areFireworksActive(): boolean {
         if (!this.fireworkActive) return false;
         for (let i = 0; i < this.MAX_FIREWORKS; i++) {
@@ -8418,7 +8690,11 @@ export class DomainExpansionSystem extends createSystem({
                     ctx.font = 'bold italic 48px monospace';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
-                    ctx.fillText("GOAL!!!", 128, 64);
+                    if (stType === 'butterflies') {
+                        ctx.fillText("GOAT MESSI!!!", 128, 64);
+                    } else {
+                        ctx.fillText("GOAL!!!", 128, 64);
+                    }
                     this.sportCelebrationTexture.needsUpdate = true;
                 }
             }
@@ -11128,33 +11404,7 @@ export class DomainExpansionSystem extends createSystem({
         this.f1RosterTexture.needsUpdate = true;
     }
 
-    private drawDomainHud(stadiumName: string, viewName: string) {
-        if (!this.domainHudCtx) return;
-        const ctx = this.domainHudCtx;
-        ctx.clearRect(0, 0, 512, 128);
 
-        // Glassmorphic backing
-        ctx.fillStyle = 'rgba(6, 12, 32, 0.85)';
-        ctx.strokeStyle = '#00ffff';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.roundRect(10, 10, 492, 108, 16);
-        ctx.fill();
-        ctx.stroke();
-
-        // Title
-        ctx.font = 'bold 16px "Orbitron", monospace';
-        ctx.fillStyle = '#f59e0b'; // Gold/Amber
-        ctx.textAlign = 'center';
-        ctx.fillText(stadiumName.toUpperCase(), 256, 42);
-
-        // View Name
-        ctx.font = 'bold 24px "Orbitron", monospace';
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(viewName, 256, 84);
-
-        this.domainHudTexture.needsUpdate = true;
-    }
 
     private triggerPlayerCard(driverId: string) {
         this.f1ActiveCardDriverId = driverId;

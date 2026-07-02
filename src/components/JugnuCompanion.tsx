@@ -168,7 +168,7 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
   const orbComponent = (
     <div 
       ref={containerRef}
-      className="w-full h-[400px] bg-slate-950/40 border border-orange-500/20 rounded-3xl relative flex flex-col justify-between p-6 overflow-hidden shadow-2xl backdrop-blur-md"
+      className="w-full h-[400px] premium-card relative flex flex-col justify-between p-6 overflow-hidden"
       style={{ cursor: isPinchTracking ? 'none' : 'default' }}
     >
       {/* Top HUD bar */}
@@ -209,8 +209,8 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
       <div className="space-y-4">
         
         {/* Waveform text bubble */}
-        <div className="p-3 bg-slate-950/90 border border-orange-500/10 rounded-xl relative">
-          <div className="absolute -top-1.5 left-8 w-3 h-3 bg-slate-950 border-t border-l border-orange-500/10 transform rotate-45" />
+        <div className="p-3 bg-slate-950/90 border border-white/5 rounded-xl relative">
+          <div className="absolute -top-1.5 left-8 w-3 h-3 bg-slate-950 border-t border-l border-white/5 transform rotate-45" />
           <div className="flex items-start gap-2.5">
             <Volume2 className="w-4 h-4 text-orange-400 shrink-0 mt-0.5 animate-bounce" />
             <div>
@@ -224,10 +224,10 @@ export default function JugnuCompanion({ compact = false }: JugnuCompanionProps)
         <button
           id="btn-gesture-pinch"
           onClick={togglePinchTracking}
-          className={`w-full py-3 rounded-xl border font-mono text-xs uppercase tracking-wider transition-all cursor-pointer ${
+          className={`premium-btn w-full py-3 rounded-xl border font-mono text-xs uppercase tracking-wider transition-all ${
             isPinchTracking
-              ? 'bg-orange-500/20 border-orange-500 text-orange-400 font-bold shadow-[0_0_15px_rgba(240,125,0,0.2)]'
-              : 'bg-slate-950 border-orange-500/20 text-slate-400 hover:text-white hover:border-orange-500/40'
+              ? 'premium-btn-orange bg-orange-500/20 border-orange-500 text-orange-400 font-bold shadow-[0_0_15px_rgba(240,125,0,0.2)]'
+              : 'border-white/5 text-slate-400 hover:text-white hover:border-orange-500/30'
           }`}
         >
           {isPinchTracking ? '🔴 ACTIVE PINCH TRACKING // TAP TO PARK' : '👆 SIMULATE HAND PINCH TRACKING'}
