@@ -35,6 +35,7 @@ export default function ActionCompass({ activeSport, onChangeSport }: ActionComp
   const [bearing, setBearing] = useState(128.4);
   const [lockedIdx, setLockedIdx] = useState<number>(-1);
   const [iconImgs, setIconImgs] = useState<Record<string, HTMLImageElement>>({});
+  const [bgCanvases, setBgCanvases] = useState<{ outer?: HTMLCanvasElement; inner?: HTMLCanvasElement }>({});
 
   useEffect(() => {
     const loaded: Record<string, HTMLImageElement> = {};
@@ -47,6 +48,45 @@ export default function ActionCompass({ activeSport, onChangeSport }: ActionComp
       img.onerror = () => { pending--; };
       img.src = s.icon as string;
     });
+
+    const makeBlackTransparent = (image: HTMLImageElement): HTMLCanvasElement => {
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width || 512;
+      canvas.height = image.height || 512;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(image, 0, 0);
+      try {
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i+1];
+          const b = data[i+2];
+          const luma = Math.max(r, g, b);
+          if (luma < 15) {
+            data[i+3] = 0;
+          } else if (luma < 40) {
+            data[i+3] = (luma - 15) * 10;
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+      } catch (e) {
+        console.warn("Could not modify pixel transparency:", e);
+      }
+      return canvas;
+    };
+
+    const outerImg = new Image();
+    outerImg.src = '/textures/CompassUiOuter.png';
+    outerImg.onload = () => {
+      setBgCanvases(prev => ({ ...prev, outer: makeBlackTransparent(outerImg) }));
+    };
+
+    const innerImg = new Image();
+    innerImg.src = '/textures/CompassUiInner.png';
+    innerImg.onload = () => {
+      setBgCanvases(prev => ({ ...prev, inner: makeBlackTransparent(innerImg) }));
+    };
   }, []);
 
   useEffect(() => {
@@ -75,16 +115,34 @@ export default function ActionCompass({ activeSport, onChangeSport }: ActionComp
     ctx.fillStyle = halo;
     ctx.fillRect(0, 0, W, W);
 
-    // Main dark circle
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, W * 0.46, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(5,5,18,0.85)';
-    ctx.fill();
-    ctx.strokeStyle = colors.primary + '44';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.restore();
+    // Outer background — use actual XR texture if loaded, fall back to drawn circle
+    if (bgCanvases.outer) {
+      // Tinted composite matching jugnu.ts logic
+      const tint = document.createElement('canvas');
+      tint.width = W; tint.height = W;
+      const tCtx = tint.getContext('2d')!;
+      tCtx.drawImage(bgCanvases.outer, 0, 0, W, W);
+      tCtx.globalCompositeOperation = 'source-in';
+      tCtx.fillStyle = colors.primary;
+      tCtx.fillRect(0, 0, W, W);
+      tCtx.globalCompositeOperation = 'multiply';
+      tCtx.drawImage(bgCanvases.outer, 0, 0, W, W);
+      ctx.save();
+      ctx.globalAlpha = 0.40;
+      ctx.drawImage(tint, 0, 0, W, W);
+      ctx.globalAlpha = 1.0;
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, W * 0.46, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(5,5,18,0.85)';
+      ctx.fill();
+      ctx.strokeStyle = colors.primary + '44';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Dashed outer ring rotating
     ctx.save();
@@ -193,61 +251,39 @@ export default function ActionCompass({ activeSport, onChangeSport }: ActionComp
       ctx.restore();
     });
 
-    // Center dark circle
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, W * 0.175, 0, Math.PI * 2);
-    const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.175);
-    cg.addColorStop(0, 'rgba(14,14,38,0.99)');
-    cg.addColorStop(1, 'rgba(6,6,20,0.96)');
-    ctx.fillStyle = cg;
-    ctx.fill();
-    ctx.strokeStyle = colors.primary + '55';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.restore();
-
-    // Tilted torus ring at center
-    const ta = torusAngleRef.current;
-    const trx = W * 0.115;
-    const try_ = W * 0.055 * Math.abs(Math.cos(0.8));
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.save();
-    ctx.rotate(ta * 0.7 + 0.26);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, trx, try_, 0, Math.PI, Math.PI * 2);
-    ctx.strokeStyle = colors.primary + '35';
-    ctx.lineWidth = W * 0.022;
-    ctx.stroke();
-    ctx.restore();
-    ctx.save();
-    ctx.rotate(ta * 0.7 + 0.26);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, trx, try_, 0, 0, Math.PI);
-    const tg = ctx.createLinearGradient(-trx, 0, trx, 0);
-    tg.addColorStop(0, colors.primary + '18');
-    tg.addColorStop(0.5, colors.primary + 'ee');
-    tg.addColorStop(1, colors.primary + '18');
-    ctx.strokeStyle = tg;
-    ctx.lineWidth = W * 0.022;
-    ctx.stroke();
-    ctx.restore();
-    const da = ta * 2.1;
-    const dx = trx * Math.cos(da);
-    const dy = try_ * Math.sin(da);
-    ctx.save();
-    ctx.rotate(ta * 0.7 + 0.26);
-    const dg = ctx.createRadialGradient(dx, dy, 0, dx, dy, 7);
-    dg.addColorStop(0, '#ffffff');
-    dg.addColorStop(0.4, colors.primary);
-    dg.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = dg;
-    ctx.beginPath();
-    ctx.arc(dx, dy, 7, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    ctx.restore();
+    // Center circle — use actual XR inner texture if loaded, fall back to drawn circle
+    if (bgCanvases.inner) {
+      const size = Math.round(W * 0.35);
+      const x = cx - size / 2;
+      const y = cy - size / 2;
+      const tint = document.createElement('canvas');
+      tint.width = W; tint.height = W;
+      const tCtx = tint.getContext('2d')!;
+      tCtx.drawImage(bgCanvases.inner, x, y, size, size);
+      tCtx.globalCompositeOperation = 'source-in';
+      tCtx.fillStyle = colors.primary;
+      tCtx.fillRect(x, y, size, size);
+      tCtx.globalCompositeOperation = 'multiply';
+      tCtx.drawImage(bgCanvases.inner, x, y, size, size);
+      ctx.save();
+      ctx.globalAlpha = 0.80;
+      ctx.drawImage(tint, 0, 0, W, W);
+      ctx.globalAlpha = 1.0;
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, W * 0.175, 0, Math.PI * 2);
+      const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.175);
+      cg.addColorStop(0, 'rgba(14,14,38,0.99)');
+      cg.addColorStop(1, 'rgba(6,6,20,0.96)');
+      ctx.fillStyle = cg;
+      ctx.fill();
+      ctx.strokeStyle = colors.primary + '55';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Center text
     const activeSpoke = hoveredIdx >= 0 ? SPOKES[hoveredIdx] : null;
@@ -262,10 +298,9 @@ export default function ActionCompass({ activeSport, onChangeSport }: ActionComp
     ctx.fillText(activeSpoke ? 'TAP TO ACTIVATE' : 'HOVER AN ICON', cx, cy + 10);
     ctx.restore();
 
-    torusAngleRef.current += 0.018;
     floatTimeRef.current += 0.016;
     animFrameRef.current = requestAnimationFrame(drawCanvas);
-  }, [activeSport, hoveredIdx, activeIdx, lockedIdx, iconImgs]);
+  }, [activeSport, hoveredIdx, activeIdx, lockedIdx, iconImgs, bgCanvases]);
 
   useEffect(() => {
     animFrameRef.current = requestAnimationFrame(drawCanvas);

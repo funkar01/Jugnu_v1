@@ -9,7 +9,6 @@ import ActionCompass from './components/ActionCompass';
 import Hero from './components/Hero';
 import SportShowcase from './components/SportShowcase';
 import JugnuCompanion from './components/JugnuCompanion';
-import TelemetryHub from './components/TelemetryHub';
 import WebAdvantages from './components/WebAdvantages';
 import { 
   Cpu, Radio, Shield, Terminal, ArrowUpRight, Github, ExternalLink, 
@@ -27,7 +26,7 @@ export default function App() {
   // Presentation state
   const [viewMode, setViewMode] = useState<'deck' | 'scroll'>('scroll');
   const [currentSlide, setCurrentSlide] = useState(0);
-  const totalSlides = 9;
+  const totalSlides = 8;
 
   // UTC Live clock ticks
   useEffect(() => {
@@ -155,9 +154,8 @@ export default function App() {
     '03. ZERO-INSTALL SOLUTIONS',
     '04. LIVE BROADCASTS',
     '05. JUGNU COMPANION',
-    '06. CALIBRATION METRICS',
-    '07. PLATFORM ADVANTAGES',
-    '08. DEVELOPMENT ROADMAP'
+    '06. PLATFORM ADVANTAGES',
+    '07. DEVELOPMENT ROADMAP'
   ];
 
   const handleSlideChange = (idx: number) => {
@@ -543,27 +541,8 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 6: Telemetry Hub & Benchmarking */}
+            {/* Slide 6: Web advantages & Monetization */}
             {currentSlide === 6 && (
-              <div className="space-y-6 slide-enter-active">
-                <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
-                  <span>REAL-TIME ENGINE TELEMETRY // ADJUST LOAD CAPACITY</span>
-                </div>
-                <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
-                  TELEMETRY TUNER & CALIBRATION HUB
-                </h2>
-                <p className="text-slate-300 text-xs md:text-sm max-w-3xl leading-relaxed">
-                  Real-time rendering priority dashboard. Adjust thread loads and inspect live performance metrics.
-                </p>
-
-                <div className="pt-2">
-                  <TelemetryHub />
-                </div>
-              </div>
-            )}
-
-            {/* Slide 7: Web advantages & Monetization */}
-            {currentSlide === 7 && (
               <div className="space-y-6 slide-enter-active">
                 <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
                   <span>MARKET FIT // SCALABILITY & MONETIZATION</span>
@@ -630,8 +609,8 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 8: Roadmap & Vision */}
-            {currentSlide === 8 && (
+            {/* Slide 7: Roadmap & Vision */}
+            {currentSlide === 7 && (
               <div className="space-y-6 slide-enter-active">
                 <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
                   <span>FUTURE OUTLOOK // ROADMAP</span>
@@ -896,8 +875,6 @@ export default function App() {
           {/* Section 4: Floating Spatial Companion: Jugnu Core */}
           <JugnuCompanion />
 
-          {/* Section 5: Software Development Cycle (SDC) & Telemetry Hub tuner */}
-          <TelemetryHub />
 
           {/* Section 6: Web-based Advantages Bento grid & Monetization Plans */}
           <section className="relative z-10 max-w-7xl mx-auto px-4 py-12 border-t border-orange-500/10">
