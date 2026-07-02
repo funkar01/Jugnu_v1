@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SportType } from '../types';
 import { playBeep } from '../utils/audio';
 
@@ -314,14 +314,8 @@ export default function ActionCompass({ activeSport, onChangeSport }: ActionComp
 
   return (
     <div className="flex flex-col items-center w-full gap-0 select-none">
-      <div className="w-full flex items-center justify-between px-4 py-2 rounded-t-2xl border-x border-t"
-        style={{ background: 'rgba(5,5,18,0.92)', borderColor: colors.primary + '35', boxShadow: '0 0 18px ' + colors.glow }}>
-        <span className="font-mono text-[10px] tracking-widest" style={{ color: colors.primary + 'aa' }}>COMPASS MODULE v4.2 // SYS_RADAR</span>
-        <span className="font-mono text-[10px] tracking-widest" style={{ color: colors.primary + 'aa' }}>AZIMUTH: {bearing}&#176; N</span>
-      </div>
-
-      <div className="w-full flex flex-col items-center justify-center py-3 border-x"
-        style={{ background: 'rgba(5,5,18,0.88)', borderColor: colors.primary + '25' }}>
+      <div className="w-full flex flex-col items-center justify-center py-4 border-x border-t rounded-t-2xl"
+        style={{ background: 'rgba(5,5,18,0.88)', borderColor: colors.primary + '25', boxShadow: '0 0 18px ' + colors.glow }}>
         <span className="font-mono text-[10px] uppercase tracking-[0.22em]" style={{ color: colors.primary + 'aa' }}>Mixed Reality Input Engine</span>
         <div className="flex items-center justify-center gap-2 mt-1">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={colors.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
