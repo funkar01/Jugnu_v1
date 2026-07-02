@@ -159,6 +159,10 @@ export class DomainExpansionSystem extends createSystem({
 
     private tableGroup!: THREE.Group;
     private tableBase!: THREE.Mesh;
+    private minimapHandleRing!: THREE.Mesh;
+    private minimapHandleMat!: THREE.MeshBasicMaterial;
+    private isDraggingTable = false;
+    private dragOffset = new THREE.Vector3();
     private radarRing!: THREE.Mesh;
     private radarTime = 0;
     private locationPin!: THREE.Group;
@@ -661,6 +665,20 @@ export class DomainExpansionSystem extends createSystem({
         ringMesh.rotation.x = -Math.PI / 2;
         ringMesh.position.y = 0.0001;
         this.tableGroup.add(ringMesh);
+
+        // Interactive transparent handle ring on the edge of the minimap
+        const handleGeom = new THREE.RingGeometry(0.20, 0.22, 64);
+        this.minimapHandleMat = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.15,
+            depthWrite: false
+        });
+        this.minimapHandleRing = new THREE.Mesh(handleGeom, this.minimapHandleMat);
+        this.minimapHandleRing.rotation.x = -Math.PI / 2;
+        this.minimapHandleRing.position.y = 0.0003; // slightly above other rings to prevent Z-fighting
+        this.tableGroup.add(this.minimapHandleRing);
 
         // 2D dynamic Map Plane layered on the table base (renders realistic roads procedurally)
         const mapPlaneGeom = new THREE.RingGeometry(0, 0.18, 64);
@@ -3449,6 +3467,58 @@ export class DomainExpansionSystem extends createSystem({
         // Right index tip poke — close-stack tap vs hold-to-quit
         const rightIndexTip = new THREE.Vector3();
         const hasRightIndex = this.getIndexData('right', rightIndexTip);
+
+        // --- Minimap Border Ring Dragging Interaction ---
+        let handleRingHighlighted = false;
+        const rightIndexPinchPos = new THREE.Vector3();
+        const isRightIndexPinching = this.getIndexPinchData('right', rightIndexPinchPos);
+
+        if (this.tableGroup.visible && this.isTableSpawned) {
+            // Determine if right index tip overlaps the transparent border ring
+            // The ring has a local radius from 0.20 to 0.22 (center ~0.21)
+            const localTip = rightIndexTip.clone().applyMatrix4(this.tableGroup.matrixWorld.clone().invert());
+            const r = Math.sqrt(localTip.x * localTip.x + localTip.z * localTip.z);
+            const worldYDiff = Math.abs(localTip.y) * this.currentTableScale;
+            const worldRadialDiff = Math.abs(r - 0.21) * this.currentTableScale;
+
+            // Overlap check (radial diff < 5cm, vertical height diff < 5cm in world space)
+            if (hasRightIndex && worldRadialDiff < 0.05 && worldYDiff < 0.05) {
+                handleRingHighlighted = true;
+            }
+
+            if (this.isDraggingTable) {
+                if (isRightIndexPinching) {
+                    // Update tableGroup position based on pinch position and recorded offset
+                    const targetPos = rightIndexPinchPos.clone().add(this.dragOffset);
+                    this.tableGroup.position.copy(targetPos);
+                    // Also publish to global window object
+                    (window as any).minimapTablePosition = this.tableGroup.position;
+                } else {
+                    // Release drag
+                    this.isDraggingTable = false;
+                    console.log(`[DomainExpansion] Minimap dragged and anchored at position: (${this.tableGroup.position.x.toFixed(2)}, ${this.tableGroup.position.y.toFixed(2)}, ${this.tableGroup.position.z.toFixed(2)})`);
+                }
+            } else if (handleRingHighlighted && isRightIndexPinching) {
+                // Start drag
+                this.isDraggingTable = true;
+                this.dragOffset.subVectors(this.tableGroup.position, rightIndexPinchPos);
+                console.log(`[DomainExpansion] Minimap dragging started!`);
+            }
+
+            // Update border handle ring color and opacity based on state
+            if (this.minimapHandleMat) {
+                if (this.isDraggingTable) {
+                    this.minimapHandleMat.color.setHex(0xffaa00); // Amber/orange highlight when dragging
+                    this.minimapHandleMat.opacity = 0.85;
+                } else if (handleRingHighlighted) {
+                    this.minimapHandleMat.color.setHex(0x00ffff); // Cyan highlight when hovered/overlapped
+                    this.minimapHandleMat.opacity = 0.65;
+                } else {
+                    this.minimapHandleMat.color.setHex(0x00ffff); // Default transparent state
+                    this.minimapHandleMat.opacity = 0.15;
+                }
+            }
+        }
         const distToWristBtn = (leftWristFound && hasRightIndex)
             ? rightIndexTip.distanceTo(this.wristButton.position)
             : Infinity;
@@ -3562,6 +3632,7 @@ export class DomainExpansionSystem extends createSystem({
         const toggleMinimap = this.checkMButton() || (window as any).triggerMinimapToggle;
 
         if (toggleMinimap && this.menuToggleCooldown <= 0.0) {
+            const spawnedFromCompass = !!(window as any).triggerMinimapToggle;
             if ((window as any).triggerMinimapToggle) {
                 (window as any).triggerMinimapToggle = false;
             }
@@ -3582,6 +3653,11 @@ export class DomainExpansionSystem extends createSystem({
                 let spawnPos = new THREE.Vector3(0, 1.15, -0.55);
                 let headHeight = 1.6;
 
+                if (spawnedFromCompass) {
+                    // Fallback offset slightly to the right if player head is missing
+                    spawnPos.x += 0.65;
+                }
+
                 if (this.player && this.player.head) {
                     const headPos = new THREE.Vector3();
                     this.player.head.getWorldPosition(headPos);
@@ -3590,6 +3666,14 @@ export class DomainExpansionSystem extends createSystem({
                     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.player.head.quaternion);
                     // Spawn 55cm in front of user's head
                     spawnPos.copy(headPos).addScaledVector(dir, 0.55);
+
+                    if (spawnedFromCompass) {
+                        // Project right vector horizontally onto the XZ plane to keep table parallel and level
+                        const right = new THREE.Vector3();
+                        right.crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+                        // Shift right by 0.65 meters
+                        spawnPos.addScaledVector(right, 0.65);
+                    }
                 }
 
                 // Adaptive desk height (headHeight - 0.45 meters)

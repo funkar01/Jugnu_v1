@@ -1672,6 +1672,18 @@
 - `[x]` Fix Web Audio Autoplay Policy Warnings (Current Run)
   - `[x]` Added `navigator.userActivation.hasBeenActive` checks before calling `new AudioContext()` in `src/utils/audio.ts` and `src/spatialFX.ts` to suppress Chrome's strict autoplay policy console errors on page load.
 
+- `[x]` Compass Spawning Minimap Shift (Current Run)
+  - `[x]` Capture `spawnedFromCompass` flag from `(window as any).triggerMinimapToggle` in `src/domainExpansion.ts`
+  - `[x]` Shift initial spawning position of the minimap desk by `0.65` meters to the right along the player's view cross-product vector
+  - `[x]` Verified type-safety compilation via `npx tsc --noEmit` and client production build via `npm run build`
+
+- `[x]` Minimap Draggable Border Ring Handle (Current Run)
+  - `[x]` Added private variables for `minimapHandleRing`, `minimapHandleMat`, `isDraggingTable`, and `dragOffset` in `src/domainExpansion.ts`
+  - `[x]` Created a transparent outer edge handle ring geometry (radius `0.20` to `0.22`) and cyan material in `init()`
+  - `[x]` Implemented right-index finger overlap detection and highlighted feedback (cyan, opacity = 0.65) in `update()`
+  - `[x]` Programmed right-hand index pinch-to-drag and release-to-anchor table positioning mechanics (amber/gold color, opacity = 0.85 when dragging)
+  - `[x]` Verified type-safety compilation via `npx tsc --noEmit` and client production build via `npm run build`
+
 
 
 
