@@ -31,11 +31,11 @@ export default function Hero({ onTriggerScan, isScanning, activeSportName }: Her
       <div className="text-center max-w-4xl z-10">
         <h1 className="text-5xl md:text-7xl font-black tracking-tighter leading-none text-transparent bg-clip-text bg-gradient-to-r from-white via-orange-100 to-blue-400">
           JUGNU XR: <br />
-          LIVE GAMES IN LIVING ROOMS
+          LIVE SPORTS IN LIVING ROOMS
         </h1>
         
         <p className="mt-6 text-sm md:text-base text-blue-100/80 tracking-wide max-w-2xl mx-auto leading-relaxed">
-          Volumetric Mixed Reality sports broadcasting. Experience live games as interactive 3D holographic dioramas directly on your desk. Built by <span className="text-orange-400 font-bold">Team Jugnu</span>.
+          Volumetric Mixed Reality sports broadcasting. Experience live sports as interactive 3D holographic dioramas directly on your desk. Built by <span className="text-orange-400 font-bold">Team Jugnu</span>.
         </p>
       </div>
 

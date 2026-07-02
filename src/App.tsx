@@ -27,7 +27,7 @@ export default function App() {
   // Presentation state
   const [viewMode, setViewMode] = useState<'deck' | 'scroll'>('scroll');
   const [currentSlide, setCurrentSlide] = useState(0);
-  const totalSlides = 6;
+  const totalSlides = 8;
 
   // UTC Live clock ticks
   useEffect(() => {
@@ -150,11 +150,13 @@ export default function App() {
   // Slide titles for bullet indicators
   const slideTitles = [
     '01. EXECUTIVE BRIEF',
-    '02. CORE SPATIAL TECH',
-    '03. LIVE BROADCASTS',
-    '04. JUGNU COMPANION',
-    '05. CALIBRATION METRICS',
-    '06. PLATFORM ADVANTAGES'
+    '02. APPS FRICTION',
+    '03. ZERO-INSTALL SOLUTIONS',
+    '04. LIVE BROADCASTS',
+    '05. JUGNU COMPANION',
+    '06. CALIBRATION METRICS',
+    '07. PLATFORM ADVANTAGES',
+    '08. DEVELOPMENT ROADMAP'
   ];
 
   const handleSlideChange = (idx: number) => {
@@ -206,7 +208,31 @@ export default function App() {
           </span>
         </div>
 
-        {/* Switcher buttons removed as website loads by default */}
+        {/* Mode Selector Switcher */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setViewMode('deck')}
+            className={`px-3 py-1.5 rounded-l border-y border-l transition-all font-mono text-[10px] cursor-pointer flex items-center gap-1.5 ${
+              viewMode === 'deck'
+                ? 'bg-orange-500 border-orange-500 text-slate-950 font-bold'
+                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Presentation className="w-3.5 h-3.5" />
+            <span>PITCH DECK</span>
+          </button>
+          <button
+            onClick={() => setViewMode('scroll')}
+            className={`px-3 py-1.5 rounded-r border-y border-r transition-all font-mono text-[10px] cursor-pointer flex items-center gap-1.5 ${
+              viewMode === 'scroll'
+                ? 'bg-orange-500 border-orange-500 text-slate-950 font-bold'
+                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>FULL WEBSITE</span>
+          </button>
+        </div>
 
         <div className="hidden lg:flex gap-6 font-mono text-[10px] text-orange-400/60 items-center">
           <span>{timeUtc || 'SYNCING UTC...'}</span>
@@ -267,6 +293,7 @@ export default function App() {
             <div className="absolute -right-32 -top-32 w-80 h-80 bg-blue-500/5 rounded-full filter blur-[80px] pointer-events-none" />
 
             {/* Slide 0: Title Slide */}
+            {/* Slide 0: Title Slide */}
             {currentSlide === 0 && (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center h-full">
                 <div className="lg:col-span-7 space-y-6">
@@ -274,8 +301,8 @@ export default function App() {
                     <span>THE FUTURE OF LIVE SPORTS</span>
                   </div>
                   <h1 className="text-4xl md:text-6xl font-black tracking-tighter leading-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-orange-100 to-blue-400 uppercase">
-                    THE STADIUM ON <br className="hidden md:inline" />
-                    YOUR TABLETOP
+                    JUGNU XR: <br className="hidden md:inline" />
+                    LIVE SPORTS IN LIVING ROOMS
                   </h1>
                   <p className="text-slate-300 text-sm md:text-base leading-relaxed">
                     Redefining live sports. We transform raw athletic coordinates into interactive 3D dioramas delivered instantly to lightweight web browsers.
@@ -310,18 +337,62 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 1: Technology Stack */}
+            {/* Slide 1: The Problem */}
             {currentSlide === 1 && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center h-full">
+                <div className="lg:col-span-7 space-y-6">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
+                    <span>THE FRICTION // NATIVE APP BARRIER</span>
+                  </div>
+                  <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+                    THE NATIVE APP STORE FRICTION
+                  </h2>
+                  <p className="text-slate-300 text-xs md:text-sm max-w-3xl leading-relaxed">
+                    Most spatial headsets suffer from slow loading times, high storage overhead, and complex sideloading setups. Forcing users to download gigabytes of app data before viewing a match creates a major barrier for live, real-time sports broadcasting.
+                  </p>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-xl bg-slate-950/80 border border-orange-500/10">
+                      <div className="flex items-center gap-2 text-orange-400 font-mono text-xs font-bold mb-1">
+                        <Terminal className="w-4 h-4 shrink-0" />
+                        <span>SLOW ITERATIONS</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">App Store reviews delay critical live event updates.</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-slate-950/80 border border-orange-500/10">
+                      <div className="flex items-center gap-2 text-orange-400 font-mono text-xs font-bold mb-1">
+                        <Layers className="w-4 h-4 shrink-0" />
+                        <span>STORAGE LIMITS</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">Headset memory limits restrict active user libraries.</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="lg:col-span-5 flex justify-center">
+                  <div className="max-w-[360px] w-full rounded-xl overflow-hidden border border-orange-500/25 shadow-[0_0_20px_rgba(240,125,0,0.1)] relative group">
+                    <img 
+                      src="./app-store-friction.png" 
+                      alt="App Store Friction Visual" 
+                      className="w-full h-auto object-cover transform group-hover:scale-102 transition-transform duration-75"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Slide 2: Technology Stack (The Solution) */}
+            {currentSlide === 2 && (
               <div className="space-y-6">
                 <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
-                  <span>UNDER THE HOOD // PATENTED WEB STACK</span>
+                  <span>THE SOLUTION // ZERO-INSTALL WEBXR</span>
                 </div>
                 <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
-                  IMPOSSIBLE PERFORMANCE ON LIGHTWEIGHT WEB BROWSERS
+                  ZERO-INSTALL HEADSET WEBXR BROWSERS
                 </h2>
-                  <p className="text-slate-300 text-xs md:text-sm max-w-3xl leading-relaxed">
-                    Skip heavy store downloads. Our pure WebGL client runs directly in the browser with near-zero loading latency.
-                  </p>
+                <p className="text-slate-300 text-xs md:text-sm max-w-3xl leading-relaxed">
+                  Skip heavy store downloads. Our pure WebGL client runs directly inside Quest 3, Apple Vision Pro, and spatial computing browsers with near-zero setup latency.
+                </p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
                   <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
@@ -331,7 +402,7 @@ export default function App() {
                       </div>
                       <h3 className="text-sm font-sans font-bold text-slate-100">Zero-GC Rendering</h3>
                       <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
-                        Pre-allocated vectors ensure zero frame drops.
+                        Pre-allocated vectors ensure zero frame drops during fast sports action.
                       </p>
                     </div>
                     <span className="text-[10px] font-mono text-orange-500/70 mt-4 uppercase">STABILIZED THREADS</span>
@@ -344,7 +415,7 @@ export default function App() {
                       </div>
                       <h3 className="text-sm font-sans font-bold text-slate-100">Dynamic Voxel Splines</h3>
                       <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
-                        Procedural compression for fast real-time streaming.
+                        Procedural compression for fast real-time headset streaming.
                       </p>
                     </div>
                     <span className="text-[10px] font-mono text-orange-400/70 mt-4 uppercase">120:1 COMPRESSION</span>
@@ -353,11 +424,11 @@ export default function App() {
                   <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
                     <div>
                       <div className="w-10 h-10 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-3 group-hover:bg-orange-500/20 transition-all">
-                        <Radio className="w-5 h-5 text-orange-405 text-orange-400" />
+                        <Radio className="w-5 h-5 text-orange-400" />
                       </div>
                       <h3 className="text-sm font-sans font-bold text-slate-100">Spatial Audio</h3>
                       <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
-                        Procedural oscillators localized by head movement.
+                        Procedural oscillators localized by head movement in XR.
                       </p>
                     </div>
                     <span className="text-[10px] font-mono text-orange-500/70 mt-4 uppercase">WEBAUDIO APIS</span>
@@ -366,8 +437,8 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 2: Interactive Broadcasts (Compass & Showcase) */}
-            {currentSlide === 2 && (
+            {/* Slide 3: Interactive Broadcasts (Compass & Showcase) */}
+            {currentSlide === 3 && (
               <div className="space-y-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-orange-500/10 pb-4">
                   <div>
@@ -404,8 +475,8 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 3: Jugnu AI Companion */}
-            {currentSlide === 3 && (
+            {/* Slide 4: Jugnu AI Companion */}
+            {currentSlide === 4 && (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center h-full">
                 <div className="lg:col-span-7 space-y-6">
                   <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
@@ -441,8 +512,8 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 4: Telemetry Hub & Benchmarking */}
-            {currentSlide === 4 && (
+            {/* Slide 5: Telemetry Hub & Benchmarking */}
+            {currentSlide === 5 && (
               <div className="space-y-6">
                 <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
                   <span>REAL-TIME ENGINE TELEMETRY // ADJUST LOAD CAPACITY</span>
@@ -450,9 +521,9 @@ export default function App() {
                 <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
                   TELEMETRY TUNER & CALIBRATION HUB
                 </h2>
-                  <p className="text-slate-300 text-xs md:text-sm max-w-3xl leading-relaxed">
-                    Real-time rendering priority dashboard. Adjust thread loads and inspect live performance metrics.
-                  </p>
+                <p className="text-slate-300 text-xs md:text-sm max-w-3xl leading-relaxed">
+                  Real-time rendering priority dashboard. Adjust thread loads and inspect live performance metrics.
+                </p>
 
                 <div className="pt-2">
                   <TelemetryHub />
@@ -460,18 +531,117 @@ export default function App() {
               </div>
             )}
 
-            {/* Slide 5: Web advantages bento grid */}
-            {currentSlide === 5 && (
-              <div className="space-y-4">
+            {/* Slide 6: Web advantages & Monetization */}
+            {currentSlide === 6 && (
+              <div className="space-y-6">
                 <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
-                  <span>MARKET FIT // WHY BROWSER-BASED MR WINS</span>
+                  <span>MARKET FIT // SCALABILITY & MONETIZATION</span>
                 </div>
-                <h2 className="text-2xl font-extrabold text-white tracking-tight">
-                  THE SPATIAL WEB DISRUPTION
+                <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+                  THE SPATIAL WEB DISRUPTION & MONETIZATION
                 </h2>
+                <p className="text-slate-300 text-xs md:text-sm max-w-3xl leading-relaxed">
+                  Delivering live volumetric broadcasts via URL links eliminates friction. We monetize through simple spatial subscriptions, interactive merchandise, and volumetric ticketing.
+                </p>
                 
-                <div className="pt-2">
+                {/* Monetization Plan Cards Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+                  <div className="p-5 rounded-2xl bg-slate-950/60 border border-slate-800 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300">
+                    <div>
+                      <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">PLAN 01</span>
+                      <h3 className="text-base font-sans font-bold text-slate-100 mt-1">STANDARD ACCESS</h3>
+                      <span className="text-[11px] font-mono text-orange-400 block mt-1">Basic Spectator Plan</span>
+                      <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
+                        Features standard diorama streams and ad-supported spectator views. Designed to introduce new viewers to tabletop sports broadcasts.
+                      </p>
+                    </div>
+                    <div className="border-t border-slate-800/80 pt-3 mt-4 text-[10px] font-mono text-slate-500">
+                      FUTURE SCOPE: WebGL public streaming chat rooms.
+                    </div>
+                  </div>
+
+                  <div className="p-5 rounded-2xl bg-slate-950/80 border border-orange-500/30 flex flex-col justify-between hover:border-orange-500/60 transition-all duration-300 relative shadow-[0_0_20px_rgba(240,125,0,0.05)]">
+                    <div className="absolute -top-3 right-4 px-2 py-0.5 bg-orange-500 text-slate-950 font-mono text-[8px] font-bold rounded-full uppercase tracking-wider">
+                      RECOMMENDED
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-mono text-orange-400 uppercase tracking-widest font-semibold">PLAN 02</span>
+                      <h3 className="text-base font-sans font-bold text-slate-100 mt-1">HOLOGRAPHIC PRO</h3>
+                      <span className="text-[11px] font-mono text-orange-450 text-orange-400 block mt-1">Advanced Volumetric Suite</span>
+                      <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
+                        Provides Ultra-HD streaming, 5 diorama angles, and real-time player telemetry overlays. Best for sports fans wanting complete view control.
+                      </p>
+                    </div>
+                    <div className="border-t border-orange-500/10 pt-3 mt-4 text-[10px] font-mono text-slate-500">
+                      FUTURE SCOPE: Volumetric replays & customizable camera tracks.
+                    </div>
+                  </div>
+
+                  <div className="p-5 rounded-2xl bg-slate-950/60 border border-slate-800 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300">
+                    <div>
+                      <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">PLAN 03</span>
+                      <h3 className="text-base font-sans font-bold text-slate-100 mt-1">ALL-ACCESS PASS</h3>
+                      <span className="text-[11px] font-mono text-orange-400 block mt-1">Social Spectator Tier</span>
+                      <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
+                        Includes entry to virtual VIP lounges, custom spectator avatar accessories, and priorities for volumetric merchandise store launches.
+                      </p>
+                    </div>
+                    <div className="border-t border-slate-800/80 pt-3 mt-4 text-[10px] font-mono text-slate-500">
+                      FUTURE SCOPE: Multi-spectator social lobbies & shared diorama spaces.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-orange-500/10">
+                  <span className="text-[10px] font-mono text-slate-500 block uppercase mb-3">DEPLOYMENT ADVANTAGES MATRIX</span>
                   <WebAdvantages />
+                </div>
+              </div>
+            )}
+
+            {/* Slide 7: Roadmap & Vision */}
+            {currentSlide === 7 && (
+              <div className="space-y-6">
+                <div className="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-mono tracking-widest bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-full">
+                  <span>FUTURE OUTLOOK // ROADMAP</span>
+                </div>
+                <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+                  SHAPING THE VOLUMETRIC SPORTS ERA
+                </h2>
+                <p className="text-slate-300 text-xs md:text-sm max-w-3xl leading-relaxed">
+                  We are building the future of immersive sports viewing. Our pipeline extends from real-time stadium tracking to multi-user fan rooms and premium sponsorship layers.
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+                  <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
+                    <div>
+                      <div className="text-orange-400 font-mono text-sm font-bold">PHASE 1 (Q3 2026)</div>
+                      <h3 className="text-base font-sans font-bold text-slate-100 mt-2">Diorama Live Streaming</h3>
+                      <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
+                        Integrating live multi-camera diorama streaming nodes from stadium broadcasts.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
+                    <div>
+                      <div className="text-orange-400 font-mono text-sm font-bold">PHASE 2 (Q4 2026)</div>
+                      <h3 className="text-base font-sans font-bold text-slate-100 mt-2">Social Lobbies</h3>
+                      <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
+                        Shared spectator social lobbies and avatar interaction spaces directly in the diorama room.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
+                    <div>
+                      <div className="text-orange-400 font-mono text-sm font-bold">PHASE 3 (Q1 2027)</div>
+                      <h3 className="text-base font-sans font-bold text-slate-100 mt-2">Spatial Ticketing</h3>
+                      <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
+                        Launching spatial ticket passes, volumetric ads campaigns, and interactive brand sponsors.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -525,24 +695,119 @@ export default function App() {
       ) : (
         /* VIEW MODE: STANDARD SCROLLABLE LANDING PAGE */
         <>
-          {/* Hero Section */}
+          {/* Section 0: Hero Section */}
           <Hero 
             onTriggerScan={triggerScanningSequence} 
             isScanning={isScanning} 
             activeSportName={getSportName()}
           />
 
-          {/* Action Compass Special Component + Quick Pitch Summary Grid */}
-          <main className="relative z-10 max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          {/* Section 1: The Problem (App Store Friction) */}
+          <section className="relative z-10 max-w-7xl mx-auto px-4 py-12 border-t border-orange-500/10">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              <div className="lg:col-span-7 space-y-6">
+                <span className="px-2 py-1 text-[10px] font-mono tracking-widest bg-slate-950/80 border border-orange-500/30 text-orange-400 rounded-md">
+                  THE FRICTION // NATIVE APP BARRIER
+                </span>
+                <h2 className="text-3xl md:text-4xl font-sans font-extrabold uppercase tracking-tight text-white mt-1">
+                  THE NATIVE APP STORE FRICTION
+                </h2>
+                <p className="text-slate-300 text-sm md:text-base leading-relaxed">
+                  Most spatial headsets suffer from slow loading times, high storage overhead, and complex sideloading setups. Forcing users to download gigabytes of app data before viewing a match creates a major barrier for live, real-time sports broadcasting.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl bg-slate-950/45 border border-orange-500/15 backdrop-blur-md">
+                    <div className="flex items-center gap-2 text-orange-400 font-mono text-xs font-bold mb-1">
+                      <Terminal className="w-4 h-4 shrink-0" />
+                      <span>SLOW ITERATIONS</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">App Store reviews delay critical live event updates.</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-950/45 border border-orange-500/15 backdrop-blur-md">
+                    <div className="flex items-center gap-2 text-orange-400 font-mono text-xs font-bold mb-1">
+                      <Layers className="w-4 h-4 shrink-0" />
+                      <span>STORAGE LIMITS</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">Headset memory limits restrict active user libraries.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="lg:col-span-5 flex justify-center">
+                <div className="max-w-[400px] w-full rounded-xl overflow-hidden border border-orange-500/25 shadow-[0_0_20px_rgba(240,125,0,0.1)] relative group">
+                  <img 
+                    src="./app-store-friction.png" 
+                    alt="App Store Friction Visual" 
+                    className="w-full h-auto object-cover transform group-hover:scale-102 transition-transform duration-75"
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Section 2: Zero-Install Volumetric Architecture */}
+          <section className="relative z-10 max-w-7xl mx-auto px-4 py-12 border-t border-orange-500/10">
+            <span className="px-2 py-1 text-[10px] font-mono tracking-widest bg-slate-950/80 border border-orange-500/30 text-orange-400 rounded-md">
+              THE SOLUTION // ZERO-INSTALL WEBXR
+            </span>
+            <h2 className="text-3xl md:text-4xl font-sans font-extrabold uppercase tracking-tight text-white mt-1">
+              ZERO-INSTALL HEADSET WEBXR BROWSERS
+            </h2>
+            <p className="text-slate-300 text-sm md:text-base leading-relaxed mt-2 max-w-3xl">
+              Skip heavy store downloads. Our pure WebGL client runs directly inside Quest 3, Apple Vision Pro, and spatial computing browsers with near-zero setup latency.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
+              <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
+                <div>
+                  <div className="w-10 h-10 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-3 group-hover:bg-orange-500/20 transition-all">
+                    <Cpu className="w-5 h-5 text-orange-400" />
+                  </div>
+                  <h3 className="text-base font-sans font-bold text-slate-100">Zero-GC Rendering</h3>
+                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                    Pre-allocated vectors ensure zero frame drops during fast sports action.
+                  </p>
+                </div>
+                <span className="text-[10px] font-mono text-orange-500/70 mt-4 uppercase">STABILIZED THREADS</span>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
+                <div>
+                  <div className="w-10 h-10 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-3 group-hover:bg-orange-500/20 transition-all">
+                    <Layers className="w-5 h-5 text-orange-400" />
+                  </div>
+                  <h3 className="text-base font-sans font-bold text-slate-100">Dynamic Voxel Splines</h3>
+                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                    Procedural compression for fast real-time headset streaming.
+                  </p>
+                </div>
+                <span className="text-[10px] font-mono text-orange-400/70 mt-4 uppercase">120:1 COMPRESSION</span>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
+                <div>
+                  <div className="w-10 h-10 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-3 group-hover:bg-orange-500/20 transition-all">
+                    <Radio className="w-5 h-5 text-orange-400" />
+                  </div>
+                  <h3 className="text-base font-sans font-bold text-slate-100">Spatial Audio</h3>
+                  <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                    Procedural oscillators localized by head movement in XR.
+                  </p>
+                </div>
+                <span className="text-[10px] font-mono text-orange-500/70 mt-4 uppercase">WEBAUDIO APIS</span>
+              </div>
+            </div>
+          </section>
+
+          {/* Section 3: Interactive Sandbox (Action Compass & Stadium Dioramas) */}
+          <main className="relative z-10 max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center border-t border-orange-500/10">
             
             {/* Left Side Pitch Summary Box (7 columns) */}
             <div className="lg:col-span-7 space-y-6">
               <div className="space-y-2">
                 <span className="px-2 py-1 text-[10px] font-mono tracking-widest bg-slate-950/80 border border-orange-500/30 text-orange-400 rounded-md">
-                  THE TABLETOP DOMAIN EXPANSION
+                  LIVE TELEMETRY FEEDS // TRY INTERACTING
                 </span>
                 <h2 className="text-3xl md:text-4xl font-sans font-extrabold uppercase tracking-tight text-white mt-1">
-                  SPATIAL BROADCAST HUD
+                  PROCEDURAL STADIUM DIORAMAS
                 </h2>
                 <p className="text-slate-300 text-sm md:text-base leading-relaxed">
                   Shift live feeds instantly between stadiums. Lock onto venues, view ball flight arcs, and calculate real-time diorama angles on your desk.
@@ -597,14 +862,121 @@ export default function App() {
             onChangeSport={(sport) => setActiveSport(sport)} 
           />
 
-          {/* Floating Spatial Companion: Jugnu Core */}
+          {/* Section 4: Floating Spatial Companion: Jugnu Core */}
           <JugnuCompanion />
 
-          {/* Software Development Cycle (SDC) & Telemetry Hub tuner */}
+          {/* Section 5: Software Development Cycle (SDC) & Telemetry Hub tuner */}
           <TelemetryHub />
 
-          {/* Web-based Advantages Bento grid */}
-          <WebAdvantages />
+          {/* Section 6: Web-based Advantages Bento grid & Monetization Plans */}
+          <section className="relative z-10 max-w-7xl mx-auto px-4 py-12 border-t border-orange-500/10">
+            <span className="px-2 py-1 text-[10px] font-mono tracking-widest bg-slate-950/80 border border-orange-500/30 text-orange-400 rounded-md">
+              MARKET FIT // SCALABILITY & MONETIZATION
+            </span>
+            <h2 className="text-3xl md:text-4xl font-sans font-extrabold uppercase tracking-tight text-white mt-1">
+              THE SPATIAL WEB DISRUPTION & MONETIZATION
+            </h2>
+            <p className="text-slate-300 text-sm md:text-base leading-relaxed mt-2 max-w-3xl">
+              Delivering live volumetric broadcasts via URL links eliminates friction. We monetize through simple spatial subscriptions, premium interactive virtual merchandise, and digital ticket access.
+            </p>
+
+            {/* Monetization Plan Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
+              <div className="p-6 rounded-2xl bg-slate-950/45 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/30 transition-all duration-300 backdrop-blur-md">
+                <div>
+                  <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">PLAN 01</span>
+                  <h3 className="text-xl font-sans font-bold text-slate-100 mt-1">STANDARD ACCESS</h3>
+                  <span className="text-xs font-mono text-orange-400 block mt-1">Basic Spectator Plan</span>
+                  <p className="text-sm text-slate-400 mt-4 leading-relaxed">
+                    Features standard diorama streams and ad-supported spectator views. Designed to introduce new viewers to tabletop sports broadcasts.
+                  </p>
+                </div>
+                <div className="border-t border-slate-800/60 pt-4 mt-6 text-xs font-mono text-slate-500">
+                  FUTURE SCOPE: WebGL public streaming chat rooms.
+                </div>
+              </div>
+
+              <div className="p-6 rounded-2xl bg-slate-950/85 border border-orange-500/30 flex flex-col justify-between hover:border-orange-500/50 transition-all duration-300 relative shadow-[0_0_25px_rgba(240,125,0,0.08)] backdrop-blur-md">
+                <div className="absolute -top-3.5 right-6 px-3 py-1 bg-orange-500 text-slate-950 font-mono text-[9px] font-bold rounded-full uppercase tracking-wider">
+                  RECOMMENDED
+                </div>
+                <div>
+                  <span className="text-[10px] font-mono text-orange-400 uppercase tracking-widest font-semibold">PLAN 02</span>
+                  <h3 className="text-xl font-sans font-bold text-slate-100 mt-1">HOLOGRAPHIC PRO</h3>
+                  <span className="text-xs font-mono text-orange-400 block mt-1">Advanced Volumetric Suite</span>
+                  <p className="text-sm text-slate-400 mt-4 leading-relaxed">
+                    Provides Ultra-HD streaming, 5 diorama angles, and real-time player telemetry overlays. Best for sports fans wanting complete view control.
+                  </p>
+                </div>
+                <div className="border-t border-orange-500/10 pt-4 mt-6 text-xs font-mono text-slate-500">
+                  FUTURE SCOPE: Volumetric replays & customizable camera tracks.
+                </div>
+              </div>
+
+              <div className="p-6 rounded-2xl bg-slate-950/45 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/30 transition-all duration-300 backdrop-blur-md">
+                <div>
+                  <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">PLAN 03</span>
+                  <h3 className="text-xl font-sans font-bold text-slate-100 mt-1">ALL-ACCESS PASS</h3>
+                  <span className="text-xs font-mono text-orange-400 block mt-1">Social Spectator Tier</span>
+                  <p className="text-sm text-slate-400 mt-4 leading-relaxed">
+                    Includes entry to virtual VIP lounges, custom spectator avatar accessories, and priorities for volumetric merchandise store launches.
+                  </p>
+                </div>
+                <div className="border-t border-slate-800/60 pt-4 mt-6 text-xs font-mono text-slate-500">
+                  FUTURE SCOPE: Multi-spectator social lobbies & shared diorama spaces.
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-12 pt-12 border-t border-orange-500/10">
+              <span className="text-xs font-mono text-slate-500 block uppercase mb-6">DEPLOYMENT ADVANTAGES MATRIX</span>
+              <WebAdvantages />
+            </div>
+          </section>
+
+          {/* Section 7: Volumetric Roadmap */}
+          <section className="relative z-10 max-w-7xl mx-auto px-4 py-12 border-t border-orange-500/10">
+            <span className="px-2 py-1 text-[10px] font-mono tracking-widest bg-slate-950/80 border border-orange-500/30 text-orange-400 rounded-md">
+              FUTURE OUTLOOK // ROADMAP
+            </span>
+            <h2 className="text-3xl md:text-4xl font-sans font-extrabold uppercase tracking-tight text-white mt-1">
+              SHAPING THE VOLUMETRIC SPORTS ERA
+            </h2>
+            <p className="text-slate-300 text-sm md:text-base leading-relaxed mt-2 max-w-3xl">
+              We are building the future of immersive sports viewing. Our pipeline extends from real-time stadium tracking to multi-user fan rooms and premium sponsorship layers.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
+              <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
+                <div>
+                  <div className="text-orange-400 font-mono text-sm font-bold">PHASE 1 (Q3 2026)</div>
+                  <h3 className="text-base font-sans font-bold text-slate-100 mt-2">Diorama Live Streaming</h3>
+                  <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
+                    Integrating live multi-camera diorama streaming nodes from stadium broadcasts.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
+                <div>
+                  <div className="text-orange-400 font-mono text-sm font-bold">PHASE 2 (Q4 2026)</div>
+                  <h3 className="text-base font-sans font-bold text-slate-100 mt-2">Social Lobbies</h3>
+                  <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
+                    Shared spectator social lobbies and avatar interaction spaces directly in the diorama room.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-950/60 border border-orange-500/15 flex flex-col justify-between hover:border-orange-500/40 transition-all duration-300 group">
+                <div>
+                  <div className="text-orange-400 font-mono text-sm font-bold">PHASE 3 (Q1 2027)</div>
+                  <h3 className="text-base font-sans font-bold text-slate-100 mt-2">Spatial Ticketing</h3>
+                  <p className="text-[12px] text-slate-400 mt-2 leading-relaxed">
+                    Launching spatial ticket passes, volumetric ads campaigns, and interactive brand sponsors.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
         </>
       )}
 

@@ -1730,3 +1730,38 @@
   - `[x]` Simplified and condensed lengthy copy paragraphs and list details across [App.tsx](file:///i:/AntiGravities/Jugnu_v1/src/App.tsx), [Hero.tsx](file:///i:/AntiGravities/Jugnu_v1/src/components/Hero.tsx), [JugnuCompanion.tsx](file:///i:/AntiGravities/Jugnu_v1/src/components/JugnuCompanion.tsx), [TelemetryHub.tsx](file:///i:/AntiGravities/Jugnu_v1/src/components/TelemetryHub.tsx), and [WebAdvantages.tsx](file:///i:/AntiGravities/Jugnu_v1/src/components/WebAdvantages.tsx).
   - `[x]` Increased CSS variables `--size-1` through `--size-4` by ~15-20% in [landing.css](file:///i:/AntiGravities/Jugnu_v1/src/landing.css) to maximize readable contrast and visibility.
   - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled client production bundle via `npm run build`.
+
+- `[x]` Compass Header Labels Removal (Current Run)
+  - `[x]` Removed the top status row container rendering `COMPASS MODULE v4.2 // SYS_RADAR` and `AZIMUTH: ...` inside [ActionCompass.tsx](file:///i:/AntiGravities/Jugnu_v1/src/components/ActionCompass.tsx).
+  - `[x]` Updated border-t, rounded-t-2xl, and the neon mood glow box-shadow to be applied to the remaining header container to maintain aesthetic symmetry.
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled client production bundle via `npm run build`.
+
+- `[x]` Presentation Flow Expansion & Custom Adjustments (Current Run)
+  - `[x]` Expanded total slides count from 6 to 8 inside [App.tsx](file:///i:/AntiGravities/Jugnu_v1/src/App.tsx).
+  - `[x]` Changed Slide 0 title to "JUGNU XR: LIVE SPORTS IN LIVING ROOMS".
+  - `[x]` Integrated Slide 1 (The Problem) introducing App Store friction with custom visual `public/app-store-friction.png`.
+  - `[x]` Refocused Slide 2 (The Solution) on headset browsers and Quest 3/Vision Pro browsers.
+  - `[x]` Included monetization plan highlights (subscriptions, premium virtual merchandise, tickets) inside Slide 6 (Market Disruption & Monetization).
+  - `[x]` Appended Slide 7 detailing the Volumetric Sports Era roadmap phases.
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled client production bundle via `npm run build`.
+
+- `[x]` Presentation Alignment & Header Switcher Restoration (Current Run)
+  - `[x]` Restored the premium mode selector switcher (PITCH DECK / FULL WEBSITE) in the header of [App.tsx](file:///i:/AntiGravities/Jugnu_v1/src/App.tsx) so users can easily toggle layouts.
+  - `[x]` Aligned the `slideTitles` array length to match all 8 slides.
+  - `[x]` Integrated the new App Store Friction section and Volumetric Roadmap section directly into the scroll view page layout.
+  - `[x]` Modified the landing hero title to "JUGNU XR: LIVE SPORTS IN LIVING ROOMS" in [Hero.tsx](file:///i:/AntiGravities/Jugnu_v1/src/components/Hero.tsx).
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled client production bundle via `npm run build`.
+
+- `[x]` Website Layout Section Sequence Alignment (Current Run)
+  - `[x]` Reordered the scroll view sections in [App.tsx](file:///i:/AntiGravities/Jugnu_v1/src/App.tsx) to match the slide presentation sequence exactly: Section 0 (Hero), Section 1 (App Store Friction), Section 2 (Zero-Install Architecture Technology Cards), Section 3 (Action Compass & Venue Showcase), Section 4 (AI Companion), Section 5 (Diagnostics Tuner), Section 6 (Market Disruption & Monetization), and Section 7 (Roadmap phases).
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled client production bundle via `npm run build`.
+
+- `[x]` Monetization Plans & Dev testing HUD Removal (Current Run)
+  - `[x]` Excised the floating developer testing HUD (`[TEST PC PX]`, `[TEST XR QUEST]`, `[TEST MOBILE AR]` buttons) and associated script from [index.html](file:///i:/AntiGravities/Jugnu_v1/index.html).
+  - `[x]` Designed and embedded a 3-tier monetization pricing grid (Standard Access, Holographic Pro, and All-Access Pass) inside Slide 6 and scroll Section 6 of [App.tsx](file:///i:/AntiGravities/Jugnu_v1/src/App.tsx).
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled client production bundle via `npm run build`.
+
+- `[x]` Monetization Tier Scope Update (Current Run)
+  - `[x]` Removed pricing numbers from all plans in [App.tsx](file:///i:/AntiGravities/Jugnu_v1/src/App.tsx) Slide 6 and Section 6.
+  - `[x]` Added structured details listing the future scopes of plans (e.g. public streaming chat rooms, customizable camera tracks, multi-spectator lobbies).
+  - `[x]` Verified zero compile-time type errors via `npx tsc --noEmit` and successfully compiled client production bundle via `npm run build`.
