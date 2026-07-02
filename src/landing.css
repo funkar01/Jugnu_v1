@@ -299,3 +299,27 @@ code,
 .slide-enter-active {
   animation: slideInUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+@keyframes float-gentle {
+  0% {
+    transform: translateY(0) translateX(0) rotate(0deg);
+  }
+  33% {
+    transform: translateY(-25vh) translateX(25px) rotate(120deg);
+  }
+  66% {
+    transform: translateY(-50vh) translateX(-25px) rotate(240deg);
+  }
+  100% {
+    transform: translateY(-75vh) translateX(0) rotate(360deg);
+  }
+}
+
+@keyframes glow-pulse-svg {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px rgba(255, 160, 58, 0.45));
+  }
+  50% {
+    filter: drop-shadow(0 0 12px rgba(255, 160, 58, 0.85));
+  }
+}

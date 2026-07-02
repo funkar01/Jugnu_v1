@@ -1728,6 +1728,13 @@
   - `[x]` Added `bgCanvases` to `useCallback` dependency array to trigger re-render when textures load
   - `[x]` Verified type-safety compilation via `npx tsc --noEmit`
 
+- `[x]` Update Immediate Link Sharing & Add Background Jugnu Particles (Current Run)
+  - `[x]` Updated Immediate Link Sharing URL in `src/components/WebAdvantages.tsx` to `https://jugnu-v1.vercel.app/` and wrapped it in a proper clickable hyperlink
+  - `[x]` Created a new custom React component `src/components/JugnuParticles.tsx` that generates and animates 150 floating glowing Jugnu-shaped background particles (represented as 8-pointed rounded stars with custom radial gradients), with increased size (14px–38px), opacity (15%–50%), static drop-shadows, and asynchronous pulsing glow animations (`glow-pulse-svg`) for a realistic firefly effect
+  - `[x]` Appended keyframes for `float-gentle` and `glow-pulse-svg` to `src/landing.css`
+  - `[x]` Integrated and rendered `<JugnuParticles />` as a background layer in `src/App.tsx`
+  - `[x]` Verified type-safety compilation via `npx tsc --noEmit` and successfully compiled the production client bundle using `npm run build`
+
 
 
 

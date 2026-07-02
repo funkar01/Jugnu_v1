@@ -10,6 +10,7 @@ import Hero from './components/Hero';
 import SportShowcase from './components/SportShowcase';
 import JugnuCompanion from './components/JugnuCompanion';
 import WebAdvantages from './components/WebAdvantages';
+import JugnuParticles from './components/JugnuParticles';
 import { 
   Cpu, Radio, Shield, Terminal, ArrowUpRight, Github, ExternalLink, 
   HelpCircle, ChevronLeft, ChevronRight, Presentation, Globe, Layers, Eye
@@ -169,6 +170,7 @@ export default function App() {
       {/* Background Scanlines & Grid from Immersive UI */}
       <div className="absolute inset-0 pointer-events-none opacity-20 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,122,0,0.06),rgba(0,255,0,0.01),rgba(59,130,246,0.06))] bg-[length:100%_2px,3px_100%] z-0" />
       <div className="absolute inset-0 pointer-events-none opacity-5 z-0" style={{ backgroundImage: 'linear-gradient(rgba(59,130,246,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.08) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+      <JugnuParticles />
       
       {/* Full-Screen Holographic Scanner Sweep line */}
       {isScanning && (

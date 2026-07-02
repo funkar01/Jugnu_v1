@@ -80,7 +80,15 @@ export default function WebAdvantages() {
             </div>
 
             <div className="pt-2 text-xs font-mono text-orange-400 flex items-center gap-1">
-              <span>https://jugnuxr.in/broadcast/wankhede-live</span>
+              <a 
+                href="https://jugnu-v1.vercel.app/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="hover:underline flex items-center gap-1.5"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span>https://jugnu-v1.vercel.app/</span>
+              </a>
             </div>
           </div>
         </div>
